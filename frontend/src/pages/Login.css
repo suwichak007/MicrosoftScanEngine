@@ -1,0 +1,83 @@
+body {
+  margin: 0;
+}
+
+.login-page {
+  min-height: 100vh;
+  width: 100%;
+  background-color: #E7E7E7;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.Login_rectangle {
+  width: 400px;
+  height: 420px;
+  background-color: #FFFFFF;
+  box-shadow: 0px 4px 20px rgba(0, 0, 0, 0.1);
+}
+
+.Login_card-body {
+  text-align: center;
+  padding-top: 15px;
+}
+
+.Login_Topic {
+  width: 60px;
+  height: 60px;
+  padding-top: 20px;
+  background-color: #ffffff;
+  color: #000000;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  font-size: 48px;
+  margin-bottom: 20px;
+}
+
+.Login_Username{
+    font-size: 20px;
+    margin-bottom: 8px;
+    padding-right: 160px;
+}
+
+.Login_Username_Input_Field {
+    width: 70%;
+    padding: 10px;
+    background-color: #D9D9D9;
+    border: none;
+    margin-top: 8px;
+    margin-bottom: 20px;
+}
+
+.Login_Password{
+    font-size: 20px;
+    margin-bottom: 8px;
+    padding-right: 225px;
+}
+
+.Login_Password_Input_Field {
+    width: 70%;
+    padding: 10px;
+    background-color: #D9D9D9;
+    border: none;
+    margin-top: 8px;
+    margin-bottom: 20px;
+}
+
+.Login_signin_button{
+    width: 30%;
+    margin-top: 20px;
+    padding: 10px;
+    background-color: #000000;
+    color: #FFFFFF;
+    border: none;
+    border-radius: 8px;
+    font-size: 18px;
+}
+
+.Register_link {
+  margin-top: 20px;
+}

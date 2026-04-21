@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import './Login.css'; // นำเข้า CSS สำหรับหน้า Login
 
 function Login() {
   const [username, setUsername] = useState('');
@@ -41,12 +42,11 @@ function Login() {
   };
 
   return (
-    <div className="d-flex align-items-center justify-content-center vh-100 bg-light">
-      <div className="card shadow-sm border-0" style={{ width: '400px', borderRadius: '15px' }}>
-        <div className="card-body p-5">
+    <div className="login-page d-flex align-items-center justify-content-center">
+      <div className="Login_rectangle">
+        <div className="Login_card-body">
           <div className="text-center mb-4">
-            <div className="bg-primary text-white d-inline-flex align-items-center justify-content-center mb-3" style={{ width: '60px', height: '60px', borderRadius: '12px', fontSize: '32px' }}>S</div>
-            <h4 className="fw-bold">Security Scanner</h4>
+            <div className="Login_Topic">Scanner</div>
           </div>
 
           {/* แสดงข้อความ Error ถ้ามี */}
@@ -54,20 +54,29 @@ function Login() {
 
           <form onSubmit={handleLogin}>
             <div className="mb-3">
-              <label className="form-label small fw-bold text-secondary">USERNAME</label>
-              <input 
-                type="text" className="form-control bg-light border-0" 
-                value={username} onChange={(e) => setUsername(e.target.value)} required 
-              />
+              <label className="Login_Username">Username / Email</label>
             </div>
-            <div className="mb-4">
-              <label className="form-label small fw-bold text-secondary">PASSWORD</label>
               <input 
-                type="password" className="form-control bg-light border-0" 
+                type="text" 
+                className="Login_Username_Input_Field" 
+                value={username} 
+                onChange={(e) => setUsername(e.target.value)} 
+                required 
+              />
+            <div className="mb-4">
+              <label className="Login_Password">Password</label>
+            </div>
+            <div>
+              <input 
+                type="password" className="Login_Password_Input_Field" 
                 value={password} onChange={(e) => setPassword(e.target.value)} required 
               />
             </div>
-            <button type="submit" className="btn btn-primary w-100 fw-bold">Sign In</button>
+            <button type="submit" className="Login_signin_button">Sign In</button>
+            <div className='Register_link'>
+              <span>Don't have an account? </span>
+              <a href="/register">Register</a>
+            </div>
           </form>
         </div>
       </div>

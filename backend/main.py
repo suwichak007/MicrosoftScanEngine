@@ -20,6 +20,7 @@ from app.core.security import get_password_hash, verify_password, create_access_
 # Import Scanner (ใช้ชื่อ alias SecurityBaselineScanner จาก scanner.py)
 from app.core.scanner import SecurityBaselineScanner
 
+
 # สร้างตารางใน Database
 Base.metadata.create_all(bind=engine)
 
@@ -87,6 +88,7 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
     """ดึงสถิติและผลการสแกนล่าสุด"""
     latest = db.query(ScanResult).order_by(ScanResult.scan_date.desc()).first()
     count  = db.query(func.count(ScanResult.id)).scalar()
+    
 
     if not latest:
         return {
