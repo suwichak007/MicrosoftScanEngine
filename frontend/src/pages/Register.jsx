@@ -91,8 +91,10 @@ function Register() {
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
             />
-
-            <button type="submit" className="Register_signin_button">Sign Up</button>
+            <div>
+                <button type="submit" className="Register_signin_button">Sign Up</button>
+            </div>
+            
 
             <div className="Register_Already">
               <span>Already have an account? </span>

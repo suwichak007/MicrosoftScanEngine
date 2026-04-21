@@ -1,0 +1,304 @@
+body {
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.homePage {
+  min-height: 100vh;
+  width: 100%;
+  background-color: #272d50;
+  color: #ffffff;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.topBar {
+  height: 68px;
+  background-color: #4a507f;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+}
+
+.brand {
+  font-size: 28px;
+  font-weight: 500;
+}
+
+.topBarRight {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.bellWrapper {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bellIcon {
+  font-size: 24px;
+}
+
+.notificationDot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 12px;
+  height: 12px;
+  background-color: #ff1e1e;
+  border-radius: 50%;
+}
+
+.profileCircle {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background-color: #dddddd;
+  color: #222;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+.homeLayout {
+  display: flex;
+  gap: 28px;
+  padding: 28px 22px;
+}
+
+.sideBar {
+  width: 180px;
+  min-height: 550px;
+  background-color: #4a507f;
+  border-radius: 12px;
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.menuGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.menuItem {
+  background: transparent;
+  border: none;
+  color: white;
+  text-align: left;
+  margin-left: 10px;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.menuItem.active {
+  font-weight: 600;
+  color: #2ea3ff;
+}
+
+.logoutButton {
+  background: transparent;
+  border: none;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.logoutIcon {
+  font-size: 25px;
+}
+
+.mainContent {
+  flex: 1;
+  max-width: 900px;
+  margin-left: 80px;
+}
+
+.pageTitle {
+  margin: 0 0 30px 0;
+  font-size: 50px;
+  font-weight: 500;
+}
+
+.scanCard {
+  background-color: #4a507f;
+  border-radius: 10px;
+  padding: 14px 14px 12px 14px;
+  min-height: 460px;
+}
+
+.stepSection + .stepSection {
+  margin-top: 16px;
+}
+
+.stepHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.stepNumber {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background-color: #2ea3ff;
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+}
+
+.stepTitleGroup {
+  flex: 1;
+}
+
+.stepTitle {
+  font-size: 26px;
+  margin-bottom: 2px;
+}
+
+.stepLine {
+  height: 1px;
+  background-color: rgba(255, 255, 255, 0.7);
+  width: 92%;
+}
+
+.fieldRow {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  min-width: 150px;
+}
+
+.fieldGroup.single {
+  width: 150px;
+  margin-left: 28px;
+}
+
+.fieldLabel {
+  font-size: 20px;
+  margin-bottom: 10px;
+  color: #f2f2f2;
+}
+
+.fieldLabelIP {
+  font-size: 20px;
+  margin-bottom: 10px;
+  padding-left: 30px;
+  color: #f2f2f2;
+}
+
+.fieldInput {
+  height: 22px;
+  border: none;
+  border-radius: 10px;
+  background-color: #f3f3f3;
+  padding: 0 10px;
+  font-size: 11px;
+  color: #222;
+  outline: none;
+
+}
+
+.fieldInputIP {
+  height: 22px;
+  border: none;
+  border-radius: 10px;
+  background-color: #f3f3f3;
+  padding: 0 15px;
+  margin-left: 30px;
+  font-size: 11px;
+  color: #222;
+  outline: none;
+
+}
+
+.selectInput {
+  cursor: pointer;
+}
+
+.actionRow {
+  margin-top: 12px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  margin-left: 28px;
+}
+
+.connectButton {
+  background-color: #272d50;
+  border: none;
+  color: white;
+  border-radius: 12px;
+  padding: 4px 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.statusConnected {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.statusDot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background-color: #20d320;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-size: 11px;
+}
+
+.statusDot.success {
+  color: green;
+  background-color: #20d320;
+}
+
+.statusDot.error {
+  color: red;
+  background-color: #fbdede;
+}
+
+.scanButtonRow {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 28px;
+}
+
+.scanButton {
+  background-color: #272d50;
+  border: none;
+  color: white;
+  border-radius: 10px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+}
