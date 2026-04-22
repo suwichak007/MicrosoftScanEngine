@@ -18,8 +18,8 @@ from app.schemas.scan import ScanResultResponse
 from app.core.security import get_password_hash, verify_password, create_access_token
 
 # Import Scanner (ใช้ชื่อ alias SecurityBaselineScanner จาก scanner.py)
-from app.core.scanner import SecurityBaselineScanner
 
+from app.core.scan.scanner.security_scanner import SecurityBaselineScanner
 
 # สร้างตารางใน Database
 Base.metadata.create_all(bind=engine)
