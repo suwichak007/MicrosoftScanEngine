@@ -175,17 +175,30 @@ class RemoteExecutor(BaseExecutor):
     # ------------------------------------------------------------------
 
     def test_connection(self) -> dict:
+            # 1. เตรียม PowerShell Script
             ps_script = textwrap.dedent(f"""
                 $pass = ConvertTo-SecureString '{self.password}' -AsPlainText -Force
                 $cred = New-Object System.Management.Automation.PSCredential('{self.username}', $pass)
-                $so   = New-PSSessionOption -SkipCACheck:$true -SkipCNCheck:$true
+                $so = New-PSSessionOption -SkipCACheck:$true -SkipCNCheck:$true
+                
                 try {{
-                    $session = New-PSSession `
-                        -ComputerName '{self.host}' `
-                        -Credential $cred `
-                        -UseSSL:${str(self.use_ssl).lower()} `
-                        -SessionOption $so `
-                        -ErrorAction Stop
+                    # เช็คว่าเป็นเครื่องเดียวกันหรือไม่
+                    $isLocal = ($env:COMPUTERNAME -eq '{self.host}') -or ('{self.host}' -eq '127.0.0.1') -or ('{self.host}' -eq 'localhost')
+
+                    if ($isLocal) {{
+                        # เคสรันธรรมดา (บน Host)
+                        $session = New-PSSession -ComputerName '{self.host}' -Credential $cred -ErrorAction Stop
+                    }} else {{
+                        # เคสรันใน Docker (Remote ไปที่ Host)
+                        $session = New-PSSession `
+                            -ComputerName '{self.host}' `
+                            -Credential $cred `
+                            -Authentication Negotiate `
+                            -UseSSL:${str(self.use_ssl).lower()} `
+                            -SessionOption $so `
+                            -ErrorAction Stop
+                    }}
+                    
                     $hostname = Invoke-Command -Session $session -ScriptBlock {{ $env:COMPUTERNAME }}
                     Remove-PSSession $session
                     Write-Output "OK:$hostname"
@@ -194,7 +207,9 @@ class RemoteExecutor(BaseExecutor):
                 }}
             """).strip()
 
+            # 2. จัดการเรื่อง Indent ของโค้ด Python (ต้องตรงกับแนว ps_script ด้านบน)
             argv = [self.powershell_exe, "-NoProfile", "-NonInteractive", "-Command", ps_script]
+            
             try:
                 out = subprocess.check_output(
                     argv, stderr=subprocess.STDOUT, timeout=30, shell=False
@@ -202,8 +217,10 @@ class RemoteExecutor(BaseExecutor):
 
                 if out.startswith("OK:"):
                     return {"success": True, "message": "Connected", "hostname": out[3:]}
+                
                 err_msg = out[4:] if out.startswith("ERR:") else out
                 return {"success": False, "message": err_msg, "hostname": ""}
+                
             except Exception as e:
                 return {"success": False, "message": str(e), "hostname": ""}
 
