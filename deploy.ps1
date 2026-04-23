@@ -2,7 +2,7 @@
 cd backend
 docker build -t scan-api .
 docker rm -f scanner-backend
-docker run -d --name scanner-backend -p 8000:8000 -v "C:/MicrosoftScanEngine/backend/data:/app/data" --restart always scan-api
+docker run -d --name scanner-backend -p 8000:8000 --restart always scan-api
 
 # 2. กลับออกมาแล้วไปที่ frontend เพื่อ Build/Run
 cd ..
