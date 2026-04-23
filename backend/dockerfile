@@ -22,13 +22,29 @@ EXPOSE 8000
 
 # 5. ส่วน Runtime: ใส่ Semicolon (;) ให้ครบทุกคำสั่ง
 CMD ["powershell", "-Command", " \
+    # 1. ปลุก Service ขึ้นมา \
     Set-Service WinRM -StartupType Automatic; \
     Start-Service WinRM; \
+    \
+    # 2. ให้เวลาระบบหายใจสัก 10 วินาที (สำคัญมาก!) \
+    Write-Host 'Waiting for WinRM service to stabilize...'; \
+    Start-Sleep -Seconds 10; \
+    \
+    # 3. ย้ำ Config (ทำซ้ำเพื่อให้แน่ใจว่า Session นี้มีผล) \
     winrm set winrm/config/client '@{AllowUnencrypted=\"true\"}'; \
     winrm set winrm/config/client/auth '@{Basic=\"true\"}'; \
     Set-Item WSMan:\localhost\Client\TrustedHosts -Value '*' -Force; \
+    \
+    # 4. วอร์มอัพการเชื่อมต่อ \
     $pass = ConvertTo-SecureString $env:WINRM_PASS -AsPlainText -Force; \
     $cred = New-Object System.Management.Automation.PSCredential($env:WINRM_USER, $pass); \
     Write-Host 'Warming up WinRM to 192.168.105.11...'; \
-    try { Test-WSMan -ComputerName '192.168.105.11' -Authentication Basic -Credential $cred -ErrorAction Stop } catch { Write-Warning 'Warm-up failed but starting app...' }; \
+    try { \
+        Test-WSMan -ComputerName '192.168.105.11' -Authentication Basic -Credential $cred -ErrorAction Stop; \
+        Write-Host 'WinRM Warm-up Success!' -ForegroundColor Green; \
+    } catch { \
+        Write-Warning 'Warm-up failed, but starting app anyway...'; \
+    } \
+    \
+    # 5. รันแอปพลิเคชัน \
     python -m uvicorn main:app --host 0.0.0.0 --port 8000"]
