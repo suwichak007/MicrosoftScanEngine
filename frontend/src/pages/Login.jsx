@@ -19,7 +19,7 @@ function Login() {
 
     const hostname = window.location.hostname;
     const apiUrl = `http://${hostname}:8000/login`;
-    console.log("Login API URL:", apiUrl);
+    
 
     try {
       const response = await fetch(apiUrl, {

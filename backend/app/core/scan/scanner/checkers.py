@@ -1,8 +1,16 @@
+"""
+checkers.py  (updated – รองรับ Remote Registry)
+
+เปลี่ยนหลักๆ:
+  - check_single_registry: ถ้าเป็น remote scanner ให้ใช้
+    executor.read_registry_remote() แทน winreg (ซึ่งอ่านได้แค่ local)
+  - ฟังก์ชันอื่นทำงานผ่าน executor.run_subprocess อยู่แล้ว จึงไม่ต้องเปลี่ยน
+"""
+
 import re
 import subprocess
 
 import pandas as pd
-import winreg
 
 from .helpers import norm_yn, normalize_value, resolve_sids
 from .mappings import (
@@ -14,6 +22,51 @@ from .mappings import (
     USER_RIGHTS_MAP,
 )
 
+# winreg ใช้ได้เฉพาะ Windows/local เท่านั้น
+try:
+    import winreg as _winreg
+    _WINREG_AVAILABLE = True
+except ImportError:
+    _winreg = None
+    _WINREG_AVAILABLE = False
+
+
+# ---------------------------------------------------------------------------
+# Registry helpers
+# ---------------------------------------------------------------------------
+
+def _parse_reg_entry(reg_entry: str):
+    """แยก path และ key_name จาก registry entry string"""
+    if "!" in reg_entry:
+        path_part, key_name = reg_entry.split("!", 1)
+    else:
+        path_part, key_name = reg_entry.rsplit("\\", 1)
+    return path_part.strip(), key_name.strip()
+
+
+def _normalize_hive(path_part: str):
+    """
+    ส่งคืน (hive_str, sub_path) เช่น ("HKLM", "SOFTWARE\\...") 
+    หรือ None ถ้าไม่รู้จัก
+    """
+    upper = path_part.upper()
+    if upper.startswith("HKEY_LOCAL_MACHINE\\") or upper.startswith("HKLM\\"):
+        sub = re.sub(r"^(HKEY_LOCAL_MACHINE|HKLM)\\", "", path_part, flags=re.IGNORECASE)
+        return "HKLM", sub
+    if upper.startswith("HKEY_CURRENT_USER\\") or upper.startswith("HKCU\\"):
+        sub = re.sub(r"^(HKEY_CURRENT_USER|HKCU)\\", "", path_part, flags=re.IGNORECASE)
+        return "HKCU", sub
+    if upper.startswith("MACHINE\\"):
+        sub = re.sub(r"^MACHINE\\", "", path_part, flags=re.IGNORECASE)
+        return "HKLM", sub
+    if upper.startswith("SOFTWARE\\"):
+        return "HKLM", path_part
+    return None, None
+
+
+# ---------------------------------------------------------------------------
+# check_registry / check_single_registry
+# ---------------------------------------------------------------------------
 
 def check_registry(scanner, reg_info, expected):
     reg_str = str(reg_info).strip()
@@ -48,33 +101,24 @@ def check_registry(scanner, reg_info, expected):
 
 def check_single_registry(scanner, reg_entry, expected):
     try:
-        if "!" in reg_entry:
-            path_part, key_name = reg_entry.split("!", 1)
-        else:
-            path_part, key_name = reg_entry.rsplit("\\", 1)
+        path_part, key_name = _parse_reg_entry(reg_entry)
+        hive_str, sub_path = _normalize_hive(path_part)
 
-        path_part = path_part.strip()
-        key_name = key_name.strip()
-        upper = path_part.upper()
-
-        if upper.startswith("HKEY_LOCAL_MACHINE\\") or upper.startswith("HKLM\\"):
-            hive = winreg.HKEY_LOCAL_MACHINE
-            sub_path = re.sub(r"^(HKEY_LOCAL_MACHINE|HKLM)\\", "", path_part, flags=re.IGNORECASE)
-        elif upper.startswith("HKEY_CURRENT_USER\\") or upper.startswith("HKCU\\"):
-            hive = winreg.HKEY_CURRENT_USER
-            sub_path = re.sub(r"^(HKEY_CURRENT_USER|HKCU)\\", "", path_part, flags=re.IGNORECASE)
-        elif upper.startswith("MACHINE\\"):
-            hive = winreg.HKEY_LOCAL_MACHINE
-            sub_path = re.sub(r"^MACHINE\\", "", path_part, flags=re.IGNORECASE)
-        elif upper.startswith("SOFTWARE\\"):
-            hive = winreg.HKEY_LOCAL_MACHINE
-            sub_path = path_part
-        else:
+        if hive_str is None:
             return "Manual Check Required"
 
-        with winreg.OpenKey(hive, sub_path) as hkey:
-            actual_val, _ = winreg.QueryValueEx(hkey, key_name)
+        # --- Remote: ใช้ executor.read_registry_remote ---
+        if scanner.is_remote:
+            actual_val, _ = scanner.executor.read_registry_remote(hive_str, sub_path, key_name)
+        else:
+            # --- Local: ใช้ winreg ---
+            if not _WINREG_AVAILABLE:
+                return "Manual Check Required (winreg not available)"
+            hive = _winreg.HKEY_LOCAL_MACHINE if hive_str == "HKLM" else _winreg.HKEY_CURRENT_USER
+            with _winreg.OpenKey(hive, sub_path) as hkey:
+                actual_val, _ = _winreg.QueryValueEx(hkey, key_name)
 
+        # --- Value comparison (เหมือนเดิม) ---
         if "RestrictRemoteSAM" in key_name:
             if str(actual_val).strip() == str(expected).strip():
                 return "Pass"
@@ -104,6 +148,10 @@ def check_single_registry(scanner, reg_entry, expected):
     except Exception as e:
         return f"Manual Check Required ({e})"
 
+
+# ---------------------------------------------------------------------------
+# ฟังก์ชันที่เหลือไม่มีการเปลี่ยนแปลง (ทำงานผ่าน executor อยู่แล้ว)
+# ---------------------------------------------------------------------------
 
 def check_security_template(scanner, policy_path, policy_name, reg_info, expected):
     reg_str = str(reg_info).strip() if pd.notna(reg_info) else ""

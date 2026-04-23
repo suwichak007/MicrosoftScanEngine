@@ -1,3 +1,12 @@
+"""
+data_sources.py  (updated – รองรับ Remote Scan)
+
+เปลี่ยนหลักๆ:
+  - export_security_policy: ถ้า remote ให้ secedit export บน remote แล้วอ่าน content กลับผ่าน
+    Get-Content แทนการ open local file
+  - ฟังก์ชันอื่นไม่ต้องเปลี่ยนเพราะส่งผ่าน executor.run_subprocess อยู่แล้ว
+"""
+
 import json
 import os
 
@@ -17,21 +26,26 @@ def collect_environment_debug(scanner):
         scanner.debug.append(f"is_admin_error={e}")
 
     scanner.debug.append(f"python_exe={scanner.python_exe}")
-    scanner.debug.append(f"secedit_path_exists={os.path.exists(scanner.SECEDIT)}")
-    scanner.debug.append(f"auditpol_path_exists={os.path.exists(scanner.AUDITPOL)}")
-    scanner.debug.append(f"powershell_path_exists={os.path.exists(scanner.POWERSHELL)}")
+    scanner.debug.append(f"is_remote={scanner.is_remote}")
+
+    if not scanner.is_remote:
+        scanner.debug.append(f"secedit_path_exists={os.path.exists(scanner.SECEDIT)}")
+        scanner.debug.append(f"auditpol_path_exists={os.path.exists(scanner.AUDITPOL)}")
+        scanner.debug.append(f"powershell_path_exists={os.path.exists(scanner.POWERSHELL)}")
 
 
 def export_security_policy(scanner):
-    try:
-        if os.path.exists(scanner.secedit_file):
-            os.remove(scanner.secedit_file)
-    except Exception:
-        pass
+    """
+    Export security policy:
+    - Local: รัน secedit แล้วอ่านไฟล์โดยตรง
+    - Remote: รัน secedit บน remote ผ่าน executor แล้วอ่าน content ผ่าน Get-Content
+    """
+    remote_path = scanner.remote_secedit_file  # C:\Windows\Temp\secedit_export.inf
 
+    # Step 1: รัน secedit export (ทั้ง local และ remote ใช้ executor)
     try:
         proc = scanner.executor.run_subprocess(
-            [scanner.SECEDIT, "/export", "/cfg", scanner.secedit_file],
+            [scanner.SECEDIT, "/export", "/cfg", remote_path],
             capture_output=True,
             text=True,
             shell=False,
@@ -39,18 +53,57 @@ def export_security_policy(scanner):
         scanner.debug.append(f"SECEDIT rc={proc.returncode}")
         scanner.debug.append(f"SECEDIT stdout={proc.stdout[:300]}")
         scanner.debug.append(f"SECEDIT stderr={proc.stderr[:300]}")
-        scanner.debug.append(f"SECEDIT file={scanner.secedit_file}")
-        scanner.debug.append(f"SECEDIT file_exists={os.path.exists(scanner.secedit_file)}")
     except Exception as e:
         scanner.debug.append(f"SECEDIT exception={e}")
         return ""
 
-    if not os.path.exists(scanner.secedit_file):
+    # Step 2: อ่าน content
+    if scanner.is_remote:
+        return _read_remote_file(scanner, remote_path)
+    else:
+        return _read_local_file(scanner, scanner.secedit_file)
+
+
+def _read_remote_file(scanner, remote_path: str) -> str:
+    """อ่านไฟล์จาก remote machine ผ่าน Get-Content"""
+    # Get-Content พร้อม encoding (secedit export เป็น UTF-16)
+    cmd = f"Get-Content -Path '{remote_path}' -Encoding Unicode -Raw -ErrorAction Stop"
+    try:
+        proc = scanner.executor.run_subprocess(
+            [scanner.POWERSHELL, "-NoProfile", "-Command", cmd],
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+        if proc.returncode == 0 and proc.stdout.strip():
+            scanner.debug.append(f"SECEDIT remote_read_ok len={len(proc.stdout)}")
+            scanner.debug.append(f"SECEDIT head={proc.stdout[:300]}")
+            return proc.stdout
+        # ลอง encoding อื่น
+        cmd2 = f"Get-Content -Path '{remote_path}' -Raw -ErrorAction Stop"
+        proc2 = scanner.executor.run_subprocess(
+            [scanner.POWERSHELL, "-NoProfile", "-Command", cmd2],
+            capture_output=True,
+            text=True,
+            shell=False,
+        )
+        if proc2.returncode == 0:
+            scanner.debug.append(f"SECEDIT remote_read_fallback len={len(proc2.stdout)}")
+            return proc2.stdout
+    except Exception as e:
+        scanner.debug.append(f"SECEDIT remote_read_error={e}")
+    return ""
+
+
+def _read_local_file(scanner, local_path: str) -> str:
+    """อ่านไฟล์ secedit จาก local filesystem"""
+    if not os.path.exists(local_path):
+        scanner.debug.append(f"SECEDIT file_not_found={local_path}")
         return ""
 
     for enc in ("utf-16", "utf-8-sig", "cp1252", "latin-1"):
         try:
-            with open(scanner.secedit_file, "r", encoding=enc, errors="replace") as f:
+            with open(local_path, "r", encoding=enc, errors="replace") as f:
                 data = f.read()
             scanner.debug.append(f"SECEDIT read_ok encoding={enc} len={len(data)}")
             scanner.debug.append(f"SECEDIT head={data[:500]}")

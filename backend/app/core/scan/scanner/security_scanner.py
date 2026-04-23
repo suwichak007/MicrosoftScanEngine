@@ -1,3 +1,19 @@
+"""
+security_scanner.py  (updated – รองรับ Local + Remote Scan)
+------------------------------------------------------------
+การใช้งาน Remote Scan:
+
+    from app.core.scan.scanner.executors.remote_executor import RemoteExecutor
+
+    executor = RemoteExecutor(
+        host="192.168.1.50",
+        username=".\\Administrator",   # หรือ "DOMAIN\\user"
+        password="P@ssw0rd",
+    )
+    scanner = SecurityScanner(data_path=DATA_PATH, executor=executor)
+    score, results = scanner.run_baseline_scan()
+"""
+
 import ctypes
 import os
 import sys
@@ -10,8 +26,6 @@ from app.core.scan.scanner.executors.local_executor import LocalExecutor
 from . import checkers, data_sources
 from .helpers import resolve_target_col, update_section_stats
 from .mappings import SID_MAP
-
-
 
 
 class SecurityScanner:
@@ -45,8 +59,21 @@ class SecurityScanner:
         self._mp_pref = None
         self.executor = executor or LocalExecutor()
 
+        # ตรวจว่าเป็น remote executor หรือไม่ (ใช้ใน data_sources)
+        self.is_remote = hasattr(self.executor, "host")
+
+        # ถ้า remote ให้เก็บ secedit_file ไว้ที่ remote temp ด้วย
+        if self.is_remote:
+            self.remote_secedit_file = r"C:\Windows\Temp\secedit_export.inf"
+            self.debug.append(f"REMOTE mode: host={self.executor.host}")
+        else:
+            self.remote_secedit_file = self.secedit_file
+
     def is_admin(self):
-        return ctypes.windll.shell32.IsUserAnAdmin()
+        try:
+            return ctypes.windll.shell32.IsUserAnAdmin()
+        except Exception:
+            return False
 
     def mark_pass(self):
         self.passed += 1
@@ -91,6 +118,13 @@ class SecurityScanner:
     def run_baseline_scan(self):
         if not os.path.exists(self.target_file):
             return 0, {"Error": f"Baseline file not found: {self.target_file}"}
+
+        # ถ้า remote ให้ test connection ก่อน
+        if self.is_remote:
+            conn = self.executor.test_connection()
+            self.debug.append(f"REMOTE connection_test={conn}")
+            if not conn["success"]:
+                return 0, {"Error": f"Cannot connect to {self.executor.host}: {conn['message']}"}
 
         data_sources.collect_environment_debug(self)
 
@@ -175,8 +209,11 @@ class SecurityScanner:
         fail_list = [k for k, v in results.items() if str(v).startswith("Fail")]
         manual_list = [k for k, v in results.items() if "Manual" in str(v)]
 
+        target_label = f"{self.executor.host}" if self.is_remote else "localhost"
+
         print(f"\n{'='*60}")
-        print("  MS Security Baseline - Windows 11 v25H2 Scan Report")
+        print(f"  MS Security Baseline – Windows 11 v25H2")
+        print(f"  Target : {target_label}")
         print(f"{'='*60}")
         print(f"  Health Score : {score}%")
         print(f"  Total Checks : {self.total}")
