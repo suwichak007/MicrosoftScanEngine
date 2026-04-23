@@ -31,10 +31,6 @@ def _build_invoke_command(
     use_ssl: bool = False,
     skip_ca_check: bool = True,
 ) -> list[str]:
-    """
-    สร้าง PowerShell command ที่ใช้ Invoke-Command เพื่อรันคำสั่งบน remote host
-    ส่งคืน argv list สำหรับ subprocess
-    """
     ssl_flag = "true" if use_ssl else "false"
     skip_ca = "true" if skip_ca_check else "false"
 
@@ -45,6 +41,7 @@ def _build_invoke_command(
         $result = Invoke-Command `
             -ComputerName '{host}' `
             -Credential $cred `
+            -Authentication Negotiate `  <-- เพิ่มบรรทัดนี้
             -UseSSL:${ssl_flag} `
             -SessionOption $so `
             -ScriptBlock {{ {inner_cmd} }}
@@ -52,13 +49,7 @@ def _build_invoke_command(
     """).strip()
 
     powershell_exe = r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
-    return [
-        powershell_exe,
-        "-NoProfile",
-        "-NonInteractive",
-        "-Command",
-        ps_script,
-    ]
+    return [powershell_exe, "-NoProfile", "-NonInteractive", "-Command", ps_script]
 
 
 # ---------------------------------------------------------------------------
@@ -183,11 +174,7 @@ class RemoteExecutor(BaseExecutor):
     # Remote-specific helpers
     # ------------------------------------------------------------------
 
-    def test_connection(self) -> dict:
-        """
-        ทดสอบการเชื่อมต่อก่อนสแกนจริง
-        ส่งคืน {"success": bool, "message": str, "hostname": str}
-        """
+def test_connection(self) -> dict:
         ps_script = textwrap.dedent(f"""
             $pass = ConvertTo-SecureString '{self.password}' -AsPlainText -Force
             $cred = New-Object System.Management.Automation.PSCredential('{self.username}', $pass)
@@ -196,6 +183,7 @@ class RemoteExecutor(BaseExecutor):
                 $session = New-PSSession `
                     -ComputerName '{self.host}' `
                     -Credential $cred `
+                    -Authentication Negotiate `  <-- เพิ่มบรรทัดนี้
                     -UseSSL:${str(self.use_ssl).lower()} `
                     -SessionOption $so `
                     -ErrorAction Stop
@@ -220,11 +208,7 @@ class RemoteExecutor(BaseExecutor):
         except Exception as e:
             return {"success": False, "message": str(e), "hostname": ""}
 
-    def copy_baseline_file(self, local_path: str, remote_dest: str = r"C:\MicrosoftScanEngine\data") -> bool:
-        """
-        Copy ไฟล์ baseline Excel ไปยัง remote machine ผ่าน PS Session
-        (ใช้ในกรณีที่ remote ยังไม่มีไฟล์)
-        """
+def copy_baseline_file(self, local_path: str, remote_dest: str = r"C:\MicrosoftScanEngine\data") -> bool:
         ps_script = textwrap.dedent(f"""
             $pass    = ConvertTo-SecureString '{self.password}' -AsPlainText -Force
             $cred    = New-Object System.Management.Automation.PSCredential('{self.username}', $pass)
@@ -232,11 +216,13 @@ class RemoteExecutor(BaseExecutor):
             $session = New-PSSession `
                 -ComputerName '{self.host}' `
                 -Credential $cred `
+                -Authentication Negotiate `  <-- เพิ่มบรรทัดนี้
                 -UseSSL:${str(self.use_ssl).lower()} `
                 -SessionOption $so
             Copy-Item -Path '{local_path}' -Destination '{remote_dest}' -ToSession $session -Force
             Remove-PSSession $session
         """).strip()
+        # ... โค้ดเดิมด้านล่าง ...
 
         argv = [self.powershell_exe, "-NoProfile", "-NonInteractive", "-Command", ps_script]
         try:
