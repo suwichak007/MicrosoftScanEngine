@@ -174,62 +174,61 @@ class RemoteExecutor(BaseExecutor):
     # Remote-specific helpers
     # ------------------------------------------------------------------
 
-def test_connection(self) -> dict:
-        ps_script = textwrap.dedent(f"""
-            $pass = ConvertTo-SecureString '{self.password}' -AsPlainText -Force
-            $cred = New-Object System.Management.Automation.PSCredential('{self.username}', $pass)
-            $so   = New-PSSessionOption -SkipCACheck:$true -SkipCNCheck:$true
-            try {{
+    def test_connection(self) -> dict:
+            ps_script = textwrap.dedent(f"""
+                $pass = ConvertTo-SecureString '{self.password}' -AsPlainText -Force
+                $cred = New-Object System.Management.Automation.PSCredential('{self.username}', $pass)
+                $so   = New-PSSessionOption -SkipCACheck:$true -SkipCNCheck:$true
+                try {{
+                    $session = New-PSSession `
+                        -ComputerName '{self.host}' `
+                        -Credential $cred `
+                        -UseSSL:${str(self.use_ssl).lower()} `
+                        -SessionOption $so `
+                        -ErrorAction Stop
+                    $hostname = Invoke-Command -Session $session -ScriptBlock {{ $env:COMPUTERNAME }}
+                    Remove-PSSession $session
+                    Write-Output "OK:$hostname"
+                }} catch {{
+                    Write-Output "ERR:$($_.Exception.Message)"
+                }}
+            """).strip()
+
+            argv = [self.powershell_exe, "-NoProfile", "-NonInteractive", "-Command", ps_script]
+            try:
+                out = subprocess.check_output(
+                    argv, stderr=subprocess.STDOUT, timeout=30, shell=False
+                ).decode(errors="replace").strip()
+
+                if out.startswith("OK:"):
+                    return {"success": True, "message": "Connected", "hostname": out[3:]}
+                err_msg = out[4:] if out.startswith("ERR:") else out
+                return {"success": False, "message": err_msg, "hostname": ""}
+            except Exception as e:
+                return {"success": False, "message": str(e), "hostname": ""}
+
+    def copy_baseline_file(self, local_path: str, remote_dest: str = r"C:\MicrosoftScanEngine\data") -> bool:
+            ps_script = textwrap.dedent(f"""
+                $pass    = ConvertTo-SecureString '{self.password}' -AsPlainText -Force
+                $cred    = New-Object System.Management.Automation.PSCredential('{self.username}', $pass)
+                $so      = New-PSSessionOption -SkipCACheck:$true -SkipCNCheck:$true
                 $session = New-PSSession `
                     -ComputerName '{self.host}' `
                     -Credential $cred `
                     -Authentication Negotiate `  <-- เพิ่มบรรทัดนี้
                     -UseSSL:${str(self.use_ssl).lower()} `
-                    -SessionOption $so `
-                    -ErrorAction Stop
-                $hostname = Invoke-Command -Session $session -ScriptBlock {{ $env:COMPUTERNAME }}
+                    -SessionOption $so
+                Copy-Item -Path '{local_path}' -Destination '{remote_dest}' -ToSession $session -Force
                 Remove-PSSession $session
-                Write-Output "OK:$hostname"
-            }} catch {{
-                Write-Output "ERR:$($_.Exception.Message)"
-            }}
-        """).strip()
+            """).strip()
+            # ... โค้ดเดิมด้านล่าง ...
 
-        argv = [self.powershell_exe, "-NoProfile", "-NonInteractive", "-Command", ps_script]
-        try:
-            out = subprocess.check_output(
-                argv, stderr=subprocess.STDOUT, timeout=30, shell=False
-            ).decode(errors="replace").strip()
-
-            if out.startswith("OK:"):
-                return {"success": True, "message": "Connected", "hostname": out[3:]}
-            err_msg = out[4:] if out.startswith("ERR:") else out
-            return {"success": False, "message": err_msg, "hostname": ""}
-        except Exception as e:
-            return {"success": False, "message": str(e), "hostname": ""}
-
-def copy_baseline_file(self, local_path: str, remote_dest: str = r"C:\MicrosoftScanEngine\data") -> bool:
-        ps_script = textwrap.dedent(f"""
-            $pass    = ConvertTo-SecureString '{self.password}' -AsPlainText -Force
-            $cred    = New-Object System.Management.Automation.PSCredential('{self.username}', $pass)
-            $so      = New-PSSessionOption -SkipCACheck:$true -SkipCNCheck:$true
-            $session = New-PSSession `
-                -ComputerName '{self.host}' `
-                -Credential $cred `
-                -Authentication Negotiate `  <-- เพิ่มบรรทัดนี้
-                -UseSSL:${str(self.use_ssl).lower()} `
-                -SessionOption $so
-            Copy-Item -Path '{local_path}' -Destination '{remote_dest}' -ToSession $session -Force
-            Remove-PSSession $session
-        """).strip()
-        # ... โค้ดเดิมด้านล่าง ...
-
-        argv = [self.powershell_exe, "-NoProfile", "-NonInteractive", "-Command", ps_script]
-        try:
-            subprocess.check_output(argv, stderr=subprocess.STDOUT, timeout=60, shell=False)
-            return True
-        except Exception:
-            return False
+            argv = [self.powershell_exe, "-NoProfile", "-NonInteractive", "-Command", ps_script]
+            try:
+                subprocess.check_output(argv, stderr=subprocess.STDOUT, timeout=60, shell=False)
+                return True
+            except Exception:
+                return False
 
     # ------------------------------------------------------------------
     # Registry override: อ่าน registry จาก remote ผ่าน Invoke-Command
