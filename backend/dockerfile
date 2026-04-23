@@ -1,35 +1,34 @@
 FROM python:3.12-windowsservercore-ltsc2022
 
-# ตั้งค่า Environment พื้นฐาน
+# 1. ตั้งค่า Environment พื้นฐาน
 ENV PYTHONUTF8=1
 WORKDIR C:/MicrosoftScanEngine/backend
 
-# ติดตั้ง Dependencies
+# 2. ติดตั้ง Dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && \
     pip install --no-cache-dir openpyxl bcrypt==4.0.1
 
-# ตั้งค่า WinRM พื้นฐานตอน Build
+# 3. ตั้งค่า WinRM พื้นฐานตอน Build (เพื่อให้ System Registry เปลี่ยนค่า)
 RUN powershell -Command " \
     Set-Item WSMan:\localhost\Client\TrustedHosts -Value '*' -Force; \
     winrm set winrm/config/client/auth '@{Basic=\"true\"}'; \
     winrm set winrm/config/client '@{AllowUnencrypted=\"true\"}'"
 
-# ก๊อปปี้โค้ดทั้งหมด (ไม่เอา data เพราะจะใช้ Volume)
+# 4. ก๊อปปี้โค้ดทั้งหมด
 COPY . .
 
 EXPOSE 8000
 
-# ส่วน Runtime: บังคับเปิด Service และปลดล็อก Config ก่อนเริ่มแอป
+# 5. ส่วน Runtime: ใส่ Semicolon (;) ให้ครบทุกคำสั่ง
 CMD ["powershell", "-Command", " \
     Set-Service WinRM -StartupType Automatic; \
     Start-Service WinRM; \
     winrm set winrm/config/client '@{AllowUnencrypted=\"true\"}'; \
     winrm set winrm/config/client/auth '@{Basic=\"true\"}'; \
-    \
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Value '*' -Force; \
     $pass = ConvertTo-SecureString $env:WINRM_PASS -AsPlainText -Force; \
     $cred = New-Object System.Management.Automation.PSCredential($env:WINRM_USER, $pass); \
     Write-Host 'Warming up WinRM to 192.168.105.11...'; \
-    Test-WSMan -ComputerName '192.168.105.11' -Authentication Basic -Credential $cred; \
-    \
+    try { Test-WSMan -ComputerName '192.168.105.11' -Authentication Basic -Credential $cred -ErrorAction Stop } catch { Write-Warning 'Warm-up failed but starting app...' }; \
     python -m uvicorn main:app --host 0.0.0.0 --port 8000"]
