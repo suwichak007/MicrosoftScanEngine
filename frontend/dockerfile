@@ -1,0 +1,18 @@
+FROM mcr.microsoft.com/powershell:lts-nanoserver-ltsc2022
+
+USER ContainerAdministrator
+
+# แก้ไข URL ตรงนี้ให้เป็นเวอร์ชัน 22.14.0
+RUN pwsh -Command "Invoke-WebRequest -Uri https://nodejs.org/dist/v22.14.0/node-v22.14.0-win-x64.zip -OutFile node.zip; Expand-Archive node.zip -DestinationPath C:\; Rename-Item C:\node-v22.14.0-win-x64 C:\nodejs; Remove-Item node.zip"
+
+RUN setx /M PATH "%PATH%;C:\nodejs"
+
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN dir
+EXPOSE 5173
+
+# แทนที่ CMD เดิมด้วยบรรทัดนี้ครับ
+CMD ["cmd", "/c", "node", "node_modules/vite/bin/vite.js", "--host", "0.0.0.0", "--port", "5173"]

@@ -17,8 +17,12 @@ function Login() {
     formData.append('username', username);
     formData.append('password', password);
 
+    const hostname = window.location.hostname;
+    const apiUrl = `http://${hostname}:8000/login`;
+    console.log("Login API URL:", apiUrl);
+
     try {
-      const response = await fetch('http://127.0.0.1:8000/login', {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         body: formData, // ส่งแบบ FormData
       });

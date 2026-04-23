@@ -29,8 +29,8 @@ app = FastAPI()
 # Middleware CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_credentials=True,
+    allow_origins=["*"],           # ใช้ "*" เพื่ออนุญาตทุกแหล่ง (จบปัญหา CORS ชัวร์)
+    allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -111,7 +111,7 @@ async def run_security_scan(db: Session = Depends(get_db)):
     """รันการสแกน MS Security Baseline Windows 11 v25H2"""
     try:
         # ✅ แก้ไข: path ชี้ไปยัง folder ที่มีไฟล์ v25H2
-        DATA_PATH = r"D:\MiniProject\backend\data"
+        DATA_PATH = "/app/data"
         scanner   = SecurityBaselineScanner(DATA_PATH)
 
         score, details = scanner.run_baseline_scan()

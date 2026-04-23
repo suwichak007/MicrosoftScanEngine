@@ -4,11 +4,14 @@ import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
 function Dashboard() {
     const [stats, setStats] = useState(null);
     const [scanning, setScanning] = useState(false);
+    const hostname = window.location.hostname;
+    const apiUrl = `http://${hostname}:8000/api/dashboard/stats`;
+    const apiUrl2 = `http://${hostname}:8000/api/scan/run`;
 
     // ฟังก์ชันดึงข้อมูลจาก Backend
     const fetchStats = useCallback(async () => {
         try {
-            const res = await fetch('http://127.0.0.1:8000/api/dashboard/stats');
+            const res = await fetch(apiUrl);
             
             if (!res.ok) {
                 throw new Error("Cannot connect to server");
@@ -45,7 +48,7 @@ function Dashboard() {
     const handleStartScan = async () => {
         setScanning(true);
         try {
-            const response = await fetch('http://127.0.0.1:8000/api/scan/run', { method: 'POST' });
+            const response = await fetch(apiUrl2, { method: 'POST' });
             if (response.ok) {
                 await fetchStats(); 
             } else {

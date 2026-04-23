@@ -9,6 +9,8 @@ function Register() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const navigate = useNavigate();
+  const hostname = window.location.hostname;
+  const apiUrl = `http://${hostname}:8000/register`;
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -21,7 +23,7 @@ function Register() {
     }
 
     try {
-      const response = await fetch('http://127.0.0.1:8000/register', {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

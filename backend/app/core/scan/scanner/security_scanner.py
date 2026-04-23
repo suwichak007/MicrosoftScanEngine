@@ -26,8 +26,8 @@ class SecurityScanner:
             self.target_file = os.path.join(data_path, "MS Security Baseline Windows 11 v25H2.xlsx")
             self.debug_log = os.path.join(data_path, "scanner_debug.log")
         else:
-            self.target_file = r"D:\MiniProject\backend\data\MS Security Baseline Windows 11 v25H2.xlsx"
-            self.debug_log = r"D:\MiniProject\backend\data\scanner_debug.log"
+            self.target_file = r"C:\MicrosoftScanEngine\backend\data\MS Security Baseline Windows 11 v25H2.xlsx"
+            self.debug_log = r"C:\MicrosoftScanEngine\backend\data\scanner_debug.log"
 
         temp_dir = Path(tempfile.gettempdir())
         self.secedit_file = str(temp_dir / "secedit_export.inf")
