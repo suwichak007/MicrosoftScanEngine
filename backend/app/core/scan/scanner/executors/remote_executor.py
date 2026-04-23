@@ -41,7 +41,7 @@ def _build_invoke_command(
         $result = Invoke-Command `
             -ComputerName '{host}' `
             -Credential $cred `
-            -Authentication Negotiate `  <-- เพิ่มบรรทัดนี้
+            -Authentication Negotiate `
             -UseSSL:${ssl_flag} `
             -SessionOption $so `
             -ScriptBlock {{ {inner_cmd} }}

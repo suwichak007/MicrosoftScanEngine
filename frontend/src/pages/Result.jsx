@@ -210,7 +210,7 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
       }
     }, 900);
 
-    fetch(`http://${apiHost}:8001/api/scan/remote`, {
+    fetch(`http://${apiHost}:8000/api/scan/remote`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify(scanParams),
