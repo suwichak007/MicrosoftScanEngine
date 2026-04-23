@@ -22,29 +22,36 @@ EXPOSE 8000
 
 # 5. ส่วน Runtime: ใส่ Semicolon (;) ให้ครบทุกคำสั่ง
 CMD ["powershell", "-Command", " \
-    # 1. ปลุก Service ขึ้นมา \
+    # 1. บังคับเปิด Service และรอจนกว่าจะ Running จริง \
     Set-Service WinRM -StartupType Automatic; \
     Start-Service WinRM; \
+    while ((Get-Service WinRM).Status -ne 'Running') { Start-Sleep -Seconds 1 }; \
     \
-    # 2. ให้เวลาระบบหายใจสัก 10 วินาที (สำคัญมาก!) \
-    Write-Host 'Waiting for WinRM service to stabilize...'; \
-    Start-Sleep -Seconds 10; \
-    \
-    # 3. ย้ำ Config (ทำซ้ำเพื่อให้แน่ใจว่า Session นี้มีผล) \
+    # 2. ตั้งค่าผ่าน Registry และ winrm set (แบบรวบตึง) \
+    Write-Host 'Configuring WinRM Client...'; \
     winrm set winrm/config/client '@{AllowUnencrypted=\"true\"}'; \
     winrm set winrm/config/client/auth '@{Basic=\"true\"}'; \
     Set-Item WSMan:\localhost\Client\TrustedHosts -Value '*' -Force; \
     \
-    # 4. วอร์มอัพการเชื่อมต่อ \
+    # 3. เช็คตัวแปร (ถ้าว่างให้หยุดรอเพื่อ Debug) \
+    if (-not $env:WINRM_PASS) { Write-Error 'WINRM_PASS is EMPTY!'; exit 1 }; \
+    \
+    # 4. วอร์มอัพ (ใส่ Loop ลองใหม่ 3 ครั้ง ถ้าครั้งแรกไม่ติด) \
     $pass = ConvertTo-SecureString $env:WINRM_PASS -AsPlainText -Force; \
     $cred = New-Object System.Management.Automation.PSCredential($env:WINRM_USER, $pass); \
-    Write-Host 'Warming up WinRM to 192.168.105.11...'; \
-    try { \
-        Test-WSMan -ComputerName '192.168.105.11' -Authentication Basic -Credential $cred -ErrorAction Stop; \
-        Write-Host 'WinRM Warm-up Success!' -ForegroundColor Green; \
-    } catch { \
-        Write-Warning 'Warm-up failed, but starting app anyway...'; \
+    \
+    for ($i=1; $i -le 3; $i++) { \
+        try { \
+            Write-Host \"Attempt $i: Warming up WinRM to 192.168.105.11...\"; \
+            Test-WSMan -ComputerName '192.168.105.11' -Authentication Basic -Credential $cred -ErrorAction Stop; \
+            Write-Host 'WinRM Connected Successfully!' -ForegroundColor Green; \
+            break; \
+        } catch { \
+            Write-Warning \"Attempt $i failed: $($_.Exception.Message)\"; \
+            Start-Sleep -Seconds 5; \
+        } \
     } \
     \
     # 5. รันแอปพลิเคชัน \
+    Write-Host 'Starting Uvicorn...'; \
     python -m uvicorn main:app --host 0.0.0.0 --port 8000"]
