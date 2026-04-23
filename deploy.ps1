@@ -9,6 +9,7 @@ docker run -d `
   -p 8000:8000 `
   -e WINRM_USER=$env:WINRM_USER `
   -e WINRM_PASS=$env:WINRM_PASS `
+  -v "${PWD}/data:C:/MicrosoftScanEngine/backend/data" `
   --restart always `
   scan-api
 
