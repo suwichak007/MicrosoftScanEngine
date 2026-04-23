@@ -1,0 +1,16 @@
+name: Simple CI/CD
+
+on:
+  push:
+    branches: [ main ]  # เมื่อมีการ Push โค้ดลงสาขา main
+
+jobs:
+  deploy:
+    runs-on: self-hosted  # สั่งให้รันบนเครื่อง VM ของเราเอง
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Run Deploy Script
+        run: |
+          bash deploy.sh
