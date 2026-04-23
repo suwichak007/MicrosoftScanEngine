@@ -1,12 +1,25 @@
 FROM python:3.12-windowsservercore-ltsc2022
 
+# 1. ตั้ง WORKDIR ให้ตรงกับโค้ด
 WORKDIR C:/MicrosoftScanEngine/backend
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install openpyxl bcrypt==4.0.1
-RUN powershell -Command "Set-Item WSMan:\localhost\Client\TrustedHosts -Value '*' -Force"
+
+# 2. ตั้งค่า WinRM ทั้งหมดในบรรทัดเดียว
+RUN powershell -Command " \
+    Set-Item WSMan:\localhost\Client\TrustedHosts -Value '*' -Force; \
+    winrm set winrm/config/client/auth '@{Basic=\"true\"}'; \
+    winrm set winrm/config/client '@{AllowUnencrypted=\"true\"}'"
+
+# 3. ตรวจสอบการ COPY: 
+# ถ้าคุณรัน docker build ในโฟลเดอร์ backend ให้ใช้จุดเดียว (.)
+# เพื่อก๊อปปี้ทุกอย่าง (รวมถึงโฟลเดอร์ data) เข้าไปที่ WORKDIR ปัจจุบัน
 COPY . .
+
+# 4. (ทางเลือก) เพื่อความชัวร์ว่าไฟล์มาแน่ ให้ลองลิสต์ไฟล์ตอน build
+RUN powershell -Command "dir data"
 
 EXPOSE 8000
 
