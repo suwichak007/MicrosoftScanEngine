@@ -23,4 +23,12 @@ RUN powershell -Command "dir data"
 
 EXPOSE 8000
 
-CMD ["python", "-m", "uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# ... (ส่วนการติดตั้งอื่นๆ ด้านบนเหมือนเดิม) ...
+
+# ส่วนท้ายของ Dockerfile
+CMD ["powershell", "-Command", " \
+    $pass = ConvertTo-SecureString $env:WINRM_PASS -AsPlainText -Force; \
+    $cred = New-Object System.Management.Automation.PSCredential($env:WINRM_USER, $pass); \
+    Write-Host 'Warming up WinRM...'; \
+    Test-WSMan -ComputerName '192.168.105.11' -Authentication Basic -Credential $cred; \
+    python -m uvicorn main:app --host 0.0.0.0 --port 8000"]

@@ -2,14 +2,18 @@ name: Simple CI/CD
 
 on:
   push:
-    branches: [ main ]  # เมื่อมีการ Push โค้ดลงสาขา main
+    branches: [ main ]
 
 jobs:
   deploy:
-    runs-on: self-hosted  # สั่งให้รันบนเครื่อง VM ของเราเอง
+    runs-on: self-hosted
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
 
       - name: Run Deploy Script
+        # เพิ่มบรรทัด env เพื่อดึงค่าลับมาใช้งาน
+        env:
+          WINRM_USER: ${{ secrets.WINRM_USER }}
+          WINRM_PASS: ${{ secrets.WINRM_PASS }}
         run: powershell -File deploy.ps1

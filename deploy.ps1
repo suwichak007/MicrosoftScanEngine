@@ -2,7 +2,15 @@
 cd backend
 docker build -t scan-api .
 docker rm -f scanner-backend
-docker run -d --name scanner-backend -p 8000:8000 --restart always scan-api
+
+# เพิ่มการส่งค่า -e เพื่อรับ User/Pass จาก GitHub CI/CD เข้าไปใน Container
+docker run -d `
+  --name scanner-backend `
+  -p 8000:8000 `
+  -e WINRM_USER=$env:WINRM_USER `
+  -e WINRM_PASS=$env:WINRM_PASS `
+  --restart always `
+  scan-api
 
 # 2. กลับออกมาแล้วไปที่ frontend เพื่อ Build/Run
 cd ..
