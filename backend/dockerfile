@@ -1,36 +1,35 @@
 FROM python:3.12-windowsservercore-ltsc2022
 
-# 1. ตั้งค่าพื้นฐาน
+# ตั้งค่า Environment พื้นฐาน
 ENV PYTHONUTF8=1
 WORKDIR C:/MicrosoftScanEngine/backend
 
-# 2. ติดตั้ง Dependencies
+# ติดตั้ง Dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install openpyxl bcrypt==4.0.1
+RUN pip install --no-cache-dir -r requirements.txt && \
+    pip install --no-cache-dir openpyxl bcrypt==4.0.1
 
-# 3. ตั้งค่า WinRM Client (ขั้นตอนนี้ทำเผื่อไว้ตอน Build)
+# ตั้งค่า WinRM พื้นฐานตอน Build
 RUN powershell -Command " \
     Set-Item WSMan:\localhost\Client\TrustedHosts -Value '*' -Force; \
     winrm set winrm/config/client/auth '@{Basic=\"true\"}'; \
     winrm set winrm/config/client '@{AllowUnencrypted=\"true\"}'"
 
-# 4. Copy โค้ด (ไม่รวม data เพราะเราจะใช้ -v ใน deploy.ps1)
+# ก๊อปปี้โค้ดทั้งหมด (ไม่เอา data เพราะจะใช้ Volume)
 COPY . .
 
 EXPOSE 8000
 
-# 5. ส่วน Runtime: ต้องย้ำ WinRM Config อีกรอบก่อน Test-WSMan
+# ส่วน Runtime: บังคับเปิด Service และปลดล็อก Config ก่อนเริ่มแอป
 CMD ["powershell", "-Command", " \
-    # ปลดล็อก Unencrypted อีกครั้งที่นี่เพื่อให้มั่นใจว่ามีผลตอน Runtime \
+    Set-Service WinRM -StartupType Automatic; \
+    Start-Service WinRM; \
     winrm set winrm/config/client '@{AllowUnencrypted=\"true\"}'; \
     winrm set winrm/config/client/auth '@{Basic=\"true\"}'; \
     \
-    # วอร์มอัพการเชื่อมต่อ \
     $pass = ConvertTo-SecureString $env:WINRM_PASS -AsPlainText -Force; \
     $cred = New-Object System.Management.Automation.PSCredential($env:WINRM_USER, $pass); \
     Write-Host 'Warming up WinRM to 192.168.105.11...'; \
     Test-WSMan -ComputerName '192.168.105.11' -Authentication Basic -Credential $cred; \
     \
-    # รันแอปพลิเคชัน \
     python -m uvicorn main:app --host 0.0.0.0 --port 8000"]

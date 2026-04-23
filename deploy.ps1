@@ -1,9 +1,9 @@
-# 1. เข้าไปที่โฟลเดอร์ backend แล้ว Build/Run
+# 1. จัดการ Backend
 cd backend
 docker build -t scan-api .
 docker rm -f scanner-backend
 
-# เพิ่มการส่งค่า -e เพื่อรับ User/Pass จาก GitHub CI/CD เข้าไปใน Container
+# รันพร้อมส่งค่า Secret และ Mount โฟลเดอร์ data จากเครื่องจริง
 docker run -d `
   --name scanner-backend `
   -p 8000:8000 `
@@ -13,12 +13,12 @@ docker run -d `
   --restart always `
   scan-api
 
-# 2. กลับออกมาแล้วไปที่ frontend เพื่อ Build/Run
+# 2. จัดการ Frontend
 cd ..
 cd frontend
 docker build -t scan-web .
 docker rm -f scanner-frontend
 docker run -d --name scanner-frontend -p 5173:5173 --restart always scan-web
 
-# 3. ล้าง Image เก่าๆ ที่ไม่ได้ใช้
+# 3. ล้างขยะ
 docker image prune -f
