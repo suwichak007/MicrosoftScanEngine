@@ -49,6 +49,7 @@ CMD ["powershell", "-Command", " \
         } catch { \
             Write-Warning \"Attempt $i failed: $($_.Exception.Message)\"; \
             Start-Sleep -Seconds 5; \
+            
         } \
     } \
     \
