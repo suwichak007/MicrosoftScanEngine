@@ -16,6 +16,7 @@ from app.schemas.scan import ScanResultResponse
 from app.core.security import get_password_hash, verify_password, create_access_token
 from app.core.scan.scanner.security_scanner import SecurityBaselineScanner
 from app.core.scan.scanner.executors.remote_executor import RemoteExecutor
+from fastapi.concurrency import run_in_threadpool
 
 Base.metadata.create_all(bind=engine)
 
@@ -208,12 +209,9 @@ async def test_remote_connection(req: ConnectionTestRequest):
 
 @app.post("/api/scan/remote")
 async def run_remote_security_scan(req: RemoteScanRequest, db: Session = Depends(get_db)):
-    """รันการสแกน MS Security Baseline บน remote Windows machine"""
     try:
-        # 1. ตรวจ version และ path ก่อนเลย
         baseline_path = resolve_baseline_path(req.version)
 
-        # 2. เชื่อมต่อ remote
         executor = RemoteExecutor(
             host=req.host,
             username=req.username,
@@ -222,7 +220,9 @@ async def run_remote_security_scan(req: RemoteScanRequest, db: Session = Depends
             skip_ca_check=req.skip_ca_check,
         )
 
-        conn_test = executor.test_connection()
+        # ✅ แก้: รัน blocking ใน threadpool
+        conn_test = await run_in_threadpool(executor.test_connection)
+
         if not conn_test["success"]:
             raise HTTPException(
                 status_code=400,
@@ -232,15 +232,15 @@ async def run_remote_security_scan(req: RemoteScanRequest, db: Session = Depends
         hostname = conn_test.get("hostname") or req.host
         target_label = req.target_name.strip() or f"{hostname} ({req.version})"
 
-        # 3. สแกนด้วย baseline ตาม version ที่เลือก
         scanner = SecurityBaselineScanner(data_path=DATA_PATH, executor=executor)
-        scanner.target_file = baseline_path  # override ตาม version ที่เลือก
+        scanner.target_file = baseline_path
 
-        score, details = scanner.run_baseline_scan()
+        # ✅ ตัวหนักสุด
+        score, details = await run_in_threadpool(scanner.run_baseline_scan)
+
         if "Error" in details:
             raise HTTPException(status_code=500, detail=details["Error"])
 
-        # 4. บันทึกผล
         new_scan = ScanResult(
             target_name=target_label,
             score=score,
@@ -260,13 +260,9 @@ async def run_remote_security_scan(req: RemoteScanRequest, db: Session = Depends
             "baseline_file": os.path.basename(baseline_path),
             "score": score,
             "items_scanned": len(details),
-            "details": details,          # ← เพิ่ม details เพื่อให้ frontend แสดงผล
+            "details": details,
         }
 
-    except (ValueError, FileNotFoundError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
