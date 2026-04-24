@@ -6,11 +6,12 @@ import './Result.css';
 // Severity classification
 // -----------------------------------------------------------------------
 const CRITICAL_KEYWORDS = [
-  'credential', 'password', 'lsa', 'administrator', 'uac',
-  'remote desktop', 'winrm', 'ntlm', 'kerberos', 'smb', 'firewall',
-  'bitlocker', 'virtualization', 'exploit', 'attack surface', 'defender',
-  'lockout', 'lsa protection', 'smart card', 'lmcompatibility',
-  'null session', 'restrict remote', 'admin approval',
+  'remote desktop',
+  'lsa protection',
+  'credential',
+  'ntlm',
+  'kerberos',
+  'bitlocker'
 ];
 const HIGH_KEYWORDS = [
   'network access', 'network security', 'user rights', 'privilege',
@@ -27,12 +28,25 @@ const MEDIUM_KEYWORDS = [
 
 function getSeverity(key) {
   const lower = key.toLowerCase();
-  if (lower.startsWith('[firewall]'))      return 'critical';
-  if (lower.startsWith('[advanced audit]')) return 'high';
-  if (lower.startsWith('[services]'))      return 'low';
-  if (CRITICAL_KEYWORDS.some((k) => lower.includes(k))) return 'critical';
-  if (HIGH_KEYWORDS.some((k) => lower.includes(k)))     return 'high';
-  if (MEDIUM_KEYWORDS.some((k) => lower.includes(k)))   return 'medium';
+
+  // 🎯 Rule-based (แม่นสุด)
+  if (lower.includes('remote desktop')) return 'critical';
+  if (lower.includes('bitlocker')) return 'critical';
+  if (lower.includes('lsa protection')) return 'critical';
+  if (lower.includes('credential')) return 'critical';
+
+  if (lower.includes('account lockout')) return 'high';
+  if (lower.includes('logon')) return 'high';
+
+  // 🎯 Section-based (ช่วยเสริม)
+  if (lower.startsWith('[advanced audit]')) return 'medium';
+  if (lower.startsWith('[services]')) return 'low';
+
+  // 🎯 fallback keyword
+  if (CRITICAL_KEYWORDS.some(k => lower.includes(k))) return 'critical';
+  if (HIGH_KEYWORDS.some(k => lower.includes(k))) return 'high';
+  if (MEDIUM_KEYWORDS.some(k => lower.includes(k))) return 'medium';
+
   return 'low';
 }
 
