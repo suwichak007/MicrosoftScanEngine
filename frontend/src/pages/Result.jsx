@@ -11,7 +11,7 @@ const CRITICAL_KEYWORDS = [
   'credential',
   'ntlm',
   'kerberos',
-  'bitlocker'
+  'bitlocker' 
 ];
 const HIGH_KEYWORDS = [
   'network access', 'network security', 'user rights', 'privilege',
