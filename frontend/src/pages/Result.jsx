@@ -156,6 +156,7 @@ function Layout({ children, navigate }) {
 // -----------------------------------------------------------------------
 function ScanProgress({ scanParams, onScanComplete, onError }) {
   const apiHost    = window.location.hostname;
+  const navigate   = useNavigate();  // ← เพิ่มตรงนี้
   const hasFetched = useRef(false);
 
   const [progress,  setProgress]  = useState(0);
@@ -166,26 +167,39 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
     if (hasFetched.current) return;
     hasFetched.current = true;
 
-    // ── Step 1: POST scan request → รับ job_id ทันที (ไม่รอผล scan) ──
     fetch(`http://${apiHost}:8000/api/scan/remote`, {
       method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(scanParams),
+      headers: {
+        'Content-Type':  'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
+      },
+      body: JSON.stringify(scanParams),
     })
       .then((r) => {
+        if (r.status === 401) {
+          localStorage.removeItem('token');
+          navigate('/');
+          return Promise.reject('Not authenticated');
+        }
+        // ── ลบ .then() ซ้อนออก เหลือแค่อันเดียว ──
         if (!r.ok) return r.json().then((e) => Promise.reject(e.detail || 'Scan failed'));
         return r.json();
       })
-      .then(({ job_id }) => {
-        // ── Step 2: Poll /api/scan/status/{job_id} ทุก 2 วินาที ────────
+      .then(({ job_id }) => {  // ← ตอนนี้ได้ job_id ถูกต้องแล้ว
         let step = 0;
         pollRef.current = setInterval(async () => {
           try {
-            const res  = await fetch(`http://${apiHost}:8000/api/scan/status/${job_id}`);
+            const res = await fetch(`http://${apiHost}:8000/api/scan/status/${job_id}`);
+
+            if (res.status === 404) {
+              clearInterval(pollRef.current);
+              onError('ไม่พบ job หรือ scan หมดเวลา');
+              return;
+            }
+
             if (!res.ok) throw new Error('Status check failed');
             const data = await res.json();
 
-            // อัปเดต progress จาก server
             if (typeof data.progress === 'number') setProgress(data.progress);
             if (step < SCAN_STEPS.length - 1) { step += 1; setStepIndex(step); }
 
@@ -195,6 +209,11 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
               setStepIndex(SCAN_STEPS.length - 1);
 
               const r = data.result;
+              if (!r || !r.details) {
+                onError('ผลการสแกนไม่สมบูรณ์');
+                return;
+              }
+
               const result = {
                 score:      r.score,
                 details:    r.details || {},
@@ -209,6 +228,7 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
               clearInterval(pollRef.current);
               onError(data.error || 'Scan failed');
             }
+
           } catch (e) {
             clearInterval(pollRef.current);
             onError('ไม่สามารถเชื่อมต่อกับ server ได้');

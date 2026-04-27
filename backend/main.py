@@ -20,6 +20,8 @@ from app.core.scan.scanner.security_scanner import SecurityScanner as SecurityBa
 from app.core.scan.scanner.executors.remote_executor import RemoteExecutor
 from fastapi.concurrency import run_in_threadpool
 
+from app.core.security import get_current_user
+
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
@@ -128,7 +130,7 @@ async def _run_scan_job(
     version:       str,
     target_label:  str,
     executor=None,       # None = local scan
-    db_factory=None,
+    user_id: int = None,
 ):
     """Worker ที่รันใน background โดยไม่บล็อก event loop"""
     job.status   = "running"
@@ -173,6 +175,9 @@ async def _run_scan_job(
                     score=score,
                     details=details,
                     scan_date=datetime.datetime.now(),
+                    version=version,        # ← เพิ่ม
+                    hostname=executor.host if executor else "localhost",  # ← เพิ่ม
+                    user_id=user_id,
                 )
                 db.add(new_scan)
                 db.commit()
@@ -211,7 +216,7 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
     if db_user:
         raise HTTPException(status_code=400, detail="Username already registered")
     hashed_pwd = get_password_hash(user_data.password)
-    new_user   = User(username=user_data.username, hashed_password=hashed_pwd, role="admin")
+    new_user   = User(username=user_data.username, hashed_password=hashed_pwd, role="viewer")
     db.add(new_user)
     db.commit()
     db.refresh(new_user)
@@ -306,14 +311,13 @@ async def test_remote_connection(req: ConnectionTestRequest):
 async def run_remote_security_scan(
     req:              RemoteScanRequest,
     background_tasks: BackgroundTasks,
+    current_user:     User = Depends(get_current_user),  # ← เพิ่มตรงนี้
 ):
-    """เริ่มสแกน Remote Machine — คืน job_id ทันที ให้ frontend poll /api/scan/status/{job_id}"""
     try:
         baseline_path = resolve_baseline_path(req.version)
     except (ValueError, FileNotFoundError) as e:
         raise HTTPException(status_code=400, detail=str(e))
 
-    # ทดสอบการเชื่อมต่อก่อน (15s timeout)
     executor = RemoteExecutor(
         host=req.host, username=req.username, password=req.password,
         use_ssl=req.use_ssl, skip_ca_check=req.skip_ca_check,
@@ -346,6 +350,7 @@ async def run_remote_security_scan(
         version=req.version,
         target_label=target_label,
         executor=executor,
+        user_id=current_user.id,  # ← ตอนนี้มี current_user แล้ว
     )
 
     return {
@@ -363,26 +368,30 @@ async def run_remote_security_scan(
 
 @app.get("/api/scan/status/{job_id}")
 async def get_scan_status(job_id: str):
-    """Poll สถานะ scan job — frontend เรียกทุก ~2 วินาที"""
     job = _jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="ไม่พบ job นี้")
 
     resp = {
         "job_id":   job_id,
-        "status":   job.status,    # pending | running | done | error
+        "status":   job.status,
         "progress": job.progress,
         "message":  job.message,
     }
 
     if job.status == "done":
         resp["result"] = job.result
-        # ลบ job ออกจาก memory หลังอ่านผลแล้ว (ป้องกัน memory leak)
-        _jobs.pop(job_id, None)
+        async def _cleanup():
+            await asyncio.sleep(60)
+            _jobs.pop(job_id, None)
+        asyncio.create_task(_cleanup())
 
     elif job.status == "error":
         resp["error"] = job.error
-        _jobs.pop(job_id, None)
+        async def _cleanup_err():
+            await asyncio.sleep(60)
+            _jobs.pop(job_id, None)
+        asyncio.create_task(_cleanup_err())
 
     return resp
 
@@ -392,24 +401,59 @@ async def get_scan_status(job_id: str):
 # ---------------------------------------------------------------------------
 
 @app.get("/api/scan/history")
-async def get_scan_history(limit: int = 20, db: Session = Depends(get_db)):
-    scans = (
-        db.query(ScanResult)
-        .order_by(ScanResult.scan_date.desc())
-        .limit(limit)
-        .all()
-    )
+async def get_scan_history(
+    limit: int = 20,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = db.query(ScanResult)
+
+    # admin เห็นทั้งหมด, user เห็นแค่ของตัวเอง
+    if current_user.role != "admin":
+        query = query.filter(ScanResult.user_id == current_user.id)
+
+    scans = query.order_by(ScanResult.scan_date.desc()).limit(limit).all()
     return [
         {
             "id":            s.id,
             "target_name":   s.target_name,
             "score":         s.score,
             "scan_date":     s.scan_date.isoformat(),
+            "version":       s.version or "",
+            "hostname":      s.hostname or "",
             "items_scanned": len(s.details) if s.details else 0,
+            "pass_count":    sum(1 for v in (s.details or {}).values() if str(v) == "Pass"),
+            "fail_count":    sum(1 for v in (s.details or {}).values() if str(v).startswith("Fail")),
         }
         for s in scans
     ]
 
+@app.get("/api/scan/history/{scan_id}")
+async def get_scan_detail(
+    scan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = db.query(ScanResult).filter(ScanResult.id == scan_id)
+
+    # user ธรรมดาเข้าถึงได้แค่ของตัวเอง
+    if current_user.role != "admin":
+        query = query.filter(ScanResult.user_id == current_user.id)
+
+    scan = query.first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="ไม่พบผลการสแกนนี้หรือไม่มีสิทธิ์เข้าถึง")
+
+    return {
+        "id":            scan.id,
+        "target_name":   scan.target_name,
+        "score":         scan.score,
+        "scan_date":     scan.scan_date.isoformat(),
+        "version":       scan.version or "",
+        "hostname":      scan.hostname or "",
+        "items_scanned": len(scan.details) if scan.details else 0,
+        "details":       scan.details,
+    }
 
 @app.get("/api/scan/versions")
 async def get_supported_versions():

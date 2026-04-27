@@ -1,0 +1,283 @@
+body {
+  margin: 0;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+.historyPage {
+  min-height: 100vh;
+  width: 100%;
+  background-color: #272d50;
+  color: #ffffff;
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* ── TopBar (เหมือน Home) ── */
+.topBar {
+  height: 68px;
+  background-color: #4a507f;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 22px;
+}
+
+.brand {
+  font-size: 28px;
+  font-weight: 500;
+}
+
+.topBarRight {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.bellWrapper {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bellIcon         { font-size: 24px; }
+
+.notificationDot {
+  position: absolute;
+  top: 0; right: 0;
+  width: 12px; height: 12px;
+  background-color: #ff1e1e;
+  border-radius: 50%;
+}
+
+.profileCircle {
+  width: 34px; height: 34px;
+  border-radius: 50%;
+  background-color: #dddddd;
+  color: #222;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+}
+
+/* ── Layout (เหมือน Home) ── */
+.homeLayout {
+  display: flex;
+  gap: 28px;
+  padding: 28px 22px;
+}
+
+.sideBar {
+  width: 180px;
+  min-height: 550px;
+  background-color: #4a507f;
+  border-radius: 12px;
+  padding: 14px 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.menuGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 30px;
+}
+
+.menuItem {
+  background: transparent;
+  border: none;
+  color: white;
+  text-align: left;
+  margin-left: 10px;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.menuItem.active {
+  font-weight: 600;
+  color: #2ea3ff;
+}
+
+.logoutButton {
+  background: transparent;
+  border: none;
+  color: white;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 22px;
+  cursor: pointer;
+  padding: 0;
+}
+
+.logoutIcon { font-size: 25px; }
+
+.mainContent {
+  flex: 1;
+  max-width: 900px;
+  margin-left: 80px;
+}
+
+.pageTitle {
+  margin: 0 0 30px 0;
+  font-size: 50px;
+  font-weight: 500;
+}
+
+.errorBanner {
+  background-color: rgba(255, 77, 77, 0.2);
+  border: 1px solid #ff4d4d;
+  border-radius: 8px;
+  padding: 8px 14px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #ff4d4d;
+}
+
+/* ── History Card ── */
+.historyCard {
+  background-color: #4a507f;
+  border-radius: 10px;
+  padding: 20px 20px 16px 20px;
+  min-height: 460px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.historyEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  opacity: 0.6;
+  padding: 60px 0;
+}
+
+/* ── Table ── */
+.historyTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0 6px;
+}
+
+.historyTable thead tr th {
+  font-size: 14px;
+  font-weight: 500;
+  color: #cfd3f0;
+  text-align: center;
+  padding-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.historyTable thead tr th:first-child { text-align: left; }
+
+.historyTable tbody tr {
+  cursor: default;
+}
+
+.historyTable tbody tr:hover .historyCell {
+  background-color: #3a4070;
+}
+
+/* ── Cell ── */
+.historyCell {
+  background-color: #353b6a;
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 12px;
+  text-align: center;
+  margin: 2px 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 180px;
+  transition: background-color 0.15s;
+}
+
+.historyTable tbody tr td:first-child .historyCell {
+  text-align: left;
+}
+
+.scoreCell {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.passCell { color: #20d320; }
+.failCell { color: #ff4d4d; }
+
+/* ── Actions ── */
+.historyActions {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+  align-items: center;
+}
+
+.viewBtn {
+  background-color: #2ea3ff;
+  border: none;
+  color: white;
+  border-radius: 8px;
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.viewBtn:hover { opacity: 0.85; }
+
+.deleteBtn {
+  background-color: #272d50;
+  border: none;
+  color: #ff6b6b;
+  border-radius: 8px;
+  padding: 5px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.deleteBtn:hover    { opacity: 0.8; }
+.deleteBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Footer ── */
+.historyFooter {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+.backBtn {
+  background-color: #272d50;
+  border: none;
+  color: white;
+  border-radius: 10px;
+  padding: 8px 20px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.finishBtn {
+  background-color: #272d50;
+  border: none;
+  color: white;
+  border-radius: 10px;
+  padding: 8px 20px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.backBtn:hover,
+.finishBtn:hover {
+  opacity: 0.85;
+}
