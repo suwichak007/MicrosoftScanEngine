@@ -6,8 +6,8 @@ WORKDIR C:/MicrosoftScanEngine/backend
 
 # 2. ติดตั้ง Dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir openpyxl bcrypt==4.0.1
+RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir openpyxl bcrypt==4.0.1
 
 # 3. ตั้งค่า WinRM พื้นฐานตอน Build (เพื่อให้ System Registry เปลี่ยนค่า)
 RUN powershell -Command " \
