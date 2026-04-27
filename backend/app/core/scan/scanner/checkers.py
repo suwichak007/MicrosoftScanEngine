@@ -1,10 +1,12 @@
 """
-checkers.py  (updated – รองรับ Remote Registry)
+checkers.py  (updated – รองรับ Remote Registry + Registry Cache)
 
 เปลี่ยนหลักๆ:
   - check_single_registry: ถ้าเป็น remote scanner ให้ใช้
     executor.read_registry_remote() แทน winreg (ซึ่งอ่านได้แค่ local)
   - ฟังก์ชันอื่นทำงานผ่าน executor.run_subprocess อยู่แล้ว จึงไม่ต้องเปลี่ยน
+  - _parse_reg_entry และ _normalize_hive export ออกมาให้ security_scanner.py
+    ใช้ตอน prefetch registry keys
 """
 
 import re
@@ -32,7 +34,7 @@ except ImportError:
 
 
 # ---------------------------------------------------------------------------
-# Registry helpers
+# Registry helpers  (export เพื่อให้ security_scanner.py ใช้ตอน prefetch)
 # ---------------------------------------------------------------------------
 
 def _parse_reg_entry(reg_entry: str):
@@ -46,7 +48,7 @@ def _parse_reg_entry(reg_entry: str):
 
 def _normalize_hive(path_part: str):
     """
-    ส่งคืน (hive_str, sub_path) เช่น ("HKLM", "SOFTWARE\\...") 
+    ส่งคืน (hive_str, sub_path) เช่น ("HKLM", "SOFTWARE\\...")
     หรือ None ถ้าไม่รู้จัก
     """
     upper = path_part.upper()
@@ -107,7 +109,7 @@ def check_single_registry(scanner, reg_entry, expected):
         if hive_str is None:
             return "Manual Check Required"
 
-        # --- Remote: ใช้ executor.read_registry_remote ---
+        # --- Remote: ใช้ executor.read_registry_remote (มี cache อยู่แล้ว) ---
         if scanner.is_remote:
             actual_val, _ = scanner.executor.read_registry_remote(hive_str, sub_path, key_name)
         else:
@@ -118,7 +120,7 @@ def check_single_registry(scanner, reg_entry, expected):
             with _winreg.OpenKey(hive, sub_path) as hkey:
                 actual_val, _ = _winreg.QueryValueEx(hkey, key_name)
 
-        # --- Value comparison (เหมือนเดิม) ---
+        # --- Value comparison ---
         if "RestrictRemoteSAM" in key_name:
             if str(actual_val).strip() == str(expected).strip():
                 return "Pass"

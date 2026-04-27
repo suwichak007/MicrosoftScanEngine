@@ -69,3 +69,4 @@ def resolve_target_col(sheet_name, columns):
                 return candidate
         return None
     return "Windows 11" if "Windows 11" in columns else None
+
