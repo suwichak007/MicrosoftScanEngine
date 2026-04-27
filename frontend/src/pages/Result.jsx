@@ -181,7 +181,7 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
         let step = 0;
         pollRef.current = setInterval(async () => {
           try {
-            const res  = await fetch(`http://${apiHost}:8001/api/scan/status/${job_id}`);
+            const res  = await fetch(`http://${apiHost}:8000/api/scan/status/${job_id}`);
             if (!res.ok) throw new Error('Status check failed');
             const data = await res.json();
 
