@@ -6,6 +6,7 @@ WORKDIR C:/MicrosoftScanEngine/backend
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir openpyxl bcrypt==4.0.1
+RUN pip install --no-cache-dir llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 
 COPY . .
 
