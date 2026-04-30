@@ -481,7 +481,7 @@ export default function Result() {
         </div>
 
         <div className="resultFooter">
-          <button className="statButton" onClick={() => navigate('/Dashboard', { state: scanData })}>Stat</button>
+          <button className="statButton" onClick={() => navigate('/Summary', { state: { scanData } })}>Summary</button>
           <button className="finishButton" onClick={() => {
             sessionStorage.removeItem(SESSION_KEY);
             navigate('/home');
