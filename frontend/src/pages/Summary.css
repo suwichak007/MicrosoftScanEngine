@@ -1,0 +1,471 @@
+/* Summary.css — design system เดียวกับ Result.css / Home.css */
+
+:root {
+  --bg-dark:    #272d50;
+  --bg-card:    #4a507f;
+  --accent:     #2ea3ff;
+  --text-white: #ffffff;
+  --text-muted: #b0b8d4;
+}
+
+/* ───────── Page Layout ───────── */
+.sumPage {
+  min-height: 100vh;
+  width: 100%;
+  background-color: var(--bg-dark);
+  color: var(--text-white);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+.sumMain {
+  flex: 1;
+  max-width: 960px;
+  margin-left: 80px;
+  padding-bottom: 48px;
+}
+
+/* ───────── Header row ───────── */
+.sumHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 16px;
+}
+
+.sumTitle {
+  font-size: 28px;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* ───────── Export button ───────── */
+.exportBtn {
+  background: var(--accent);
+  border: none;
+  color: #fff;
+  border-radius: 10px;
+  padding: 8px 24px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s, transform 0.1s;
+}
+.exportBtn:hover:not(:disabled) { background: #1a8de0; }
+.exportBtn:active { transform: scale(0.97); }
+.exportBtn:disabled { opacity: 0.45; cursor: not-allowed; }
+.exportBtn.exported { background: #20d320; }
+
+/* ───────── Score bar ───────── */
+.sumScoreBar {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 18px 24px;
+  margin-bottom: 20px;
+}
+
+.scoreRingWrap {
+  position: relative;
+  width: 90px;
+  height: 90px;
+  flex-shrink: 0;
+}
+.scoreRingSvg {
+  width: 90px;
+  height: 90px;
+}
+.scoreTrack {
+  fill: none;
+  stroke: rgba(255,255,255,0.1);
+  stroke-width: 10;
+}
+.scoreArc {
+  fill: none;
+  stroke-width: 10;
+  stroke-linecap: round;
+  transition: stroke-dasharray 0.7s ease;
+}
+.scoreRingText {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.sumScoreMeta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sumTarget  { font-size: 17px; font-weight: 600; }
+.sumVersion { font-size: 12px; color: var(--text-muted); }
+
+.sumBadgeRow {
+  display: flex;
+  gap: 8px;
+  margin-top: 2px;
+}
+.badge {
+  font-size: 12px;
+  padding: 2px 10px;
+  border-radius: 20px;
+}
+.badge.pass { background: rgba(32,211,32,0.15); color: #20d320; border: 1px solid #20d320; }
+.badge.fail { background: rgba(255,77,77,0.15);  color: #ff4d4d; border: 1px solid #ff4d4d; }
+
+.sumSevRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.sevPill {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-weight: 600;
+}
+
+/* ───────── Main card ───────── */
+.sumCard {
+  background: var(--bg-card);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+/* ───────── Section ───────── */
+.sumSection {
+  padding: 20px 24px;
+}
+
+.sumSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.sumSectionIcon { font-size: 18px; }
+.sumSectionTitle {
+  font-size: 17px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.sumDivider {
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  margin: 0 24px;
+}
+
+/* ───────── Text box (LLM output) ───────── */
+.sumTextBox {
+  background: rgba(0,0,0,0.2);
+  border-radius: 10px;
+  padding: 16px 20px;
+  font-size: 14px;
+  line-height: 1.75;
+  color: var(--text-white);
+  min-height: 80px;
+}
+
+.cursor {
+  display: inline-block;
+  animation: blink 0.8s step-end infinite;
+  color: var(--accent);
+  margin-left: 1px;
+}
+@keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
+
+.sumPlaceholder { color: var(--text-muted); font-style: italic; }
+
+/* ───────── LLM loading / error ───────── */
+.llmLoading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255,255,255,0.15);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.llmError {
+  color: #ff8080;
+  font-size: 13px;
+}
+
+/* ───────── Detected cards (AI highlights) ───────── */
+.detectedGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.detectedCard {
+  background: rgba(0,0,0,0.2);
+  border-radius: 8px;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  animation: fadeUp 0.3s ease both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.dcTop {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.dcSev {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+.dcSection {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+.dcName {
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.dcWhy {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.dcVals {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-top: 2px;
+}
+.dcActual {
+  font-size: 11px;
+  color: #ffaaaa;
+  background: rgba(255,77,77,0.1);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+.dcTarget {
+  font-size: 11px;
+  color: #a8f0a8;
+  background: rgba(32,211,32,0.1);
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+/* ───────── Detected table ───────── */
+.detectedTableWrap {
+  overflow-x: auto;
+  border-radius: 10px;
+  background: rgba(0,0,0,0.2);
+}
+
+.detectedTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.detectedTable thead tr {
+  background: rgba(255,255,255,0.06);
+}
+.detectedTable th {
+  padding: 9px 12px;
+  text-align: left;
+  font-weight: 600;
+  color: var(--text-muted);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  white-space: nowrap;
+}
+.detectedTable td {
+  padding: 8px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  vertical-align: middle;
+}
+.detectedTable tbody tr:hover {
+  background: rgba(255,255,255,0.03);
+}
+
+.tblSev {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  white-space: nowrap;
+}
+.tblName    { font-weight: 500; max-width: 240px; line-height: 1.35; }
+.tblSection { color: var(--text-muted); white-space: nowrap; }
+.tblActual  { color: #ffaaaa; }
+.tblTarget  { color: #a8f0a8; }
+.tblMore {
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 10px;
+}
+
+/* ───────── Footer ───────── */
+.sumFooter {
+  margin-top: 20px;
+  display: flex;
+  justify-content: flex-start;
+}
+.sumBackBtn {
+  background: rgba(255,255,255,0.08);
+  border: none;
+  color: var(--text-white);
+  border-radius: 10px;
+  padding: 8px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+.sumBackBtn:hover { background: rgba(255,255,255,0.15); }
+
+/* ───────── Empty state ───────── */
+.sumEmpty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 300px;
+  gap: 12px;
+}
+.sumEmptyIcon { font-size: 48px; }
+.sumEmptyText { font-size: 16px; color: var(--text-muted); }
+
+/* ─── เพิ่มต่อท้าย Summary.css ─────────────────────────────────────────────── */
+
+/* LLM Progress container */
+.llmProgress {
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  font-size: 12px;
+}
+
+/* Phase row */
+.llmPhaseRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.llmPhaseIcon {
+  font-size: 16px;
+  line-height: 1;
+}
+.llmPhaseLabel {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+/* Pulse dot — แสดงว่า LLM กำลัง active */
+.llmPulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #2ea3ff;
+  animation: llmPulseAnim 1s ease-in-out infinite;
+  margin-left: 4px;
+}
+@keyframes llmPulseAnim {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.3; transform: scale(0.7); }
+}
+
+/* Progress bar */
+.llmBar {
+  height: 4px;
+  background: rgba(255,255,255,0.08);
+  border-radius: 2px;
+  overflow: hidden;
+}
+.llmBarFill {
+  height: 100%;
+  border-radius: 2px;
+  min-width: 4px;
+}
+
+/* Stats row */
+.llmStatsRow {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.llmStat {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.llmStatLabel {
+  color: rgba(255,255,255,0.35);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.llmStatVal {
+  font-size: 13px;
+  font-weight: 700;
+  color: #fff;
+}
+.llmMessage {
+  color: rgba(255,255,255,0.45);
+  font-size: 11px;
+  margin-left: auto;
+  font-family: inherit;
+}
+
+/* Dev log — monospace สำหรับ dev เห็นชัด */
+.llmDevLog {
+  font-size: 10px;
+  color: rgba(255,255,255,0.25);
+  font-family: 'JetBrains Mono', 'Fira Code', 'Courier New', monospace;
+  border-top: 1px solid rgba(255,255,255,0.05);
+  padding-top: 8px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Error box */
+.llmError {
+  color: #ff6b6b;
+  background: rgba(255,77,77,0.1);
+  border: 1px solid rgba(255,77,77,0.3);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 13px;
+}

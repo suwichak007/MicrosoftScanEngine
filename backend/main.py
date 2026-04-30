@@ -21,6 +21,8 @@ from app.core.scan.scanner.executors.remote_executor import RemoteExecutor
 from fastapi.concurrency import run_in_threadpool
 
 from app.core.security import get_current_user
+from app.core.summary_route import router as summary_router
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -33,6 +35,8 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(summary_router)
 
 # ---------------------------------------------------------------------------
 # Version → Baseline file mapping

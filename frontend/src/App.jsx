@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import Register from './pages/Register';
 import Result from './pages/Result';
 import History from './pages/Histoty';
+import Summary from './pages/Summary';
 
 function App() {
   return (
@@ -21,6 +22,7 @@ function App() {
         <Route path="/register" element={<Register />} />
         <Route path="/Result" element={<Result />} />
         <Route path="/History" element={<History />} />
+        <Route path="/Summary" element={<Summary />} />
         
         
         {/* ถ้า User พิมพ์ URL มั่วๆ ให้ดีดกลับไปหน้า Login */}
