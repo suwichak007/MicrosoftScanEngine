@@ -18,6 +18,7 @@ jobs:
 
       - name: Install dependencies
         run: |
+          cd agent
           pip install pyinstaller requests pandas openpyxl pywin32
 
       - name: Build exe
@@ -43,11 +44,6 @@ jobs:
         with:
           name: MicrosoftScanAgent
           path: agent\dist
-
-      - name: Copy agent.exe to backend serve path
-        run: |
-          Copy-Item "agent\dist\MicrosoftScanAgent.exe" `
-            "C:\MicrosoftScanEngine\agent\dist\MicrosoftScanAgent.exe" -Force
 
       - name: Run Deploy Script
         env:

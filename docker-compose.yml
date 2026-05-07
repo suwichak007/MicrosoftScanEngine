@@ -10,6 +10,8 @@ services:
     ports:
       - "8000:8000"
     restart: always
+    volumes:
+      - ./agent/dist:C:/MicrosoftScanEngine/agent/dist
 
   # --- หน้าบ้าน (Frontend) ---
   frontend-web:
@@ -18,7 +20,7 @@ services:
       dockerfile: Dockerfile
     container_name: scanner-frontend
     ports:
-      - "5173:5173" # ปรับให้ตรงกับที่แอปคุณใช้
+      - "5173:5173"
     restart: always
     depends_on:
       - backend-api
