@@ -7,7 +7,7 @@ from fastapi.responses import PlainTextResponse, StreamingResponse
 
 router = APIRouter(tags=["installer"])
 
-BACKEND_URL = os.getenv("BACKEND_URL", "http://192.168.105.11:8001")
+BACKEND_URL = os.getenv("BACKEND_URL", "http://192.168.105.11:8000")
 AGENT_DIR   = r"C:\MicrosoftScanEngine"
 EXE_PATH    = r"C:\MicrosoftScanEngine\agent\dist\MicrosoftScanAgent.exe"
 XLSX_PATH   = r"C:\MicrosoftScanEngine\backend\data"
