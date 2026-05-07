@@ -22,11 +22,18 @@ from fastapi.concurrency import run_in_threadpool
 
 from app.core.security import get_current_user
 from app.core.summary_route import router as summary_router
-
+from app.core.installer_routes import router as installer_router
+from app.core.agent_routes import router as agent_router, enqueue
+# เพิ่มบรรทัดนี้ต่อจาก import models อื่นๆ
+from app.models.agent import AgentToken  # ← เพิ่ม
+from app.core.job_store import _jobs
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI()
+
+app.include_router(installer_router)
+app.include_router(agent_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -69,6 +76,9 @@ def resolve_baseline_path(version: str) -> str:
 # ---------------------------------------------------------------------------
 # In-memory Job Store  (scan job status)
 # ---------------------------------------------------------------------------
+class AgentScanRequest(BaseModel):
+    host:    str = Field(..., example="192.168.1.50")
+    version: str = Field("Windows 11 v24H2")
 
 class ScanJob:
     def __init__(self):
@@ -77,9 +87,6 @@ class ScanJob:
         self.message  = ""
         self.result   = None        # dict ผลลัพธ์เมื่อสำเร็จ
         self.error    = ""
-
-# job_id → ScanJob
-_jobs: dict[str, ScanJob] = {}
 
 def _new_job() -> tuple[str, ScanJob]:
     job_id = str(uuid.uuid4())
@@ -468,4 +475,46 @@ async def get_supported_versions():
             "available": os.path.exists(os.path.join(DATA_PATH, filename)),
         }
         for version, filename in BASELINE_FILE_MAP.items()
+    ]
+
+@app.post("/api/scan/agent")
+async def run_agent_scan(
+    req:          AgentScanRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+):
+    try:
+        baseline_path = resolve_baseline_path(req.version)
+    except (ValueError, FileNotFoundError) as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    agent_id    = f"agent-{req.host}"
+    job_id, job = _new_job()
+    job.status  = "running"
+    job.message = "รอ agent รับงาน..."
+
+    enqueue(agent_id, job_id, req.version, baseline_path)
+
+    return {
+        "job_id":  job_id,
+        "status":  "pending",
+        "host":    req.host,
+        "agent_id": agent_id,
+    }
+
+@app.get("/api/agents")
+async def list_agents(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """คืนรายการ agent ทั้งหมดที่ลงทะเบียนไว้"""
+    agents = db.query(AgentToken).order_by(AgentToken.last_seen.desc()).all()
+    return [
+        {
+            "agent_id":   a.agent_id,
+            "hostname":   a.hostname,
+            "registered": a.registered.isoformat() if a.registered else None,
+            "last_seen":  a.last_seen.isoformat() if a.last_seen else None,
+        }
+        for a in agents
     ]

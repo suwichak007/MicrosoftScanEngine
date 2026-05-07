@@ -302,3 +302,52 @@ body {
   font-size: 14px;
   cursor: pointer;
 }
+
+/* ── Mode Toggle ── */
+.modeToggle {
+  display: flex;
+  gap: 0;
+  margin-bottom: 16px;
+  background-color: #272d50;
+  border-radius: 8px;
+  padding: 3px;
+  width: fit-content;
+}
+
+.modeBtn {
+  background: transparent;
+  border: none;
+  color: #aaa;
+  font-size: 13px;
+  padding: 5px 20px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.modeBtn.active {
+  background-color: #4a507f;
+  color: #ffffff;
+  font-weight: 500;
+}
+
+/* ── Agent Status Badge ── */
+.agentStatusBadge {
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 8px;
+  font-weight: 500;
+  align-self: flex-end;
+}
+
+.agentStatusBadge.online {
+  background: rgba(32, 211, 32, 0.15);
+  border: 1px solid #20d320;
+  color: #20d320;
+}
+
+.agentStatusBadge.offline {
+  background: rgba(255, 77, 77, 0.15);
+  border: 1px solid #ff4d4d;
+  color: #ff4d4d;
+}

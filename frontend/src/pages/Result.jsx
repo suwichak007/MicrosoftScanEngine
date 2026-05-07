@@ -166,14 +166,21 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
   useEffect(() => {
     if (hasFetched.current) return;
     hasFetched.current = true;
+    const endpoint = scanParams._mode === 'agent'
+      ? `http://${apiHost}:8000/api/scan/agent`
+      : `http://${apiHost}:8000/api/scan/remote`;
 
-    fetch(`http://${apiHost}:8000/api/scan/remote`, {
+    fetch(endpoint, {
       method:  'POST',
       headers: {
         'Content-Type':  'application/json',
         'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
       },
-      body: JSON.stringify(scanParams),
+      body: JSON.stringify(
+        scanParams._mode === 'agent'
+          ? { host: scanParams.host, version: scanParams.version }
+          : scanParams
+      ),
     })
       .then((r) => {
         if (r.status === 401) {
@@ -189,7 +196,7 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
         let step = 0;
         pollRef.current = setInterval(async () => {
           try {
-            const res = await fetch(`http://${apiHost}:8000/api/scan/status/${job_id}`);
+            const res = await fetch(`http://${apiHost}:8001/api/scan/status/${job_id}`);
 
             if (res.status === 404) {
               clearInterval(pollRef.current);
