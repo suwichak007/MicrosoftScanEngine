@@ -23,7 +23,7 @@ CONFIG_PATH = os.path.join(BASE_DIR, "agent_config.json")
 def load_config() -> dict:
     if not os.path.exists(CONFIG_PATH):
         default = {
-            "backend_url":   "http://BACKEND_IP:8001",
+            "backend_url":   "http://BACKEND_IP:8000",
             "agent_token":   "ใส่ token ที่ได้จาก POST /agent/register",
             "poll_interval": 10,
             "data_path":     os.path.join(BASE_DIR, "data"),
