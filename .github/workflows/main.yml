@@ -5,11 +5,49 @@ on:
     branches: [ main ]
 
 jobs:
-  deploy:
-    runs-on: self-hosted
+  build-agent:
+    runs-on: windows-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller requests pandas openpyxl pywin32
+
+      - name: Build exe
+        run: |
+          cd agent
+          pyinstaller agent.spec --clean --noconfirm
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MicrosoftScanAgent
+          path: agent\dist\MicrosoftScanAgent.exe
+
+  deploy:
+    runs-on: self-hosted
+    needs: build-agent
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download agent artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: MicrosoftScanAgent
+          path: agent\dist
+
+      - name: Copy agent.exe to backend serve path
+        run: |
+          Copy-Item "agent\dist\MicrosoftScanAgent.exe" `
+            "C:\MicrosoftScanEngine\agent\dist\MicrosoftScanAgent.exe" -Force
 
       - name: Run Deploy Script
         env:
