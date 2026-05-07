@@ -1,5 +1,5 @@
 {
-  "backend_url":   "http://192.168.1.10:8000",
+  "backend_url":   "http://192.168.105.11:8000",
   "agent_token":   "ใส่ token ที่ได้จาก POST /agent/register",
   "poll_interval": 10,
   "data_path":     "C:\\MicrosoftScanEngine\\data"
