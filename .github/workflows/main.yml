@@ -49,4 +49,6 @@ jobs:
         env:
           WINRM_USER: ${{ secrets.WINRM_USER }}
           WINRM_PASS: ${{ secrets.WINRM_PASS }}
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}   # ← เพิ่ม
+          GROQ_MODEL: ${{ secrets.GROQ_MODEL }}        # ← เพิ่ม
         run: powershell -File deploy.ps1
