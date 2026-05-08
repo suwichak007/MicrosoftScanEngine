@@ -53,13 +53,17 @@ $backendRunArgs += $DockerEnvArgs
 $backendRunArgs += @(
   "-e", "WINRM_USER=$env:WINRM_USER",
   "-e", "WINRM_PASS=$env:WINRM_PASS",
-  "-e", "GROQ_API_KEY=$env:GROQ_API_KEY",
-  "-e", "GROQ_MODEL=$env:GROQ_MODEL",
   "-v", "${PWD}/data:C:/MicrosoftScanEngine/backend/data",
   "-v", "${PWD}/../agent/dist:C:/MicrosoftScanEngine/agent/dist",
   "--restart", "always",
   "scan-api"
 )
+if ($env:GROQ_API_KEY) {
+  $backendRunArgs = $backendRunArgs[0..($backendRunArgs.Length - 2)] + @("-e", "GROQ_API_KEY=$env:GROQ_API_KEY") + $backendRunArgs[-1]
+}
+if ($env:GROQ_MODEL) {
+  $backendRunArgs = $backendRunArgs[0..($backendRunArgs.Length - 2)] + @("-e", "GROQ_MODEL=$env:GROQ_MODEL") + $backendRunArgs[-1]
+}
 docker @backendRunArgs
 
 # Verify backend
