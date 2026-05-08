@@ -1,9 +1,3 @@
-from dotenv import load_dotenv
-from pathlib import Path
-
-# ต้องอยู่บนสุด ก่อน import อื่นๆ ทั้งหมด
-load_dotenv(Path(__file__).resolve().parent.parent / ".env")
-
 import os
 import uuid
 import datetime

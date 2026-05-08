@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # --- หลังบ้าน (Backend) ---
   backend-api:
     build: 
       context: ./backend
@@ -11,11 +10,10 @@ services:
       - "8000:8000"
     restart: always
     env_file:
-      - .env                    # ← เพิ่มบรรทัดนี้
+      - .env
     volumes:
       - ./agent/dist:C:/MicrosoftScanEngine/agent/dist
 
-  # --- หน้าบ้าน (Frontend) ---
   frontend-web:
     build:
       context: ./frontend

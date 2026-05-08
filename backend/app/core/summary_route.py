@@ -20,11 +20,6 @@ from app.core.security import get_current_user
 from app.models.user import User
 from fastapi import Depends
 
-# ─── Groq config ──────────────────────────────────────────────────────────────
-GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")          # ใส่ใน env หรือแก้ตรงนี้
-GROQ_MODEL   = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
-# ตัวเลือก model อื่น: "llama3-70b-8192", "mixtral-8x7b-32768", "gemma2-9b-it"
-
 
 # ─── Schemas ──────────────────────────────────────────────────────────────────
 class FailItem(BaseModel):
@@ -256,18 +251,18 @@ def _make_sse(event: str, data: Any) -> str:
 
 
 def _get_groq_client():
-    """สร้าง Groq client — raise ถ้าไม่มี API key"""
     try:
-        from groq import Groq  # type: ignore
+        from groq import Groq
     except ImportError:
         raise RuntimeError("กรุณาติดตั้ง groq: pip install groq")
 
-    api_key = GROQ_API_KEY
+    api_key = os.environ.get("GROQ_API_KEY", "")
+    model   = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+
     if not api_key:
         raise RuntimeError("ไม่พบ GROQ_API_KEY — กรุณาตั้งค่า environment variable")
 
-    return Groq(api_key=api_key)
-
+    return Groq(api_key=api_key), model
 
 # ─── SSE Streaming endpoint ───────────────────────────────────────────────────
 
