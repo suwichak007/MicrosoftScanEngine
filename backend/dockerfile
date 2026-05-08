@@ -12,6 +12,6 @@ RUN pip install --no-cache-dir llama-cpp-python --extra-index-url https://abetle
 COPY . .
 
 EXPOSE 8000
-
+ 
 CMD ["powershell", "-ExecutionPolicy", "Bypass", "-File", "start.ps1"]
 
