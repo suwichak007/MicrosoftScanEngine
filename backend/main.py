@@ -3,6 +3,15 @@ import uuid
 import datetime
 import asyncio
 
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    load_dotenv = None
+
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+if load_dotenv:
+    load_dotenv(os.path.join(ROOT_DIR, ".env"))
+
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordRequestForm
