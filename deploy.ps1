@@ -42,10 +42,9 @@ docker build --no-cache -t scan-api .
 docker run -d `
   --name scanner-backend `
   -p 8000:8000 `
+  --env-file "$EnvPath" `
   -e WINRM_USER=$env:WINRM_USER `
   -e WINRM_PASS=$env:WINRM_PASS `
-  -e GROQ_API_KEY=$env:GROQ_API_KEY `
-  -e GROQ_MODEL=$env:GROQ_MODEL `
   -v "${PWD}/data:C:/MicrosoftScanEngine/backend/data" `
   -v "${PWD}/../agent/dist:C:/MicrosoftScanEngine/agent/dist" `
   --restart always `

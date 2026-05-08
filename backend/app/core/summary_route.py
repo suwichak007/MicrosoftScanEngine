@@ -257,7 +257,7 @@ def _get_groq_client():
         raise RuntimeError("กรุณาติดตั้ง groq: pip install groq")
 
     api_key = os.environ.get("GROQ_API_KEY", "")
-    model   = os.environ.get("GROQ_MODEL", "llama-3.1-8b-instant")
+    model   = os.environ.get("GROQ_MODEL") or "llama-3.1-8b-instant"
 
     if not api_key:
         raise RuntimeError("ไม่พบ GROQ_API_KEY — กรุณาตั้งค่า environment variable")
@@ -297,7 +297,7 @@ async def generate_summary_stream(req: SummaryRequest):
         _put("phase", {"phase": "connecting", "message": "กำลังเชื่อมต่อ Groq API..."})
 
         try:
-            client = _get_groq_client()
+            client, model = _get_groq_client()
         except RuntimeError as e:
             _put("error", {"detail": str(e)})
             _put("__done__", {})
@@ -311,7 +311,7 @@ async def generate_summary_stream(req: SummaryRequest):
         try:
             # ใช้ streaming ของ Groq เพื่อให้ SSE ตอบสนองได้ระหว่าง generate
             stream = client.chat.completions.create(
-                model=GROQ_MODEL,
+                model=model,
                 messages=messages,
                 max_tokens=3000,
                 temperature=0.3,
@@ -429,9 +429,9 @@ async def generate_summary(req: SummaryRequest):
         messages = _build_messages(req)
 
         def _infer():
-            client = _get_groq_client()
+            client, model = _get_groq_client()
             response = client.chat.completions.create(
-                model=GROQ_MODEL,
+                model=model,
                 messages=messages,
                 max_tokens=3000,
                 temperature=0.3,
