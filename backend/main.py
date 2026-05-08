@@ -1,3 +1,9 @@
+from dotenv import load_dotenv
+from pathlib import Path
+
+# ต้องอยู่บนสุด ก่อน import อื่นๆ ทั้งหมด
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+
 import os
 import uuid
 import datetime
@@ -24,8 +30,7 @@ from app.core.security import get_current_user
 from app.core.summary_route import router as summary_router
 from app.core.installer_routes import router as installer_router
 from app.core.agent_routes import router as agent_router, enqueue
-# เพิ่มบรรทัดนี้ต่อจาก import models อื่นๆ
-from app.models.agent import AgentToken  # ← เพิ่ม
+from app.models.agent import AgentToken
 from app.core.job_store import _jobs
 
 Base.metadata.create_all(bind=engine)
@@ -56,7 +61,6 @@ BASELINE_FILE_MAP = {
     "Windows 11 v25H2": "MS Security Baseline Windows 11 v25H2.xlsx",
 }
 
-# scan timeout รวม (วินาที) — ถ้าเกินนี้ถือว่า timeout
 SCAN_TIMEOUT_SECONDS = 120
 
 
@@ -74,7 +78,7 @@ def resolve_baseline_path(version: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# In-memory Job Store  (scan job status)
+# In-memory Job Store
 # ---------------------------------------------------------------------------
 class AgentScanRequest(BaseModel):
     host:    str = Field(..., example="192.168.1.50")
@@ -82,10 +86,10 @@ class AgentScanRequest(BaseModel):
 
 class ScanJob:
     def __init__(self):
-        self.status   = "pending"   # pending | running | done | error
-        self.progress = 0           # 0-100
+        self.status   = "pending"
+        self.progress = 0
         self.message  = ""
-        self.result   = None        # dict ผลลัพธ์เมื่อสำเร็จ
+        self.result   = None
         self.error    = ""
 
 def _new_job() -> tuple[str, ScanJob]:
@@ -140,10 +144,9 @@ async def _run_scan_job(
     baseline_path: str,
     version:       str,
     target_label:  str,
-    executor=None,       # None = local scan
+    executor=None,
     user_id: int = None,
 ):
-    """Worker ที่รันใน background โดยไม่บล็อก event loop"""
     job.status   = "running"
     job.progress = 5
     job.message  = "กำลังเตรียม scanner..."
@@ -158,7 +161,6 @@ async def _run_scan_job(
         job.progress = 15
         job.message  = "กำลังสแกน Security Policy..."
 
-        # รัน blocking scan ใน thread pool พร้อม timeout รวม
         try:
             score, details = await asyncio.wait_for(
                 run_in_threadpool(scanner.run_baseline_scan),
@@ -177,7 +179,6 @@ async def _run_scan_job(
         job.progress = 90
         job.message  = "กำลังบันทึกผล..."
 
-        # บันทึก DB ใน thread pool
         def _save():
             db = SessionLocal()
             try:
@@ -186,8 +187,8 @@ async def _run_scan_job(
                     score=score,
                     details=details,
                     scan_date=datetime.datetime.now(),
-                    version=version,        # ← เพิ่ม
-                    hostname=executor.host if executor else "localhost",  # ← เพิ่ม
+                    version=version,
+                    hostname=executor.host if executor else "localhost",
                     user_id=user_id,
                 )
                 db.add(new_scan)
@@ -267,7 +268,7 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
 
 
 # ---------------------------------------------------------------------------
-# Local Scan  (Background Task + polling)
+# Local Scan
 # ---------------------------------------------------------------------------
 
 @app.post("/api/scan/run")
@@ -275,7 +276,6 @@ async def run_security_scan(
     req:                LocalScanRequest,
     background_tasks:   BackgroundTasks,
 ):
-    """เริ่มสแกน Local Machine — คืน job_id ทันที ให้ frontend poll /api/scan/status/{job_id}"""
     try:
         baseline_path = resolve_baseline_path(req.version)
     except (ValueError, FileNotFoundError) as e:
@@ -296,7 +296,7 @@ async def run_security_scan(
 
 
 # ---------------------------------------------------------------------------
-# Remote Scan  (Background Task + polling)
+# Remote Scan
 # ---------------------------------------------------------------------------
 
 @app.post("/api/scan/test-connection")
@@ -306,7 +306,6 @@ async def test_remote_connection(req: ConnectionTestRequest):
             host=req.host, username=req.username, password=req.password,
             use_ssl=req.use_ssl, skip_ca_check=req.skip_ca_check,
         )
-        # test_connection อาจ block → ใส่ใน threadpool + timeout
         result = await asyncio.wait_for(
             run_in_threadpool(executor.test_connection),
             timeout=15,
@@ -322,7 +321,7 @@ async def test_remote_connection(req: ConnectionTestRequest):
 async def run_remote_security_scan(
     req:              RemoteScanRequest,
     background_tasks: BackgroundTasks,
-    current_user:     User = Depends(get_current_user),  # ← เพิ่มตรงนี้
+    current_user:     User = Depends(get_current_user),
 ):
     try:
         baseline_path = resolve_baseline_path(req.version)
@@ -361,7 +360,7 @@ async def run_remote_security_scan(
         version=req.version,
         target_label=target_label,
         executor=executor,
-        user_id=current_user.id,  # ← ตอนนี้มี current_user แล้ว
+        user_id=current_user.id,
     )
 
     return {
@@ -374,7 +373,7 @@ async def run_remote_security_scan(
 
 
 # ---------------------------------------------------------------------------
-# Job Status Polling  ← frontend เรียกทุก 2s
+# Job Status Polling
 # ---------------------------------------------------------------------------
 
 @app.get("/api/scan/status/{job_id}")
@@ -419,7 +418,6 @@ async def get_scan_history(
 ):
     query = db.query(ScanResult)
 
-    # admin เห็นทั้งหมด, user เห็นแค่ของตัวเอง
     if current_user.role != "admin":
         query = query.filter(ScanResult.user_id == current_user.id)
 
@@ -447,7 +445,6 @@ async def get_scan_detail(
 ):
     query = db.query(ScanResult).filter(ScanResult.id == scan_id)
 
-    # user ธรรมดาเข้าถึงได้แค่ของตัวเอง
     if current_user.role != "admin":
         query = query.filter(ScanResult.user_id == current_user.id)
 
@@ -507,7 +504,6 @@ async def list_agents(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
-    """คืนรายการ agent ทั้งหมดที่ลงทะเบียนไว้"""
     agents = db.query(AgentToken).order_by(AgentToken.last_seen.desc()).all()
     return [
         {

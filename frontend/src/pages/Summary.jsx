@@ -263,6 +263,10 @@ export default function Summary() {
       pass_count:  passCount,
       total_count: totalCount,
       fail_items:  top30,
+      critical_count: counts.critical,
+      high_count:     counts.high,
+      medium_count:   counts.medium,
+      low_count:      counts.low,
     });
 
     // SSE ผ่าน fetch (ต้องใช้ fetch ไม่ใช่ EventSource เพราะต้องส่ง POST + body)
