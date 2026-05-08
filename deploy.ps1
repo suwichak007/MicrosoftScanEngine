@@ -16,7 +16,9 @@ git log -1 --oneline
 # Load root .env so docker run receives the same settings as docker-compose.
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $EnvPath = Join-Path $RootDir ".env"
+$DockerEnvArgs = @()
 if (Test-Path $EnvPath) {
+  $DockerEnvArgs = @("--env-file", $EnvPath)
   Get-Content $EnvPath | ForEach-Object {
     $line = $_.Trim()
     if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
@@ -33,22 +35,32 @@ Write-Host "===== BACKEND ====="
 cd backend
 
 # Stop & Remove old container
-docker rm -f scanner-backend 2>$null
+$existingBackend = docker ps -aq --filter "name=^scanner-backend$"
+if ($existingBackend) {
+  docker rm -f scanner-backend
+}
 
 # Build (no cache กันโค้ดไม่เปลี่ยน)
 docker build --no-cache -t scan-api .
 
 # Run container
-docker run -d `
-  --name scanner-backend `
-  -p 8000:8000 `
-  --env-file "$EnvPath" `
-  -e WINRM_USER=$env:WINRM_USER `
-  -e WINRM_PASS=$env:WINRM_PASS `
-  -v "${PWD}/data:C:/MicrosoftScanEngine/backend/data" `
-  -v "${PWD}/../agent/dist:C:/MicrosoftScanEngine/agent/dist" `
-  --restart always `
-  scan-api
+$backendRunArgs = @(
+  "run", "-d",
+  "--name", "scanner-backend",
+  "-p", "8000:8000"
+)
+$backendRunArgs += $DockerEnvArgs
+$backendRunArgs += @(
+  "-e", "WINRM_USER=$env:WINRM_USER",
+  "-e", "WINRM_PASS=$env:WINRM_PASS",
+  "-e", "GROQ_API_KEY=$env:GROQ_API_KEY",
+  "-e", "GROQ_MODEL=$env:GROQ_MODEL",
+  "-v", "${PWD}/data:C:/MicrosoftScanEngine/backend/data",
+  "-v", "${PWD}/../agent/dist:C:/MicrosoftScanEngine/agent/dist",
+  "--restart", "always",
+  "scan-api"
+)
+docker @backendRunArgs
 
 # Verify backend
 Write-Host "Backend container:"
@@ -60,7 +72,10 @@ docker ps | Select-String "scanner-backend"
 Write-Host "===== FRONTEND ====="
 cd ../frontend
 
-docker rm -f scanner-frontend 2>$null
+$existingFrontend = docker ps -aq --filter "name=^scanner-frontend$"
+if ($existingFrontend) {
+  docker rm -f scanner-frontend
+}
 
 docker build --no-cache -t scan-web .
 
