@@ -13,6 +13,19 @@ Write-Host "Current Commit:"
 git rev-parse HEAD
 git log -1 --oneline
 
+# Load root .env so docker run receives the same settings as docker-compose.
+$RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$EnvPath = Join-Path $RootDir ".env"
+if (Test-Path $EnvPath) {
+  Get-Content $EnvPath | ForEach-Object {
+    $line = $_.Trim()
+    if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
+      $name, $value = $line.Split("=", 2)
+      [System.Environment]::SetEnvironmentVariable($name.Trim(), $value.Trim(), "Process")
+    }
+  }
+}
+
 # =========================
 # 1. Backend
 # =========================
@@ -31,6 +44,8 @@ docker run -d `
   -p 8000:8000 `
   -e WINRM_USER=$env:WINRM_USER `
   -e WINRM_PASS=$env:WINRM_PASS `
+  -e GROQ_API_KEY=$env:GROQ_API_KEY `
+  -e GROQ_MODEL=$env:GROQ_MODEL `
   -v "${PWD}/data:C:/MicrosoftScanEngine/backend/data" `
   -v "${PWD}/../agent/dist:C:/MicrosoftScanEngine/agent/dist" `
   --restart always `
