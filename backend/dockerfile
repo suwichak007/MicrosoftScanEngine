@@ -1,5 +1,6 @@
 FROM python:3.12-windowsservercore-ltsc2022
 
+
 ENV PYTHONUTF8=1
 WORKDIR C:/MicrosoftScanEngine/backend
 
@@ -13,3 +14,4 @@ COPY . .
 EXPOSE 8000
 
 CMD ["powershell", "-ExecutionPolicy", "Bypass", "-File", "start.ps1"]
+

@@ -1,7 +1,7 @@
 """
 summary_router.py
 FastAPI router สำหรับ /api/summary และ /api/summary/stream (SSE)
-ใช้ Groq API (llama-3-8b-8192 หรือ llama3-70b-8192)
+ใช้ Groq API (ค่าเริ่มต้น: llama-3.1-8b-instant)
 """
 
 from __future__ import annotations
