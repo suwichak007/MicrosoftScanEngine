@@ -8,34 +8,30 @@ const API_SCAN = `http://${window.location.hostname}:8000`;
 function Home() {
   const navigate = useNavigate();
 
-  // ── Shared ──────────────────────────────────────────────────────────
-  const [baselines,       setBaselines]       = useState([]);
-  const [version,         setVersion]         = useState('');
-  const [loadingBaselines,setLoadingBaselines] = useState(true);
-  const [baselineError,   setBaselineError]   = useState('');
-  const [errorMsg,        setErrorMsg]        = useState('');
-  const [scanMode,        setScanMode]        = useState('remote'); // 'remote' | 'agent'
+  const [baselines, setBaselines] = useState([]);
+  const [version, setVersion] = useState('');
+  const [loadingBaselines, setLoadingBaselines] = useState(true);
+  const [baselineError, setBaselineError] = useState('');
+  const [errorMsg, setErrorMsg] = useState('');
+  const [scanMode, setScanMode] = useState('remote');
 
-  // ── Remote Scan ──────────────────────────────────────────────────────
-  const [ip,         setIp]         = useState('192.168.2.83');
-  const [username,   setUsername]   = useState('');
-  const [password,   setPassword]   = useState('');
+  const [ip, setIp] = useState('192.168.2.83');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
   const [connStatus, setConnStatus] = useState('idle');
-  const [connMessage,setConnMessage]= useState('');
+  const [connMessage, setConnMessage] = useState('');
 
-  // ── Agent Scan ───────────────────────────────────────────────────────
-  const [agents,          setAgents]          = useState([]);
-  const [selectedAgent,   setSelectedAgent]   = useState('');
-  const [loadingAgents,   setLoadingAgents]   = useState(false);
-  const [agentError,      setAgentError]      = useState('');
+  const [agents, setAgents] = useState([]);
+  const [selectedAgent, setSelectedAgent] = useState('');
+  const [loadingAgents, setLoadingAgents] = useState(false);
+  const [agentError, setAgentError] = useState('');
 
-  // ── Load baselines ───────────────────────────────────────────────────
   useEffect(() => {
     const fetchBaselines = async () => {
       setLoadingBaselines(true);
       setBaselineError('');
       try {
-        const res  = await fetch(`${API_BASE}/api/scan/versions`);
+        const res = await fetch(`${API_BASE}/api/scan/versions`);
         const data = await res.json();
         if (res.ok && Array.isArray(data) && data.length > 0) {
           setBaselines(data);
@@ -52,7 +48,6 @@ function Home() {
     fetchBaselines();
   }, []);
 
-  // ── Load agents when switching to agent mode ─────────────────────────
   useEffect(() => {
     if (scanMode !== 'agent') return;
     const fetchAgents = async () => {
@@ -61,7 +56,7 @@ function Home() {
       try {
         const res = await fetch(`${API_SCAN}/agent/list`, {
           headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
-        }); 
+        });
         if (res.status === 401) { navigate('/'); return; }
         const data = await res.json();
         if (res.ok && Array.isArray(data) && data.length > 0) {
@@ -79,7 +74,6 @@ function Home() {
     fetchAgents();
   }, [scanMode]);
 
-  // ── Remote: test connection ──────────────────────────────────────────
   const handleConnect = async () => {
     if (!ip || !username || !password) {
       setErrorMsg('กรุณากรอก IP, Username และ Password ให้ครบ');
@@ -89,15 +83,15 @@ function Home() {
     setConnStatus('loading');
     setConnMessage('');
     try {
-      const res  = await fetch(`${API_BASE}/api/scan/test-connection`, {
-        method:  'POST',
+      const res = await fetch(`${API_BASE}/api/scan/test-connection`, {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ host: ip, username, password, use_ssl: false, skip_ca_check: true }),
+        body: JSON.stringify({ host: ip, username, password, use_ssl: false, skip_ca_check: true }),
       });
       const data = await res.json();
       if (res.ok && data.success) {
         setConnStatus('success');
-        setConnMessage(`เชื่อมต่อสำเร็จ: ${data.hostname || ip}`);
+        setConnMessage(`เชื่อมต่อสำเร็จ — ${data.hostname || ip}`);
       } else {
         setConnStatus('error');
         setConnMessage(data.message || 'เชื่อมต่อไม่สำเร็จ');
@@ -108,260 +102,248 @@ function Home() {
     }
   };
 
-  // ── Remote: start scan ───────────────────────────────────────────────
   const handleStartRemoteScan = () => {
     if (connStatus !== 'success') { setErrorMsg('กรุณา Connect ให้สำเร็จก่อนสแกน'); return; }
-    if (!version)                 { setErrorMsg('กรุณาเลือก Baseline Version'); return; }
+    if (!version) { setErrorMsg('กรุณาเลือก Baseline Version'); return; }
     setErrorMsg('');
     navigate('/result', {
       state: {
-        scanParams: {
-          host: ip, username, password, version,
-          use_ssl: false, skip_ca_check: true,
-          target_name: `${ip} (${version})`,
-        },
+        scanParams: { host: ip, username, password, version, use_ssl: false, skip_ca_check: true, target_name: `${ip} (${version})` },
       },
     });
   };
 
-  // ── Agent: start scan ────────────────────────────────────────────────
-  const handleStartAgentScan = async () => {
+  const handleStartAgentScan = () => {
     if (!selectedAgent) { setErrorMsg('กรุณาเลือก Agent'); return; }
-    if (!version)       { setErrorMsg('กรุณาเลือก Baseline Version'); return; }
+    if (!version) { setErrorMsg('กรุณาเลือก Baseline Version'); return; }
     setErrorMsg('');
-
     const agentInfo = agents.find((a) => a.agent_id === selectedAgent);
-
     navigate('/result', {
       state: {
-        scanParams: {
-          host:        agentInfo.hostname,   // ← ใช้ hostname
-          version,
-          _mode:       'agent',
-          target_name: `${agentInfo.agent_id} (${version})`,
-        },
+        scanParams: { host: agentInfo.hostname, version, _mode: 'agent', target_name: `${agentInfo.agent_id} (${version})` },
       },
     });
   };
 
   const agentOnline = (a) => {
     if (!a.last_seen) return false;
-    return (Date.now() - new Date(a.last_seen).getTime()) < 5 * 60 * 1000; // 5 นาที
+    return (Date.now() - new Date(a.last_seen).getTime()) < 5 * 60 * 1000;
   };
 
   const selectedAgentInfo = agents.find((a) => a.agent_id === selectedAgent);
+  const canScan = scanMode === 'remote'
+    ? connStatus === 'success' && !loadingBaselines && !baselineError
+    : !!selectedAgent && !loadingAgents && !agentError && !loadingBaselines && !baselineError;
 
-  // ── Render ───────────────────────────────────────────────────────────
   return (
-    <div className="homePage">
-      <header className="topBar">
-        <div className="brand">Scanner</div>
-        <div className="topBarRight">
-          <div className="bellWrapper"><span className="bellIcon">🔔</span><span className="notificationDot"></span></div>
-          <div className="profileCircle">👤</div>
-        </div>
-      </header>
-
-      <div className="homeLayout">
-        <aside className="sideBar">
-          <div className="menuGroup">
-            <button className="menuItem active">Home</button>
-            <button className="menuItem" onClick={() => navigate('/history')}>History</button>
-            <button className="menuItem" onClick={() => navigate('/guide')}>Guide</button>
+    <div className="root">
+      {/* ── Sidebar ── */}
+      <aside className="sidebar">
+        <div className="sideTop">
+          <div className="logo">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+              <circle cx="11" cy="11" r="10" stroke="#c8813a" strokeWidth="1.5" />
+              <circle cx="11" cy="11" r="5" stroke="#c8813a" strokeWidth="1.5" />
+              <circle cx="11" cy="11" r="1.5" fill="#c8813a" />
+            </svg>
+            <span className="logoText">SecureScan</span>
           </div>
-          <button className="logoutButton" onClick={() => navigate('/')}>
-            <span className="logoutIcon">↪</span><span>Log Out</span>
-          </button>
-        </aside>
 
-        <main className="mainContent">
-          <h1 className="pageTitle">Scanner</h1>
-          {errorMsg && <div className="errorBanner">{errorMsg}</div>}
+          <nav className="sideNav">
+            <button className="sideLink active">
+              <span className="sideLinkDot" />
+              Home
+            </button>
+            <button className="sideLink" onClick={() => navigate('/history')}>
+              <span className="sideLinkDot" />
+              History
+            </button>
+            <button className="sideLink" onClick={() => navigate('/guide')}>
+              <span className="sideLinkDot" />
+              Guide
+            </button>
+          </nav>
+        </div>
 
-          <section className="scanCard">
-            {/* ── Mode Toggle ── */}
-            <div className="modeToggle">
-              <button
-                className={`modeBtn ${scanMode === 'remote' ? 'active' : ''}`}
-                onClick={() => { setScanMode('remote'); setErrorMsg(''); }}
-              >
-                Remote Scan
-              </button>
-              <button
-                className={`modeBtn ${scanMode === 'agent' ? 'active' : ''}`}
-                onClick={() => { setScanMode('agent'); setErrorMsg(''); }}
-              >
-                Agent Scan
-              </button>
-            </div>
+        <button className="logoutBtn" onClick={() => navigate('/')}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M5 2H2v10h3M9 10l3-3-3-3M12 7H5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Log out
+        </button>
+      </aside>
 
-            {/* ── Step 1: Baseline Version (ใช้ร่วมกัน) ── */}
-            <div className="stepSection">
-              <div className="stepHeader">
-                <div className="stepNumber">1</div>
-                <div className="stepTitleGroup">
-                  <div className="stepTitle">Choose Baseline Version</div>
-                  <div className="stepLine"></div>
-                </div>
-              </div>
-              <div className="fieldGroup single">
-                <label className="fieldLabel">Version</label>
-                {loadingBaselines && <div className="baselineLoading">กำลังโหลด baseline...</div>}
-                {!loadingBaselines && baselineError && <div className="baselineError">{baselineError}</div>}
-                {!loadingBaselines && !baselineError && (
-                  <select
-                    className="fieldInput selectInput"
-                    value={version}
-                    onChange={(e) => {
-                      setVersion(e.target.value);
-                      setConnStatus('idle');
-                      setConnMessage('');
-                    }}
-                  >
-                    {baselines.map((b) => (
-                      <option key={b.filename} value={b.version}>{b.version}</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            </div>
+      {/* ── Main ── */}
+      <main className="main">
+        {/* Header */}
+        <header className="topbar">
+          <div className="topbarMeta">
+            <p className="topbarDate">{new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+          </div>
+          <div className="topbarActions">
+            <button className="notifBtn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M8 1a5 5 0 0 1 5 5v3l1 2H2l1-2V6a5 5 0 0 1 5-5zM6.5 13a1.5 1.5 0 0 0 3 0" strokeLinecap="round" />
+              </svg>
+              <span className="notifDot" />
+            </button>
+            <div className="avatar">จ</div>
+          </div>
+        </header>
 
-            {/* ── Step 2: Remote mode ── */}
-            {scanMode === 'remote' && (
-              <div className="stepSection">
-                <div className="stepHeader">
-                  <div className="stepNumber">2</div>
-                  <div className="stepTitleGroup">
-                    <div className="stepTitle">IP Address And HostName</div>
-                    <div className="stepLine"></div>
-                  </div>
-                </div>
-                <div className="fieldRow">
-                  <div className="fieldGroup">
-                    <label className="fieldLabelIP">IP</label>
-                    <input className="fieldInputIP" type="text" placeholder="192.168.1.50"
-                      value={ip} onChange={(e) => setIp(e.target.value)} />
-                  </div>
-                  <div className="fieldGroup">
-                    <label className="fieldLabelIP">Username</label>
-                    <input className="fieldInputIP" type="text" placeholder=".\Administrator"
-                      value={username} onChange={(e) => setUsername(e.target.value)} />
-                  </div>
-                  <div className="fieldGroup">
-                    <label className="fieldLabelIP">Password</label>
-                    <input className="fieldInputIP" type="password" placeholder="••••••••"
-                      value={password} onChange={(e) => setPassword(e.target.value)} />
-                  </div>
-                </div>
-                <div className="actionRow">
-                  <button
-                    className="connectButton"
-                    onClick={handleConnect}
-                    disabled={connStatus === 'loading' || loadingBaselines}
-                  >
-                    {connStatus === 'loading' ? 'Connecting…' : 'Connect'}
-                  </button>
-                  {connStatus !== 'idle' && (
-                    <div className="statusConnected">
-                      <span className={`statusDot ${connStatus}`}>
-                        {connStatus === 'success' && '✔'}
-                        {connStatus === 'error'   && '✖'}
-                        {connStatus === 'loading' && '…'}
-                      </span>
-                      <span>{connMessage}</span>
-                    </div>
-                  )}
-                </div>
+        {/* Page title */}
+        <div className="pageHead">
+          <h1 className="pageTitle">Network Scanner</h1>
+          <p className="pageDesc">ตั้งค่าการสแกนและเลือก baseline เพื่อตรวจสอบความปลอดภัยของระบบ</p>
+        </div>
+
+        {/* Error */}
+        {errorMsg && (
+          <div className="errBanner">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="7" cy="7" r="6" /><path d="M7 4v3M7 10h.01" strokeLinecap="round" />
+            </svg>
+            {errorMsg}
+          </div>
+        )}
+
+        {/* ── Step 1 ── */}
+        <section className="section">
+          <div className="sectionHead">
+            <span className="stepNum">01</span>
+            <h2 className="sectionTitle">เลือก Baseline Version</h2>
+          </div>
+          <div className="sectionBody">
+            {loadingBaselines && <div className="hint"><span className="spin" />กำลังโหลด...</div>}
+            {!loadingBaselines && baselineError && <p className="errText">{baselineError}</p>}
+            {!loadingBaselines && !baselineError && (
+              <div className="selectWrap">
+                <select
+                  className="sel"
+                  value={version}
+                  onChange={(e) => { setVersion(e.target.value); setConnStatus('idle'); setConnMessage(''); }}
+                >
+                  {baselines.map((b) => (
+                    <option key={b.filename} value={b.version}>{b.version}</option>
+                  ))}
+                </select>
+                <svg className="selArrow" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <path d="M2 4l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
               </div>
             )}
+          </div>
+        </section>
 
-            {/* ── Step 2: Agent mode ── */}
-            {scanMode === 'agent' && (
-              <div className="stepSection">
-                <div className="stepHeader">
-                  <div className="stepNumber">2</div>
-                  <div className="stepTitleGroup">
-                    <div className="stepTitle">Select Agent</div>
-                    <div className="stepLine"></div>
-                  </div>
+        <div className="divider" />
+
+        {/* ── Step 2 ── */}
+        <section className="section">
+          <div className="sectionHead">
+            <span className="stepNum">02</span>
+            <h2 className="sectionTitle">เลือก Target</h2>
+          </div>
+
+          {/* Mode tabs */}
+          <div className="tabs">
+            <button
+              className={`tab ${scanMode === 'remote' ? 'active' : ''}`}
+              onClick={() => { setScanMode('remote'); setErrorMsg(''); }}
+            >
+              Remote Scan
+            </button>
+            <button
+              className={`tab ${scanMode === 'agent' ? 'active' : ''}`}
+              onClick={() => { setScanMode('agent'); setErrorMsg(''); }}
+            >
+              Agent Scan
+            </button>
+          </div>
+
+          {/* Remote */}
+          {scanMode === 'remote' && (
+            <div className="sectionBody animIn">
+              <div className="fieldRow">
+                <div className="field">
+                  <label className="fieldLabel">IP Address</label>
+                  <input className="inp" type="text" placeholder="192.168.1.50" value={ip} onChange={(e) => setIp(e.target.value)} />
                 </div>
+                <div className="field">
+                  <label className="fieldLabel">Username</label>
+                  <input className="inp" type="text" placeholder=".\Administrator" value={username} onChange={(e) => setUsername(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label className="fieldLabel">Password</label>
+                  <input className="inp" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+                </div>
+              </div>
 
-                {loadingAgents && (
-                  <div className="baselineLoading" style={{ marginLeft: 28 }}>กำลังโหลด agent...</div>
-                )}
-                {!loadingAgents && agentError && (
-                  <div className="baselineError" style={{ marginLeft: 28 }}>{agentError}</div>
-                )}
-                {!loadingAgents && !agentError && (
-                  <>
-                    <div className="fieldRow">
-                      <div className="fieldGroup" style={{ marginLeft: 28 }}>
-                        <label className="fieldLabel">Agent</label>
-                        <select
-                          className="fieldInput selectInput"
-                          style={{ width: 240 }}
-                          value={selectedAgent}
-                          onChange={(e) => setSelectedAgent(e.target.value)}
-                        >
-                          {agents.map((a) => (
-                            <option key={a.agent_id} value={a.agent_id}>
-                              {a.agent_id}{a.hostname ? ` (${a.hostname})` : ''}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {selectedAgentInfo && (
-                        <div className="fieldGroup" style={{ justifyContent: 'flex-end', paddingBottom: 2 }}>
-                          <span className={`agentStatusBadge ${agentOnline(selectedAgentInfo) ? 'online' : 'offline'}`}>
-                            ● {agentOnline(selectedAgentInfo) ? 'Online' : 'Offline'}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {selectedAgentInfo && (
-                      <div className="actionRow">
-                        <div className="statusConnected">
-                          <span className="statusDot success">✔</span>
-                          <span>
-                            {selectedAgentInfo.agent_id}
-                            {selectedAgentInfo.hostname ? ` — ${selectedAgentInfo.hostname}` : ''}
-                            {selectedAgentInfo.last_seen
-                              ? `  (last seen: ${new Date(selectedAgentInfo.last_seen).toLocaleString('th-TH')})`
-                              : ''}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </>
+              <div className="connRow">
+                <button className={`connBtn ${connStatus}`} onClick={handleConnect} disabled={connStatus === 'loading' || loadingBaselines}>
+                  {connStatus === 'loading' ? <><span className="spin" />กำลังเชื่อมต่อ</> : 'ทดสอบการเชื่อมต่อ'}
+                </button>
+                {connMessage && (
+                  <span className={`connMsg ${connStatus}`}>
+                    {connStatus === 'success' ? '✓' : '✕'} {connMessage}
+                  </span>
                 )}
               </div>
-            )}
+            </div>
+          )}
 
-            {/* ── Start Scan button ── */}
-            <div className="scanButtonRow">
-              {scanMode === 'remote' ? (
-                <button
-                  className="scanButton"
-                  onClick={handleStartRemoteScan}
-                  disabled={connStatus !== 'success' || loadingBaselines || !!baselineError}
-                >
-                  Start Scan
-                </button>
-              ) : (
-                <button
-                  className="scanButton"
-                  onClick={handleStartAgentScan}
-                  disabled={!selectedAgent || loadingAgents || !!agentError || loadingBaselines || !!baselineError}
-                >
-                  Start Scan
-                </button>
+          {/* Agent */}
+          {scanMode === 'agent' && (
+            <div className="sectionBody animIn">
+              {loadingAgents && <div className="hint"><span className="spin" />กำลังโหลด agents...</div>}
+              {!loadingAgents && agentError && <p className="errText">{agentError}</p>}
+              {!loadingAgents && !agentError && (
+                <div className="agentGrid">
+                  {agents.map((a) => {
+                    const online = agentOnline(a);
+                    return (
+                      <button
+                        key={a.agent_id}
+                        className={`agentTile ${selectedAgent === a.agent_id ? 'active' : ''}`}
+                        onClick={() => setSelectedAgent(a.agent_id)}
+                      >
+                        <div className="agentTileTop">
+                          <span className="agentId">{a.agent_id}</span>
+                          <span className={`badge ${online ? 'on' : 'off'}`}>{online ? 'Online' : 'Offline'}</span>
+                        </div>
+                        {a.hostname && <span className="agentHostname">{a.hostname}</span>}
+                        {a.last_seen && (
+                          <span className="agentSeen">Last seen {new Date(a.last_seen).toLocaleString('th-TH')}</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
               )}
             </div>
-          </section>
-        </main>
-      </div>
+          )}
+        </section>
+
+        {/* ── Launch ── */}
+        <div className="launchRow">
+          {version && (
+            <div className="scanSummary">
+              <span className="summaryItem">{version}</span>
+              {scanMode === 'remote' && ip && <><span className="summaryDivider">·</span><span className="summaryItem">{ip}</span></>}
+              {scanMode === 'agent' && selectedAgentInfo && <><span className="summaryDivider">·</span><span className="summaryItem">{selectedAgentInfo.agent_id}</span></>}
+            </div>
+          )}
+          <button
+            className="scanBtn"
+            onClick={scanMode === 'remote' ? handleStartRemoteScan : handleStartAgentScan}
+            disabled={!canScan}
+          >
+            เริ่มสแกน
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8">
+              <path d="M2 7h10M8 3l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+      </main>
     </div>
   );
 }

@@ -65,10 +65,10 @@ function getSolution(key) {
 }
 
 const SEVERITY_CONFIG = {
-  critical: { label: 'Critical', color: '#ff4d4d', bg: 'rgba(255,77,77,0.15)' },
-  high:     { label: 'High',     color: '#ff9900', bg: 'rgba(255,153,0,0.15)' },
-  medium:   { label: 'Medium',   color: '#f5d000', bg: 'rgba(245,208,0,0.15)' },
-  low:      { label: 'Low',      color: '#2ea3ff', bg: 'rgba(46,163,255,0.15)' },
+  critical: { label: 'Critical', color: 'var(--sev-critical)',    bg: 'var(--sev-critical-bg)',    bd: 'var(--sev-critical-bd)' },
+  high:     { label: 'High',     color: 'var(--sev-high)',        bg: 'var(--sev-high-bg)',        bd: 'var(--sev-high-bd)' },
+  medium:   { label: 'Medium',   color: 'var(--sev-medium)',      bg: 'var(--sev-medium-bg)',      bd: 'var(--sev-medium-bd)' },
+  low:      { label: 'Low',      color: 'var(--sev-low)',         bg: 'var(--sev-low-bg)',         bd: 'var(--sev-low-bd)' },
 };
 
 const SCAN_STEPS = [
@@ -100,17 +100,11 @@ function parseResults(details) {
       const raw = String(value);
       let target = '', actual = '';
 
-      // จับ Target — รองรับทั้ง "Target: X, Actual: Y" และ "Target: X)"
       const targetMatch = raw.match(/Target:\s*([^,)]+?)(?:\s*,|\s*\)|$)/);
       if (targetMatch) target = targetMatch[1].trim();
 
-      // จับ Actual — ตัด ) ท้ายออก และรองรับ multiword
       const actualMatch = raw.match(/Actual:\s*(.+?)(?:\s*\)\s*$|\s*$)/);
       if (actualMatch) actual = actualMatch[1].trim().replace(/\)\s*$/, '');
-
-      // กรณี "Not Configured" ไม่มี Target ให้ดึงจาก raw
-      // เช่น "Fail (Not Configured, Target: 10)" จับได้แล้ว
-      // แต่ "Fail (Not Configured)" ไม่มี Target เลย → target ว่าง ถูกต้อง
 
       const status = raw.startsWith('Fail')       ? 'fail'
                    : raw.includes('Manual')        ? 'manual'
@@ -122,41 +116,83 @@ function parseResults(details) {
 }
 
 // -----------------------------------------------------------------------
-// Layout
+// Layout — matches Home sidebar exactly
 // -----------------------------------------------------------------------
 function Layout({ children, navigate }) {
   return (
-    <div className="resultPage">
-      <header className="topBar">
-        <div className="brand">Scanner</div>
-        <div className="topBarRight">
-          <div className="bellWrapper"><span className="bellIcon">🔔</span><span className="notificationDot"></span></div>
-          <div className="profileCircle">👤</div>
-        </div>
-      </header>
-      <div className="homeLayout">
-        <aside className="sideBar">
-          <div className="menuGroup">
-            <button className="menuItem" onClick={() => navigate('/home')}>Home</button>
-            <button className="menuItem" onClick={() => navigate('/history')}>History</button>
-            <button className="menuItem" onClick={() => navigate('/guide')}>Guide</button>
+    <div className="root">
+      {/* ── Sidebar ── */}
+      <aside className="sidebar">
+        <div className="sideTop">
+          <div className="logo">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+              <circle cx="11" cy="11" r="10" stroke="#c8813a" strokeWidth="1.5" />
+              <circle cx="11" cy="11" r="5"  stroke="#c8813a" strokeWidth="1.5" />
+              <circle cx="11" cy="11" r="1.5" fill="#c8813a" />
+            </svg>
+            <span className="logoText">SecureScan</span>
           </div>
-          <button className="logoutButton" onClick={() => navigate('/')}>
-            <span className="logoutIcon">↪</span><span>Log Out</span>
-          </button>
-        </aside>
-        <main className="resultMain">{children}</main>
-      </div>
+
+          <nav className="sideNav">
+            <button className="sideLink" onClick={() => navigate('/home')}>
+              <span className="sideLinkDot" />
+              Home
+            </button>
+            <button className="sideLink" onClick={() => navigate('/history')}>
+              <span className="sideLinkDot" />
+              History
+            </button>
+            <button className="sideLink" onClick={() => navigate('/guide')}>
+              <span className="sideLinkDot" />
+              Guide
+            </button>
+          </nav>
+        </div>
+
+        <button className="logoutBtn" onClick={() => navigate('/')}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M5 2H2v10h3M9 10l3-3-3-3M12 7H5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Log out
+        </button>
+      </aside>
+
+      {/* ── Main ── */}
+      <main className="main">{children}</main>
     </div>
   );
 }
 
 // -----------------------------------------------------------------------
-// ScanProgress — Background Job + Polling (ไม่บล็อก /docs หรือ request อื่น)
+// Topbar — matches Home topbar
+// -----------------------------------------------------------------------
+function Topbar() {
+  return (
+    <header className="topbar">
+      <div>
+        <p className="topbarDate">
+          {new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+        </p>
+      </div>
+      <div className="topbarActions">
+        <button className="notifBtn">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M8 1a5 5 0 0 1 5 5v3l1 2H2l1-2V6a5 5 0 0 1 5-5zM6.5 13a1.5 1.5 0 0 0 3 0" strokeLinecap="round" />
+          </svg>
+          <span className="notifDot" />
+        </button>
+        <div className="avatar">จ</div>
+      </div>
+    </header>
+  );
+}
+
+// -----------------------------------------------------------------------
+// ScanProgress
 // -----------------------------------------------------------------------
 function ScanProgress({ scanParams, onScanComplete, onError }) {
   const apiHost    = window.location.hostname;
-  const navigate   = useNavigate();  // ← เพิ่มตรงนี้
+  const navigate   = useNavigate();
   const hasFetched = useRef(false);
 
   const [progress,  setProgress]  = useState(0);
@@ -188,11 +224,10 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
           navigate('/');
           return Promise.reject('Not authenticated');
         }
-        // ── ลบ .then() ซ้อนออก เหลือแค่อันเดียว ──
         if (!r.ok) return r.json().then((e) => Promise.reject(e.detail || 'Scan failed'));
         return r.json();
       })
-      .then(({ job_id }) => {  // ← ตอนนี้ได้ job_id ถูกต้องแล้ว
+      .then(({ job_id }) => {
         let step = 0;
         pollRef.current = setInterval(async () => {
           try {
@@ -216,10 +251,7 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
               setStepIndex(SCAN_STEPS.length - 1);
 
               const r = data.result;
-              if (!r || !r.details) {
-                onError('ผลการสแกนไม่สมบูรณ์');
-                return;
-              }
+              if (!r || !r.details) { onError('ผลการสแกนไม่สมบูรณ์'); return; }
 
               const result = {
                 score:      r.score,
@@ -235,7 +267,6 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
               clearInterval(pollRef.current);
               onError(data.error || 'Scan failed');
             }
-
           } catch (e) {
             clearInterval(pollRef.current);
             onError('ไม่สามารถเชื่อมต่อกับ server ได้');
@@ -249,27 +280,34 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
   }, []);
 
+  const circumference = 2 * Math.PI * 42; // r=42
+
   return (
     <div className="scanProgressWrap">
       <div className="scoreCircleWrap">
         <svg viewBox="0 0 100 100" className="scoreCircleSvg">
           <circle cx="50" cy="50" r="42" className="scoreTrack" />
-          <circle cx="50" cy="50" r="42" className="scoreArc"
-            strokeDasharray={`${progress * 2.638} 263.8`}
+          <circle
+            cx="50" cy="50" r="42"
+            className="scoreArc"
+            strokeDasharray={`${(progress / 100) * circumference} ${circumference}`}
             transform="rotate(-90 50 50)"
-            style={{ stroke: '#2ea3ff', transition: 'stroke-dasharray 0.5s ease' }}
+            style={{ stroke: 'var(--amber)' }}
           />
         </svg>
-        <div className="scoreText">
-          <div>{progress}%</div>
-          <div style={{ fontSize: 11, opacity: 0.6, marginTop: 2 }}>Scanning</div>
-        </div>
+        <div className="scoreText">{progress}%</div>
       </div>
       <div className="scanStepMsg">{SCAN_STEPS[stepIndex]}</div>
-      <div className="scanBarWrap"><div className="scanBar" style={{ width: `${progress}%` }} /></div>
+      <div className="scanBarWrap">
+        <div className="scanBar" style={{ width: `${progress}%` }} />
+      </div>
       <div className="scanDots">
         {SCAN_STEPS.slice(0, -1).map((_, i) => (
-          <div key={i} className="scanDot" style={{ background: i <= stepIndex ? '#2ea3ff' : undefined }} />
+          <div
+            key={i}
+            className="scanDot"
+            style={{ background: i <= stepIndex ? 'var(--amber)' : undefined }}
+          />
         ))}
       </div>
     </div>
@@ -285,7 +323,7 @@ export default function Result() {
 
   const scanParamsRef = useRef(null);
 
-  const [phase,         setPhase]         = useState(() => {
+  const [phase, setPhase] = useState(() => {
     if (location.state?.scanParams) {
       scanParamsRef.current = location.state.scanParams;
       window.history.replaceState({}, document.title);
@@ -348,11 +386,20 @@ export default function Result() {
   const passCount  = Object.values(details).filter((v) => String(v) === 'Pass').length;
   const totalCount = Object.values(details).length;
 
+  // Score colour using ink/amber/green palette
+  const scoreColor = score >= 70 ? 'var(--green)' : score >= 40 ? 'var(--amber)' : 'var(--red)';
+  const circumference = 2 * Math.PI * 42;
+
   if (phase === 'redirect') return null;
 
   if (phase === 'scanning') {
     return (
       <Layout navigate={navigate}>
+        <Topbar />
+        <div className="pageHead">
+          <h1 className="pageTitle">Scanning…</h1>
+          <p className="pageDesc">กำลังตรวจสอบความปลอดภัยของระบบ กรุณารอสักครู่</p>
+        </div>
         <ScanProgress
           scanParams={scanParamsRef.current}
           onScanComplete={(data) => { setScanData(data); setPhase('done'); }}
@@ -365,11 +412,15 @@ export default function Result() {
   if (phase === 'error') {
     return (
       <Layout navigate={navigate}>
+        <Topbar />
+        <div className="pageHead">
+          <h1 className="pageTitle">Scan Failed</h1>
+        </div>
         <div className="idleWrap">
           <div className="idleCard">
             <div className="idleIcon">⚠️</div>
-            <h2 className="idleTitle" style={{ color: '#ff4d4d' }}>Scan Failed</h2>
-            <p className="idleDesc"   style={{ color: '#ff4d4d' }}>{errorMsg}</p>
+            <h2 className="idleTitle" style={{ color: 'var(--red)' }}>เกิดข้อผิดพลาด</h2>
+            <p className="idleDesc">{errorMsg}</p>
             <button className="idleScanBtn" onClick={() => navigate('/home')}>กลับหน้าหลัก</button>
           </div>
         </div>
@@ -379,20 +430,29 @@ export default function Result() {
 
   return (
     <Layout navigate={navigate}>
-      <h1 className="pageTitle">Result</h1>
+      <Topbar />
 
+      <div className="pageHead">
+        <h1 className="pageTitle">Scan Result</h1>
+        <p className="pageDesc">ผลการตรวจสอบความปลอดภัยของระบบ</p>
+      </div>
+
+      {/* Score Summary */}
       <div className="scoreSummary">
         <div className="scoreCircleWrap">
           <svg viewBox="0 0 100 100" className="scoreCircleSvg">
             <circle cx="50" cy="50" r="42" className="scoreTrack" />
-            <circle cx="50" cy="50" r="42" className="scoreArc"
-              strokeDasharray={`${score * 2.638} 263.8`}
+            <circle
+              cx="50" cy="50" r="42"
+              className="scoreArc"
+              strokeDasharray={`${(score / 100) * circumference} ${circumference}`}
               transform="rotate(-90 50 50)"
-              style={{ stroke: score >= 70 ? '#20d320' : score >= 40 ? '#f5d000' : '#ff4d4d' }}
+              style={{ stroke: scoreColor }}
             />
           </svg>
-          <div className="scoreText">{score}%</div>
+          <div className="scoreText" style={{ color: scoreColor }}>{score}%</div>
         </div>
+
         <div className="scoreDetail">
           <div className="scoreLabel">{targetName || hostname}</div>
           <div className="scoreVersion">{version}</div>
@@ -400,69 +460,122 @@ export default function Result() {
             <span className="countBadge pass">✔ {passCount} Pass</span>
             <span className="countBadge fail">✖ {totalCount - passCount} Fail</span>
           </div>
-          {tabs.slice(1).map((sev) => (
-            <div key={sev} className="severityCount" style={{ color: SEVERITY_CONFIG[sev].color }}>
-              <span className="sevDot" style={{ background: SEVERITY_CONFIG[sev].color }} />
-              {SEVERITY_CONFIG[sev].label}: {counts[sev]}
-            </div>
-          ))}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: 4 }}>
+            {tabs.slice(1).map((sev) => (
+              <div key={sev} className="severityCount" style={{ color: SEVERITY_CONFIG[sev].color }}>
+                <span className="sevDot" style={{ background: SEVERITY_CONFIG[sev].color }} />
+                {SEVERITY_CONFIG[sev].label}: {counts[sev]}
+              </div>
+            ))}
+          </div>
         </div>
       </div>
 
+      {/* Result Card */}
       <div className="resultCard">
+
+        {/* Tab Row */}
         <div className="tabRow">
           {tabs.map((tab) => (
-            <button key={tab}
+            <button
+              key={tab}
               className={`tabBtn ${activeTab === tab ? 'active' : ''}`}
-              style={activeTab === tab && tab !== 'ALL' ? { borderBottomColor: SEVERITY_CONFIG[tab].color, color: SEVERITY_CONFIG[tab].color } : {}}
+              style={
+                activeTab === tab && tab !== 'ALL'
+                  ? { borderBottomColor: SEVERITY_CONFIG[tab].color, color: SEVERITY_CONFIG[tab].color }
+                  : {}
+              }
               onClick={() => setActiveTab(tab)}
             >
               {tab.charAt(0).toUpperCase() + tab.slice(1)}
               <span className="tabCount">{counts[tab]}</span>
             </button>
           ))}
-          <select className="sectionSelect" value={sectionFilter} onChange={(e) => setSectionFilter(e.target.value)}>
-            {sections.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <div className="searchWrap">
-            <input className="searchInput" placeholder="Search..." value={searchInput}
-              onChange={(e) => setSearchInput(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            />
-            {searchInput && <button className="clearBtn" onClick={handleClear}>✕</button>}
-            <button className="searchBtn" onClick={handleSearch}>🔍</button>
+
+          <div className="tabRowRight">
+            <select
+              className="sectionSelect"
+              value={sectionFilter}
+              onChange={(e) => setSectionFilter(e.target.value)}
+            >
+              {sections.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+
+            <div className="searchWrap">
+              <input
+                className="searchInput"
+                placeholder="Search…"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              />
+              {searchInput && (
+                <button className="clearBtn" onClick={handleClear}>✕</button>
+              )}
+              <button className="searchBtn" onClick={handleSearch}>
+                <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <circle cx="5.5" cy="5.5" r="4.5" />
+                  <path d="M9 9l2.5 2.5" strokeLinecap="round" />
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
 
+        {/* Column Headers */}
         <div className="colHeaders">
-          <div className="colYourConf">Your Config</div>
-          <div className="colBaseline">BaseLine</div>
-          <div className="colSolution">Solution</div>
+          <div>Your Config</div>
+          <div>Baseline</div>
+          <div>Solution</div>
         </div>
 
+        {/* Item List */}
         <div className="itemList">
-          {filtered.length === 0 && <div className="emptyMsg">ไม่พบรายการที่ตรงกับเงื่อนไข</div>}
+          {filtered.length === 0 && (
+            <div className="emptyMsg">ไม่พบรายการที่ตรงกับเงื่อนไข</div>
+          )}
           {filtered.map((item) => {
             const sev    = SEVERITY_CONFIG[item.severity];
             const isOpen = expanded === item.key;
             return (
               <div key={item.key} className={`resultRow ${isOpen ? 'open' : ''}`}>
                 <div className="rowSummary" onClick={() => setExpanded(isOpen ? null : item.key)}>
-                  <div className="colYourConf">
+
+                  {/* Col 1 — Your Config */}
+                  <div>
                     <div className="itemChip yourConf">
-                      <span className="sevBadge" style={{ background: sev.bg, color: sev.color, border: `1px solid ${sev.color}` }}>{sev.label}</span>
+                      <span
+                        className="sevBadge"
+                        style={{ background: sev.bg, color: sev.color, border: `1px solid ${sev.bd}` }}
+                      >
+                        {sev.label}
+                      </span>
                       <span className="itemName">{item.name}</span>
                       <span className="sectionTag">[{item.section}]</span>
                     </div>
-                    {item.actual && <div className="actualChip">{item.actual.length > 60 ? item.actual.slice(0, 60) + '…' : item.actual}</div>}
+                    {item.actual && (
+                      <div className="actualChip">
+                        {item.actual.length > 60 ? item.actual.slice(0, 60) + '…' : item.actual}
+                      </div>
+                    )}
                   </div>
-                  <div className="colBaseline"><div className="itemChip baseline">{item.target || '—'}</div></div>
-                  <div className="colSolution">
+
+                  {/* Col 2 — Baseline */}
+                  <div>
+                    <div className="itemChip baseline">{item.target || '—'}</div>
+                  </div>
+
+                  {/* Col 3 — Solution */}
+                  <div>
                     <div className={`solutionChip ${item.status}`}>
-                      {item.status === 'fail' ? 'Fix Available ▾' : item.status === 'manual' ? 'Manual Check' : 'Not Found'}
+                      {item.status === 'fail'   ? 'Fix Available ▾'
+                     : item.status === 'manual' ? 'Manual Check'
+                     : 'Not Found'}
                     </div>
                   </div>
                 </div>
+
+                {/* Expanded Detail */}
                 {isOpen && (
                   <div className="rowDetail">
                     <div className="detailGrid">
@@ -477,7 +590,9 @@ export default function Result() {
                       <div className="detailBlock full">
                         <div className="detailLabel">Solution</div>
                         <div className="detailValue">{item.solution.text}</div>
-                        <a className="msLink" href={item.solution.link} target="_blank" rel="noreferrer">📖 Microsoft Documentation ↗</a>
+                        <a className="msLink" href={item.solution.link} target="_blank" rel="noreferrer">
+                          📖 Microsoft Documentation ↗
+                        </a>
                       </div>
                     </div>
                   </div>
@@ -487,12 +602,23 @@ export default function Result() {
           })}
         </div>
 
+        {/* Footer */}
         <div className="resultFooter">
-          <button className="statButton" onClick={() => navigate('/Summary', { state: { scanData } })}>Summary</button>
-          <button className="finishButton" onClick={() => {
-            sessionStorage.removeItem(SESSION_KEY);
-            navigate('/home');
-          }}>Finish</button>
+          <button
+            className="statButton"
+            onClick={() => navigate('/Summary', { state: { scanData } })}
+          >
+            Summary
+          </button>
+          <button
+            className="finishButton"
+            onClick={() => {
+              sessionStorage.removeItem(SESSION_KEY);
+              navigate('/home');
+            }}
+          >
+            Finish
+          </button>
         </div>
       </div>
     </Layout>

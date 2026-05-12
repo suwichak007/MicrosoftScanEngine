@@ -12,34 +12,20 @@ function History() {
   const [errorMsg, setErrorMsg] = useState('');
   const [deleting, setDeleting] = useState(null);
 
-  // ── ดึง token จาก localStorage ──
-  const getToken = () => localStorage.getItem('token') || '';
-
-  // ── auth header ──
-  const authHeader = () => ({
+  const getToken    = () => localStorage.getItem('token') || '';
+  const authHeader  = () => ({
     'Content-Type':  'application/json',
     'Authorization': `Bearer ${getToken()}`,
   });
 
-  useEffect(() => {
-    fetchHistory();
-  }, []);
+  useEffect(() => { fetchHistory(); }, []);
 
   const fetchHistory = async () => {
     setLoading(true);
     setErrorMsg('');
     try {
-      const res  = await fetch(`${API_BASE}/api/scan/history?limit=50`, {
-        headers: authHeader(),
-      });
-
-      // token หมดอายุหรือไม่มีสิทธิ์ → ไปหน้า login
-      if (res.status === 401) {
-        localStorage.removeItem('token');
-        navigate('/');
-        return;
-      }
-
+      const res = await fetch(`${API_BASE}/api/scan/history?limit=50`, { headers: authHeader() });
+      if (res.status === 401) { localStorage.removeItem('token'); navigate('/'); return; }
       const data = await res.json();
       if (res.ok && Array.isArray(data)) {
         setHistory(data);
@@ -55,16 +41,8 @@ function History() {
 
   const handleView = async (id) => {
     try {
-      const res  = await fetch(`${API_BASE}/api/scan/history/${id}`, {
-        headers: authHeader(),
-      });
-
-      if (res.status === 401) {
-        localStorage.removeItem('token');
-        navigate('/');
-        return;
-      }
-
+      const res = await fetch(`${API_BASE}/api/scan/history/${id}`, { headers: authHeader() });
+      if (res.status === 401) { localStorage.removeItem('token'); navigate('/'); return; }
       const data = await res.json();
       if (res.ok) {
         navigate('/result', {
@@ -91,16 +69,10 @@ function History() {
     setDeleting(id);
     try {
       const res = await fetch(`${API_BASE}/api/scan/history/${id}`, {
-        method:  'DELETE',
+        method: 'DELETE',
         headers: authHeader(),
       });
-
-      if (res.status === 401) {
-        localStorage.removeItem('token');
-        navigate('/');
-        return;
-      }
-
+      if (res.status === 401) { localStorage.removeItem('token'); navigate('/'); return; }
       if (res.ok) {
         setHistory((prev) => prev.filter((h) => h.id !== id));
       } else {
@@ -116,105 +88,140 @@ function History() {
 
   const formatDate = (isoStr) => {
     const d = new Date(isoStr);
-    return d.toLocaleDateString('th-TH', {
-      day:   '2-digit',
-      month: '2-digit',
-      year:  'numeric',
-    }) + ' ' + d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' });
+    return (
+      d.toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' }) +
+      ' ' +
+      d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })
+    );
   };
 
   const scoreColor = (score) => {
-    if (score >= 70) return '#20d320';
-    if (score >= 40) return '#f5d000';
-    return '#ff4d4d';
+    if (score >= 70) return 'var(--green)';
+    if (score >= 40) return 'var(--amber)';
+    return 'var(--red)';
   };
 
   return (
-    <div className="historyPage">
-      <header className="topBar">
-        <div className="brand">Scanner</div>
-        <div className="topBarRight">
-          <div className="bellWrapper">
-            <span className="bellIcon">🔔</span>
-            <span className="notificationDot"></span>
+    <div className="root">
+      {/* ── Sidebar ── */}
+      <aside className="sidebar">
+        <div className="sideTop">
+          <div className="logo">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+              <circle cx="11" cy="11" r="10" stroke="#c8813a" strokeWidth="1.5" />
+              <circle cx="11" cy="11" r="5"  stroke="#c8813a" strokeWidth="1.5" />
+              <circle cx="11" cy="11" r="1.5" fill="#c8813a" />
+            </svg>
+            <span className="logoText">SecureScan</span>
           </div>
-          <div className="profileCircle">👤</div>
+          <nav className="sideNav">
+            <button className="sideLink" onClick={() => navigate('/home')}>
+              <span className="sideLinkDot" />Home
+            </button>
+            <button className="sideLink active">
+              <span className="sideLinkDot" />History
+            </button>
+            <button className="sideLink" onClick={() => navigate('/guide')}>
+              <span className="sideLinkDot" />Guide
+            </button>
+          </nav>
         </div>
-      </header>
+        <button className="logoutBtn" onClick={() => navigate('/')}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M5 2H2v10h3M9 10l3-3-3-3M12 7H5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Log out
+        </button>
+      </aside>
 
-      <div className="homeLayout">
-        <aside className="sideBar">
-          <div className="menuGroup">
-            <button className="menuItem" onClick={() => navigate('/home')}>Home</button>
-            <button className="menuItem active">History</button>
-            <button className="menuItem" onClick={() => navigate('/guide')}>Guide</button>
+      {/* ── Main ── */}
+      <main className="main">
+        {/* Topbar */}
+        <header className="topbar">
+          <p className="topbarDate">
+            {new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+          </p>
+          <div className="topbarActions">
+            <button className="notifBtn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <path d="M8 1a5 5 0 0 1 5 5v3l1 2H2l1-2V6a5 5 0 0 1 5-5zM6.5 13a1.5 1.5 0 0 0 3 0" strokeLinecap="round" />
+              </svg>
+              <span className="notifDot" />
+            </button>
+            <div className="avatar">จ</div>
           </div>
-          <button className="logoutButton" onClick={() => navigate('/')}>
-            <span className="logoutIcon">↪</span><span>Log Out</span>
-          </button>
-        </aside>
+        </header>
 
-        <main className="mainContent">
+        {/* Page head */}
+        <div className="pageHead">
           <h1 className="pageTitle">History</h1>
+          <p className="pageDesc">ประวัติการสแกนความปลอดภัยของระบบ</p>
+        </div>
 
-          {errorMsg && <div className="errorBanner">{errorMsg}</div>}
-
-          <div className="historyCard">
-            {loading ? (
-              <div className="historyEmpty">กำลังโหลด...</div>
-            ) : history.length === 0 ? (
-              <div className="historyEmpty">ยังไม่มีประวัติการสแกน</div>
-            ) : (
-              <table className="historyTable">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Target</th>
-                    <th>Version</th>
-                    <th>Score</th>
-                    <th>Pass</th>
-                    <th>Fail</th>
-                    <th>Links</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {history.map((h) => (
-                    <tr key={h.id}>
-                      <td><div className="historyCell">{formatDate(h.scan_date)}</div></td>
-                      <td><div className="historyCell">{h.target_name}</div></td>
-                      <td><div className="historyCell">{h.version || '—'}</div></td>
-                      <td>
-                        <div className="historyCell scoreCell" style={{ color: scoreColor(h.score) }}>
-                          {h.score}%
-                        </div>
-                      </td>
-                      <td><div className="historyCell passCell">✔ {h.pass_count}</div></td>
-                      <td><div className="historyCell failCell">✖ {h.fail_count}</div></td>
-                      <td>
-                        <div className="historyActions">
-                          <button className="viewBtn" onClick={() => handleView(h.id)}>View</button>
-                          <button
-                            className="deleteBtn"
-                            onClick={() => handleDelete(h.id)}
-                            disabled={deleting === h.id}
-                          >
-                            {deleting === h.id ? '...' : 'Delete'}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            )}
-
-            <div className="historyFooter">
-              <button className="backBtn"   onClick={() => navigate('/home')}>Back</button>
-              <button className="finishBtn" onClick={() => navigate('/home')}>Finish</button>
-            </div>
+        {/* Error */}
+        {errorMsg && (
+          <div className="errBanner">
+            <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="7" cy="7" r="6" /><path d="M7 4v3M7 10h.01" strokeLinecap="round" />
+            </svg>
+            {errorMsg}
           </div>
-        </main>
-      </div>
+        )}
+
+        {/* Card */}
+        <div className="historyCard">
+          {loading ? (
+            <div className="historyEmpty">
+              <span className="spin" />กำลังโหลด...
+            </div>
+          ) : history.length === 0 ? (
+            <div className="historyEmpty">ยังไม่มีประวัติการสแกน</div>
+          ) : (
+            <table className="historyTable">
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Target</th>
+                  <th>Version</th>
+                  <th className="center">Score</th>
+                  <th className="center">Pass</th>
+                  <th className="center">Fail</th>
+                  <th className="center">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {history.map((h) => (
+                  <tr key={h.id}>
+                    <td className="monoCell">{formatDate(h.scan_date)}</td>
+                    <td className="targetCell">{h.target_name}</td>
+                    <td className="monoCell">{h.version || '—'}</td>
+                    <td className="scoreCell" style={{ color: scoreColor(h.score) }}>{h.score}%</td>
+                    <td className="passCell">✔ {h.pass_count}</td>
+                    <td className="failCell">✖ {h.fail_count}</td>
+                    <td>
+                      <div className="historyActions">
+                        <button className="viewBtn" onClick={() => handleView(h.id)}>View</button>
+                        <button
+                          className="deleteBtn"
+                          onClick={() => handleDelete(h.id)}
+                          disabled={deleting === h.id}
+                        >
+                          {deleting === h.id ? '…' : 'Delete'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+
+          <div className="historyFooter">
+            <button className="backBtn"   onClick={() => navigate(-1)}>← Back</button>
+            <button className="finishBtn" onClick={() => navigate('/home')}>Finish</button>
+          </div>
+        </div>
+      </main>
     </div>
   );
 }

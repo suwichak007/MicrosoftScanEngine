@@ -9,8 +9,6 @@ function Register() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const navigate = useNavigate();
-  const hostname = window.location.hostname;
-  const apiUrl = `http://${hostname}:8000/register`;
 
   const handleRegister = async (e) => {
     e.preventDefault();
@@ -22,25 +20,17 @@ function Register() {
       return;
     }
 
+    const apiUrl = `http://${window.location.hostname}:8000/register`;
     try {
       const response = await fetch(apiUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username,
-          password,
-        }),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password }),
       });
-
       const data = await response.json();
-
       if (response.ok) {
         setSuccess('Register success! กำลังไปหน้า Login...');
-        setTimeout(() => {
-          navigate('/');
-        }, 1500);
+        setTimeout(() => navigate('/'), 1500);
       } else {
         setError(data.detail || 'Register failed');
       }
@@ -50,59 +40,83 @@ function Register() {
   };
 
   return (
-    <div className="Register-page d-flex align-items-center justify-content-center">
-      <div className="Register_rectangle">
-        <div className="Register_card-body">
-          <div className="text-center mb-4">
-            <div className="Register_Topic">Register</div>
+    <div className="register-page">
+      <div className="register-card">
+        <div className="register-brand">
+          <div className="register-brand-icon">
+            <svg width="18" height="18" viewBox="0 0 22 22" fill="none">
+              <circle cx="11" cy="11" r="10" stroke="#c8813a" strokeWidth="1.5"/>
+              <circle cx="11" cy="11" r="5"  stroke="#c8813a" strokeWidth="1.5"/>
+              <circle cx="11" cy="11" r="1.5" fill="#c8813a"/>
+            </svg>
           </div>
+          <span className="register-brand-name">SecureScan</span>
+        </div>
 
-          {error && <div className="alert alert-danger py-2 small">{error}</div>}
-          {success && <div className="alert alert-success py-2 small">{success}</div>}
+        <h1 className="register-title">Create account</h1>
+        <p className="register-subtitle">Join SecureScan to start monitoring your network</p>
 
-          <form onSubmit={handleRegister}>
-            <div className="mb-2">
-              <label className="Register_Username">Username / Email</label>
-            </div>
+        {error && (
+          <div className="register-err">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="7" cy="7" r="6"/><path d="M7 4v3M7 10h.01" strokeLinecap="round"/>
+            </svg>
+            {error}
+          </div>
+        )}
+
+        {success && (
+          <div className="register-ok">
+            <svg width="13" height="13" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <circle cx="7" cy="7" r="6"/><path d="M4.5 7l2 2 3-3" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+            {success}
+          </div>
+        )}
+
+        <form onSubmit={handleRegister}>
+          <div className="register-field">
+            <label className="register-label">Username / Email</label>
             <input
+              className="register-input"
               type="text"
-              className="Register_Username_Input_Field"
+              placeholder="you@example.com"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
             />
+          </div>
 
-            <div className="mb-2">
-              <label className="Register_Password">Password</label>
-            </div>
+          <div className="register-divider" />
+
+          <div className="register-field">
+            <label className="register-label">Password</label>
             <input
+              className="register-input"
               type="password"
-              className="Register_Password_Input_Field"
+              placeholder="••••••••"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
             />
-
-            <div className="mb-2">
-              <label className="Register_Confirm-Password">Confirm Password</label>
-            </div>
+          </div>
+          <div className="register-field">
+            <label className="register-label">Confirm Password</label>
             <input
+              className="register-input"
               type="password"
-              className="Register_Password_Input_Field"
+              placeholder="••••••••"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
             />
-            <div>
-                <button type="submit" className="Register_signin_button">Sign Up</button>
-            </div>
-            
+          </div>
 
-            <div className="Register_Already">
-              <span>Already have an account? </span>
-              <Link to="/">Login</Link>
-            </div>
-          </form>
+          <button type="submit" className="register-btn">Create Account →</button>
+        </form>
+
+        <div className="register-footer">
+          Already have an account? <Link to="/">Sign in</Link>
         </div>
       </div>
     </div>
