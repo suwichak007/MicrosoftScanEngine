@@ -5,7 +5,7 @@ import Home from './pages/Home';
 import Dashboard from './pages/Dashboard';
 import Register from './pages/Register';
 import Result from './pages/Result';
-import History from './pages/Histoty';
+import History from './pages/History';
 import Summary from './pages/Summary';
 
 function App() {
