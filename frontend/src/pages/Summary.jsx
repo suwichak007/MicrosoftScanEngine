@@ -18,12 +18,12 @@ const MEDIUM_KEYWORDS = [
 
 function getSeverity(key) {
   const lower = key.toLowerCase();
-  if (lower.includes('remote desktop'))   return 'critical';
-  if (lower.includes('bitlocker'))        return 'critical';
-  if (lower.includes('lsa protection'))   return 'critical';
-  if (lower.includes('credential'))       return 'critical';
-  if (lower.includes('account lockout'))  return 'high';
-  if (lower.includes('logon'))            return 'high';
+  if (lower.includes('remote desktop'))    return 'critical';
+  if (lower.includes('bitlocker'))         return 'critical';
+  if (lower.includes('lsa protection'))    return 'critical';
+  if (lower.includes('credential'))        return 'critical';
+  if (lower.includes('account lockout'))   return 'high';
+  if (lower.includes('logon'))             return 'high';
   if (lower.startsWith('[advanced audit]')) return 'medium';
   if (lower.startsWith('[services]'))       return 'low';
   if (CRITICAL_KEYWORDS.some(k => lower.includes(k))) return 'critical';
@@ -33,44 +33,101 @@ function getSeverity(key) {
 }
 
 const SEV_CONFIG = {
-  critical: { label: 'Critical', color: '#ff4d4d', bg: 'rgba(255,77,77,0.15)' },
-  high:     { label: 'High',     color: '#ff9900', bg: 'rgba(255,153,0,0.15)' },
-  medium:   { label: 'Medium',   color: '#f5d000', bg: 'rgba(245,208,0,0.15)' },
-  low:      { label: 'Low',      color: '#2ea3ff', bg: 'rgba(46,163,255,0.15)' },
+  critical: { label: 'Critical', color: 'var(--sev-critical)', bg: 'var(--sev-critical-bg)', bd: 'var(--sev-critical-bd)' },
+  high:     { label: 'High',     color: 'var(--sev-high)',     bg: 'var(--sev-high-bg)',     bd: 'var(--sev-high-bd)' },
+  medium:   { label: 'Medium',   color: 'var(--sev-medium)',   bg: 'var(--sev-medium-bg)',   bd: 'var(--sev-medium-bd)' },
+  low:      { label: 'Low',      color: 'var(--sev-low)',      bg: 'var(--sev-low-bg)',      bd: 'var(--sev-low-bd)' },
+};
+
+// ─── LLM Phase config ─────────────────────────────────────────────────────────
+const PHASE_INFO = {
+  loading_model: { icon: '⚙️', label: 'โหลด Model',          color: 'var(--ink-lt)' },
+  generating:    { icon: '🧠', label: 'LLM กำลังวิเคราะห์',  color: 'var(--amber)' },
+  parsing:       { icon: '🔧', label: 'แปลงผลลัพธ์',          color: 'var(--sev-medium)' },
+  done:          { icon: '✅', label: 'เสร็จสิ้น',             color: 'var(--green)' },
+  error:         { icon: '❌', label: 'เกิดข้อผิดพลาด',        color: 'var(--red)' },
 };
 
 // ─── Layout ───────────────────────────────────────────────────────────────────
 function Layout({ children, navigate }) {
   return (
-    <div className="sumPage">
-      <header className="topBar">
-        <div className="brand">Scanner</div>
-        <div className="topBarRight">
-          <div className="bellWrapper">
-            <span className="bellIcon">🔔</span>
-            <span className="notificationDot" />
+    <div className="root">
+      <aside className="sidebar">
+        <div className="sideTop">
+          <div className="logo">
+            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
+              <circle cx="11" cy="11" r="10" stroke="#c8813a" strokeWidth="1.5" />
+              <circle cx="11" cy="11" r="5"  stroke="#c8813a" strokeWidth="1.5" />
+              <circle cx="11" cy="11" r="1.5" fill="#c8813a" />
+            </svg>
+            <span className="logoText">SecureScan</span>
           </div>
-          <div className="profileCircle">👤</div>
+          <nav className="sideNav">
+            <button className="sideLink" onClick={() => navigate('/home')}>
+              <span className="sideLinkDot" />Home
+            </button>
+            <button className="sideLink" onClick={() => navigate('/history')}>
+              <span className="sideLinkDot" />History
+            </button>
+            <button className="sideLink" onClick={() => navigate('/guide')}>
+              <span className="sideLinkDot" />Guide
+            </button>
+          </nav>
         </div>
-      </header>
-      <div className="homeLayout">
-        <aside className="sideBar">
-          <div className="menuGroup">
-            <button className="menuItem" onClick={() => navigate('/home')}>Home</button>
-            <button className="menuItem" onClick={() => navigate('/history')}>History</button>
-            <button className="menuItem" onClick={() => navigate('/guide')}>Guide</button>
-          </div>
-          <button className="logoutButton" onClick={() => navigate('/')}>
-            <span className="logoutIcon">↪</span><span>Log Out</span>
-          </button>
-        </aside>
-        <main className="sumMain">{children}</main>
-      </div>
+        <button className="logoutBtn" onClick={() => navigate('/')}>
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M5 2H2v10h3M9 10l3-3-3-3M12 7H5" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+          Log out
+        </button>
+      </aside>
+      <main className="main">{children}</main>
     </div>
   );
 }
 
-// ─── Typewriter text ──────────────────────────────────────────────────────────
+// ─── Topbar ───────────────────────────────────────────────────────────────────
+function Topbar() {
+  return (
+    <header className="topbar">
+      <p className="topbarDate">
+        {new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+      </p>
+      <div className="topbarActions">
+        <button className="notifBtn">
+          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <path d="M8 1a5 5 0 0 1 5 5v3l1 2H2l1-2V6a5 5 0 0 1 5-5zM6.5 13a1.5 1.5 0 0 0 3 0" strokeLinecap="round" />
+          </svg>
+          <span className="notifDot" />
+        </button>
+        <div className="avatar">จ</div>
+      </div>
+    </header>
+  );
+}
+
+// ─── Score Ring ───────────────────────────────────────────────────────────────
+function ScoreRing({ score }) {
+  const color = score >= 70 ? 'var(--green)' : score >= 40 ? 'var(--amber)' : 'var(--red)';
+  const circumference = 2 * Math.PI * 42;
+  return (
+    <div className="scoreRingWrap">
+      <svg viewBox="0 0 100 100" className="scoreRingSvg">
+        <circle cx="50" cy="50" r="42" className="scoreTrack" />
+        <circle
+          cx="50" cy="50" r="42"
+          className="scoreArc"
+          strokeDasharray={`${(score / 100) * circumference} ${circumference}`}
+          transform="rotate(-90 50 50)"
+          style={{ stroke: color }}
+        />
+      </svg>
+      <div className="scoreRingText" style={{ color }}>{score}%</div>
+    </div>
+  );
+}
+
+// ─── Typewriter ───────────────────────────────────────────────────────────────
 function TypewriterText({ text, speed = 12 }) {
   const [displayed, setDisplayed] = useState('');
   const idx = useRef(0);
@@ -90,80 +147,41 @@ function TypewriterText({ text, speed = 12 }) {
   return <span>{displayed}<span className="cursor">|</span></span>;
 }
 
-// ─── Score ring ───────────────────────────────────────────────────────────────
-function ScoreRing({ score }) {
-  const color = score >= 70 ? '#20d320' : score >= 40 ? '#f5d000' : '#ff4d4d';
-  return (
-    <div className="scoreRingWrap">
-      <svg viewBox="0 0 100 100" className="scoreRingSvg">
-        <circle cx="50" cy="50" r="42" className="scoreTrack" />
-        <circle cx="50" cy="50" r="42" className="scoreArc"
-          strokeDasharray={`${score * 2.638} 263.8`}
-          transform="rotate(-90 50 50)"
-          style={{ stroke: color }}
-        />
-      </svg>
-      <div className="scoreRingText" style={{ color }}>{score}%</div>
-    </div>
-  );
-}
-
-// ─── LLM Progress Indicator (แสดงระหว่าง LLM กำลังคิด) ──────────────────────
-const PHASE_INFO = {
-  loading_model: { icon: '⚙️',  label: 'โหลด Model',      color: '#888' },
-  generating:    { icon: '🧠',  label: 'LLM กำลังวิเคราะห์', color: '#2ea3ff' },
-  parsing:       { icon: '🔧',  label: 'แปลงผลลัพธ์',      color: '#f5d000' },
-  done:          { icon: '✅',  label: 'เสร็จสิ้น',         color: '#20d320' },
-  error:         { icon: '❌',  label: 'เกิดข้อผิดพลาด',    color: '#ff4d4d' },
-};
-
+// ─── LLM Progress Bar ─────────────────────────────────────────────────────────
 function LlmProgressBar({ phase, tokenCount, tokensPerSec, elapsed, message }) {
   const info = PHASE_INFO[phase] || PHASE_INFO.generating;
 
-  // Progress bar % ประมาณจาก token count (target ~600 tokens)
-  const barPct = phase === 'done'
-    ? 100
-    : phase === 'parsing'
-    ? 95
-    : phase === 'loading_model'
-    ? 5
-    : Math.min(90, Math.round((tokenCount / 600) * 85) + 10);
+  const barPct = phase === 'done'         ? 100
+               : phase === 'parsing'      ? 95
+               : phase === 'loading_model'? 5
+               : Math.min(90, Math.round((tokenCount / 600) * 85) + 10);
 
   return (
     <div className="llmProgress">
-      {/* Phase badge */}
       <div className="llmPhaseRow">
         <span className="llmPhaseIcon">{info.icon}</span>
         <span className="llmPhaseLabel" style={{ color: info.color }}>{info.label}</span>
-        {phase === 'generating' && (
-          <span className="llmPulse" />
-        )}
+        {phase === 'generating' && <span className="llmPulse" />}
       </div>
 
-      {/* Progress bar */}
       <div className="llmBar">
         <div
           className="llmBarFill"
-          style={{
-            width: `${barPct}%`,
-            background: info.color,
-            transition: 'width 0.4s ease',
-          }}
+          style={{ width: `${barPct}%`, background: info.color }}
         />
       </div>
 
-      {/* Stats row */}
       <div className="llmStatsRow">
         {phase === 'generating' && (
           <>
             <span className="llmStat">
               <span className="llmStatLabel">เวลา</span>
-              <span className="llmStatVal" style={{ color: '#2ea3ff' }}>{elapsed}s</span>
+              <span className="llmStatVal" style={{ color: 'var(--amber)' }}>{elapsed}s</span>
             </span>
             {tokensPerSec !== '~' && tokensPerSec > 0 && (
               <span className="llmStat">
                 <span className="llmStatLabel">tok/s</span>
-                <span className="llmStatVal" style={{ color: '#f5d000' }}>{tokensPerSec}</span>
+                <span className="llmStatVal" style={{ color: 'var(--sev-medium)' }}>{tokensPerSec}</span>
               </span>
             )}
             {tokenCount > 0 && tokensPerSec !== '~' && (
@@ -177,12 +195,10 @@ function LlmProgressBar({ phase, tokenCount, tokensPerSec, elapsed, message }) {
         {message && <span className="llmMessage">{message}</span>}
       </div>
 
-      {/* Dev log — terminal-style, เห็นชัดสำหรับ dev */}
       <div className="llmDevLog">
         {phase === 'generating' && elapsed > 0
           ? `› LLM running... ${elapsed}s elapsed${tokensPerSec !== '~' ? ` | ${tokenCount} tokens @ ${tokensPerSec} tok/s` : ' | computing...'}`
-          : `› ${message || phase}`
-        }
+          : `› ${message || phase}`}
       </div>
     </div>
   );
@@ -217,8 +233,8 @@ export default function Summary() {
         const name     = key.replace(/^\[[^\]]+\]\s*/, '');
         const severity = getSeverity(key);
         const raw      = String(value);
-        const tgt      = (raw.match(/Target:\s*([^,)]+?)(?:\s*,|\s*\)|$)/) || [])[1]?.trim() || '';
-        const act      = (raw.match(/Actual:\s*(.+?)(?:\s*\)\s*$|\s*$)/) || [])[1]?.trim().replace(/\)\s*$/, '') || '';
+        const tgt = (raw.match(/Target:\s*([^,)]+?)(?:\s*,|\s*\)|$)/) || [])[1]?.trim() || '';
+        const act = (raw.match(/Actual:\s*(.+?)(?:\s*\)\s*$|\s*$)/) || [])[1]?.trim().replace(/\)\s*$/, '') || '';
         return { key, name, section, severity, target: tgt, actual: act };
       })
       .sort((a, b) => {
@@ -238,7 +254,7 @@ export default function Summary() {
   [scanData]);
   const totalCount = Object.keys(scanData?.details || {}).length;
 
-  // ─── SSE streaming call ───────────────────────────────────────────────────
+  // ─── SSE streaming ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!scanData) return;
 
@@ -249,27 +265,23 @@ export default function Summary() {
     setPhaseMsg('กำลังเชื่อมต่อ...');
 
     const top30 = failItems.slice(0, 30).map(i => ({
-      name:     i.name,
-      section:  i.section,
-      severity: i.severity,
-      target:   i.target,
-      actual:   i.actual,
+      name: i.name, section: i.section, severity: i.severity,
+      target: i.target, actual: i.actual,
     }));
 
     const body = JSON.stringify({
-      score:       scanData.score,
-      target_name: scanData.targetName || scanData.hostname,
-      version:     scanData.version,
-      pass_count:  passCount,
-      total_count: totalCount,
-      fail_items:  top30,
+      score:          scanData.score,
+      target_name:    scanData.targetName || scanData.hostname,
+      version:        scanData.version,
+      pass_count:     passCount,
+      total_count:    totalCount,
+      fail_items:     top30,
       critical_count: counts.critical,
       high_count:     counts.high,
       medium_count:   counts.medium,
       low_count:      counts.low,
     });
 
-    // SSE ผ่าน fetch (ต้องใช้ fetch ไม่ใช่ EventSource เพราะต้องส่ง POST + body)
     let aborted = false;
     const controller = new AbortController();
 
@@ -301,53 +313,38 @@ export default function Summary() {
           if (done || aborted) break;
 
           buffer += decoder.decode(value, { stream: true });
-
-          // Parse SSE messages จาก buffer
           const messages = buffer.split('\n\n');
-          buffer = messages.pop() || ''; // เก็บ incomplete message ไว้
+          buffer = messages.pop() || '';
 
           for (const msg of messages) {
             if (!msg.trim()) continue;
-
-            // หา event type และ data
             const eventMatch = msg.match(/^event:\s*(.+)$/m);
             const dataMatch  = msg.match(/^data:\s*(.+)$/m);
             if (!eventMatch || !dataMatch) continue;
 
             const event = eventMatch[1].trim();
-            let   data;
+            let data;
             try { data = JSON.parse(dataMatch[1]); } catch { continue; }
 
-            // ─── Handle events ───────────────────────────────────────────
             if (event === 'phase') {
               setLlmPhase(data.phase);
               setPhaseMsg(data.message || '');
-              if (data.phase === 'done') {
-                setLoading(false);
-              }
-            }
-
-            else if (event === 'token') {
+              if (data.phase === 'done') setLoading(false);
+            } else if (event === 'token') {
               setTokenCount(data.count);
               setTokensPerSec(data.tokens_per_sec);
               setElapsed(data.elapsed);
-              // เมื่อได้ token event แสดงว่า LLM ยัง alive — อัปเดต phase message
               if (data.tokens_per_sec === '~') {
                 setPhaseMsg(`LLM กำลังคิด... ผ่านมาแล้ว ${data.elapsed}s`);
               }
-            }
-
-            else if (event === 'result') {
+            } else if (event === 'result') {
               setLlmData(data);
-            }
-
-            else if (event === 'error') {
+            } else if (event === 'error') {
               setLlmError(data.detail || 'Unknown error');
               setLoading(false);
             }
           }
         }
-
       } catch (err) {
         if (!aborted) {
           setLlmError(String(err));
@@ -356,10 +353,7 @@ export default function Summary() {
       }
     })();
 
-    return () => {
-      aborted = true;
-      controller.abort();
-    };
+    return () => { aborted = true; controller.abort(); };
   }, [scanData]);
 
   // ─── Export ───────────────────────────────────────────────────────────────
@@ -398,10 +392,11 @@ export default function Summary() {
   if (!scanData) {
     return (
       <Layout navigate={navigate}>
+        <Topbar />
         <div className="sumEmpty">
           <div className="sumEmptyIcon">📋</div>
           <div className="sumEmptyText">ไม่พบข้อมูลการสแกน</div>
-          <button className="sumBackBtn" onClick={() => navigate('/home')}>กลับหน้าหลัก</button>
+          <button className="sumEmptyBtn" onClick={() => navigate('/home')}>กลับหน้าหลัก</button>
         </div>
       </Layout>
     );
@@ -409,6 +404,9 @@ export default function Summary() {
 
   return (
     <Layout navigate={navigate}>
+      <Topbar />
+
+      {/* ── Header ── */}
       <div className="sumHeader">
         <h1 className="sumTitle">Report</h1>
         <button
@@ -420,7 +418,7 @@ export default function Summary() {
         </button>
       </div>
 
-      {/* ── Score bar ── */}
+      {/* ── Score Bar ── */}
       <div className="sumScoreBar">
         <ScoreRing score={scanData.score} />
         <div className="sumScoreMeta">
@@ -432,8 +430,11 @@ export default function Summary() {
           </div>
           <div className="sumSevRow">
             {Object.entries(SEV_CONFIG).map(([sev, cfg]) => (
-              <span key={sev} className="sevPill"
-                style={{ color: cfg.color, border: `1px solid ${cfg.color}`, background: cfg.bg }}>
+              <span
+                key={sev}
+                className="sevPill"
+                style={{ color: cfg.color, background: cfg.bg, border: `1px solid ${cfg.bd}` }}
+              >
                 {cfg.label}: {counts[sev]}
               </span>
             ))}
@@ -441,10 +442,10 @@ export default function Summary() {
         </div>
       </div>
 
-      {/* ── Main card ── */}
+      {/* ── Main Card ── */}
       <div className="sumCard">
 
-        {/* ── Progress indicator — แสดงตลอดระหว่าง loading ── */}
+        {/* LLM Progress */}
         {loading && (
           <div className="sumSection">
             <LlmProgressBar
@@ -457,32 +458,29 @@ export default function Summary() {
           </div>
         )}
 
-        {/* ── Error ── */}
+        {/* Error */}
         {llmError && !loading && (
           <div className="sumSection">
             <div className="llmError">⚠️ {llmError}</div>
           </div>
         )}
 
-        {/* ── SECTION 1: Summary overview ── */}
+        {/* Section 1 — Summary */}
         <section className="sumSection">
           <div className="sumSectionHeader">
             <span className="sumSectionIcon">🛡️</span>
             <h2 className="sumSectionTitle">Summary</h2>
           </div>
           <div className="sumTextBox">
-            {llmData?.overview && (
-              <TypewriterText text={llmData.overview} speed={10} />
-            )}
-            {loading && !llmData && (
-              <span className="sumPlaceholder">รอ LLM วิเคราะห์...</span>
-            )}
+            {llmData?.overview
+              ? <TypewriterText text={llmData.overview} speed={10} />
+              : <span className="sumPlaceholder">รอ LLM วิเคราะห์...</span>}
           </div>
         </section>
 
         <div className="sumDivider" />
 
-        {/* ── SECTION 2: Detected Summary ── */}
+        {/* Section 2 — Detected */}
         <section className="sumSection">
           <div className="sumSectionHeader">
             <span className="sumSectionIcon">🔍</span>
@@ -494,10 +492,15 @@ export default function Summary() {
               {llmData.detected.map((item, i) => {
                 const sev = SEV_CONFIG[item.severity] || SEV_CONFIG.low;
                 return (
-                  <div key={i} className="detectedCard"
-                    style={{ borderLeft: `3px solid ${sev.color}` }}>
+                  <div
+                    key={i}
+                    className="detectedCard"
+                    style={{ borderLeft: `3px solid ${sev.color}` }}
+                  >
                     <div className="dcTop">
-                      <span className="dcSev" style={{ color: sev.color, background: sev.bg }}>{sev.label}</span>
+                      <span className="dcSev" style={{ color: sev.color, background: sev.bg, border: `1px solid ${sev.bd}` }}>
+                        {sev.label}
+                      </span>
                       <span className="dcSection">[{item.section}]</span>
                     </div>
                     <div className="dcName">{item.name}</div>
@@ -511,24 +514,20 @@ export default function Summary() {
               })}
             </div>
           )}
-
         </section>
 
         <div className="sumDivider" />
 
-        {/* ── SECTION 3: Recommendation ── */}
+        {/* Section 3 — Recommendation */}
         <section className="sumSection">
           <div className="sumSectionHeader">
             <span className="sumSectionIcon">💡</span>
             <h2 className="sumSectionTitle">Recommendation</h2>
           </div>
           <div className="sumTextBox">
-            {llmData?.recommendation && (
-              <TypewriterText text={llmData.recommendation} speed={8} />
-            )}
-            {loading && !llmData && (
-              <span className="sumPlaceholder">รอผลการวิเคราะห์...</span>
-            )}
+            {llmData?.recommendation
+              ? <TypewriterText text={llmData.recommendation} speed={8} />
+              : <span className="sumPlaceholder">รอผลการวิเคราะห์...</span>}
           </div>
         </section>
 
