@@ -259,6 +259,7 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
                 targetName: r.target_name || scanParams.target_name,
                 hostname:   scanParams.host,
                 version:    r.version || scanParams.version,
+                scan_id:    r.scan_id,   // ← เพิ่มบรรทัดนี้
               };
               sessionStorage.setItem(SESSION_KEY, JSON.stringify(result));
               setTimeout(() => onScanComplete(result), 600);

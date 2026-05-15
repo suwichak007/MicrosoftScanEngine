@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
+import ExportButton from './ExportButton';
 import './Summary.css';
 
 // ─── Severity helpers ─────────────────────────────────────────────────────────
@@ -357,36 +358,6 @@ export default function Summary() {
   }, [scanData]);
 
   // ─── Export ───────────────────────────────────────────────────────────────
-  const handleExport = () => {
-    if (!llmData) return;
-    const lines = [
-      `Security Summary Report`,
-      `Target : ${scanData?.targetName || scanData?.hostname}`,
-      `Version: ${scanData?.version}`,
-      `Score  : ${scanData?.score}%`,
-      `Date   : ${new Date().toLocaleString()}`,
-      '',
-      '=== OVERVIEW ===',
-      llmData.overview,
-      '',
-      '=== DETECTED FINDINGS ===',
-      ...(llmData.detected || []).map(d =>
-        `[${d.severity?.toUpperCase()}] ${d.name} | Current: ${d.actual || 'N/A'} | Required: ${d.target || 'N/A'}`
-      ),
-      '',
-      '=== RECOMMENDATION ===',
-      llmData.recommendation,
-    ];
-    const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href = url;
-    a.download = `security-summary-${Date.now()}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
-    setExported(true);
-    setTimeout(() => setExported(false), 2000);
-  };
 
   // ─── Guard ────────────────────────────────────────────────────────────────
   if (!scanData) {
@@ -409,13 +380,7 @@ export default function Summary() {
       {/* ── Header ── */}
       <div className="sumHeader">
         <h1 className="sumTitle">Report</h1>
-        <button
-          className={`exportBtn ${exported ? 'exported' : ''}`}
-          onClick={handleExport}
-          disabled={!llmData}
-        >
-          {exported ? '✓ Exported' : 'Export'}
-        </button>
+        <ExportButton scanId={scanData?.scan_id} />
       </div>
 
       {/* ── Score Bar ── */}
