@@ -7,6 +7,7 @@ import Register from './pages/Register';
 import Result from './pages/Result';
 import History from './pages/History';
 import Summary from './pages/Summary';
+import AdminUsers from './pages/Adminusers';
 
 function App() {
   return (
@@ -23,6 +24,7 @@ function App() {
         <Route path="/Result" element={<Result />} />
         <Route path="/History" element={<History />} />
         <Route path="/Summary" element={<Summary />} />
+        <Route path="/admin/users" element={<AdminUsers />} />
         
         
         {/* ถ้า User พิมพ์ URL มั่วๆ ให้ดีดกลับไปหน้า Login */}

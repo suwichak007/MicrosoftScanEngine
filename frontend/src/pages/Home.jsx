@@ -162,6 +162,12 @@ function Home() {
               <span className="sideLinkDot" />
               Guide
             </button>
+            {localStorage.getItem('role') === 'admin' && (
+              <button className="sideLink" onClick={() => navigate('/admin/users')}>
+                <span className="sideLinkDot" />
+                Users
+              </button>
+            )}
           </nav>
         </div>
 
