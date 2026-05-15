@@ -77,17 +77,17 @@ def job_result(
 
         db: Session = SessionLocal()
         try:
-            db.add(ScanResult(
+            scan_record = ScanResult(
                 target_name = agent_id,
                 score       = body.score,
                 details     = body.details,
                 scan_date   = datetime.datetime.now(),
                 hostname    = agent_id,
-            ))
+            )
             db.add(scan_record)
             db.commit()
-            db.refresh(scan_record)          # ← ดึง id ที่ DB generate
-            job.result["scan_id"] = scan_record.id  # ← ใส่กลับเข้า job
+            db.refresh(scan_record)
+            job.result["scan_id"] = scan_record.id
         finally:
             db.close()
 

@@ -204,6 +204,7 @@ async def _run_scan_job(
                 db.close()
 
         scan_id = await run_in_threadpool(_save)
+        print(f"DEBUG scan_id = {scan_id}")
 
         job.status   = "done"
         job.progress = 100

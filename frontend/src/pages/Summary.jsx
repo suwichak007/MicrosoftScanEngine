@@ -211,7 +211,11 @@ export default function Summary() {
   const location = useLocation();
   const apiHost  = window.location.hostname;
 
-  const scanData = location.state?.scanData || null;
+  const scanData = location.state?.scanData
+    || (() => {
+        const s = sessionStorage.getItem('scanResult');
+        return s ? JSON.parse(s) : null;
+      })();
 
   const [llmData,      setLlmData]      = useState(null);
   const [llmPhase,     setLlmPhase]     = useState('loading_model');

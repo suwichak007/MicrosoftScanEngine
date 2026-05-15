@@ -607,7 +607,7 @@ export default function Result() {
         <div className="resultFooter">
           <button
             className="statButton"
-            onClick={() => navigate('/Summary', { state: { scanData } })}
+            onClick={() => navigate('/Summary', { state: { scanData: { ...scanData, scan_id: scanData?.scan_id } } })}
           >
             Summary
           </button>

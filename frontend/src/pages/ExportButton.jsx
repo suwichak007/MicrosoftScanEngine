@@ -17,7 +17,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 
-const API_BASE = `http://${window.location.hostname}:8001`;
+const API_BASE = `http://${window.location.hostname}:8000`;
 
 // ─── Inline styles (ไม่ต้องพึ่ง CSS ไฟล์แยก) ────────────────────────────────
 const S = {
