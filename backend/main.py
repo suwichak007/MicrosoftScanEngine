@@ -35,6 +35,7 @@ from app.core.installer_routes import router as installer_router
 from app.core.agent_routes import router as agent_router, enqueue
 from app.models.agent import AgentToken
 from app.core.job_store import _jobs
+from app.core.export_routes import router as export_router
 
 Base.metadata.create_all(bind=engine)
 
@@ -42,6 +43,7 @@ app = FastAPI()
 
 app.include_router(installer_router)
 app.include_router(agent_router)
+app.include_router(export_router)
 
 app.add_middleware(
     CORSMiddleware,
