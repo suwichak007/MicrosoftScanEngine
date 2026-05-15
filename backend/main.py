@@ -471,6 +471,24 @@ async def get_scan_detail(
         "details":       scan.details,
     }
 
+@app.delete("/api/scan/history/{scan_id}")
+async def delete_scan(
+    scan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = db.query(ScanResult).filter(ScanResult.id == scan_id)
+    if current_user.role != "admin":
+        query = query.filter(ScanResult.user_id == current_user.id)
+
+    scan = query.first()
+    if not scan:
+        raise HTTPException(status_code=404, detail="ไม่พบผลการสแกนหรือไม่มีสิทธิ์ลบ")
+
+    db.delete(scan)
+    db.commit()
+    return {"ok": True}
+
 @app.get("/api/scan/versions")
 async def get_supported_versions():
     return [
@@ -522,3 +540,4 @@ async def list_agents(
         }
         for a in agents
     ]
+
