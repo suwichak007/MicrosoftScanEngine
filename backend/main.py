@@ -256,7 +256,29 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         "role":         user.role,
     }
 
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password:     str
 
+@app.post("/api/user/change-password")
+def change_password(
+    body:         ChangePasswordRequest,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+):
+    # เช็ค password เดิมถูกไหม
+    if not verify_password(body.current_password, current_user.hashed_password):
+        raise HTTPException(status_code=400, detail="รหัสผ่านเดิมไม่ถูกต้อง")
+    
+    # เช็ค password ใหม่ขั้นต่ำ
+    if len(body.new_password) < 6:
+        raise HTTPException(status_code=400, detail="รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร")
+    
+    # อัปเดต
+    current_user.hashed_password = get_password_hash(body.new_password)
+    db.add(current_user) 
+    db.commit()
+    return {"ok": True, "message": "เปลี่ยนรหัสผ่านสำเร็จ"}
 # ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
