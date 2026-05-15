@@ -84,7 +84,10 @@ def job_result(
                 scan_date   = datetime.datetime.now(),
                 hostname    = agent_id,
             ))
+            db.add(scan_record)
             db.commit()
+            db.refresh(scan_record)          # ← ดึง id ที่ DB generate
+            job.result["scan_id"] = scan_record.id  # ← ใส่กลับเข้า job
         finally:
             db.close()
 
