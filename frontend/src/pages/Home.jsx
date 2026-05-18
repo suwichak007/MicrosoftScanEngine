@@ -35,7 +35,7 @@ function Home() {
         const data = await res.json();
         if (res.ok && Array.isArray(data) && data.length > 0) {
           setBaselines(data);
-          setVersion(data[0].version);
+          setVersion(data[0].version_id); 
         } else {
           setBaselineError(data?.detail || 'ไม่พบไฟล์ baseline ในระบบ');
         }
@@ -230,7 +230,7 @@ function Home() {
                   onChange={(e) => { setVersion(e.target.value); setConnStatus('idle'); setConnMessage(''); }}
                 >
                   {baselines.map((b) => (
-                    <option key={b.filename} value={b.version}>{b.version}</option>
+                    <option key={b.filename} value={b.version_id}>{b.display_name}</option>
                   ))}
                 </select>
                 <svg className="selArrow" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
