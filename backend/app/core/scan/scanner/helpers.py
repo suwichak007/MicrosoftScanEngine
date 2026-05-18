@@ -68,5 +68,5 @@ def resolve_target_col(sheet_name, columns):
             if candidate in columns:
                 return candidate
         return None
-    return "Windows 11" if "Windows 11" in columns else None
+    return "Windows 11" if "Windows 11" in columns else None 
 
