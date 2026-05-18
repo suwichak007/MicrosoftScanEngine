@@ -1,3 +1,13 @@
+"""
+main.py  (updated — config-driven multi-OS support)
+
+เปลี่ยนหลักๆ:
+  - BASELINE_FILE_MAP ถูกแทนที่ด้วย baseline_config.BASELINE_CONFIGS
+  - resolve_baseline_path() ใช้ get_config() แทน
+  - _run_scan_job() ส่ง baseline_config ให้ SecurityScanner
+  - /api/scan/versions คืนข้อมูลจาก list_versions()
+"""
+
 import os
 import uuid
 import datetime
@@ -26,6 +36,11 @@ from app.schemas.user import UserCreate, UserResponse
 from app.schemas.scan import ScanResultResponse
 from app.core.security import get_password_hash, verify_password, create_access_token
 from app.core.scan.scanner.security_scanner import SecurityScanner as SecurityBaselineScanner
+from app.core.scan.scanner.baseline_config import (
+    get_config,
+    list_versions,
+    load_configs,
+)
 from app.core.scan.scanner.executors.remote_executor import RemoteExecutor
 from fastapi.concurrency import run_in_threadpool
 
@@ -54,42 +69,44 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 app.include_router(summary_router)
 
+
 # ---------------------------------------------------------------------------
-# Version → Baseline file mapping
+# Constants
 # ---------------------------------------------------------------------------
 
-DATA_PATH = r"C:\MicrosoftScanEngine\backend\data"
-
-BASELINE_FILE_MAP = {
-    "Windows 11 v24H2": "MS Security Baseline Windows 11 v24H2.xlsx",
-    "Windows 11 v25H2": "MS Security Baseline Windows 11 v25H2.xlsx",
-}
-
+DATA_PATH            = r"C:\MicrosoftScanEngine\backend\data"
 SCAN_TIMEOUT_SECONDS = 120
 
+@app.on_event("startup")
+async def startup_event():
+    """โหลด baseline configs จาก data directory ตอนเริ่ม"""
+    load_configs(DATA_PATH)
+    print(f"[startup] loaded baselines: {list_versions()}")
 
-def resolve_baseline_path(version: str) -> str:
-    filename = BASELINE_FILE_MAP.get(version)
-    if not filename:
-        raise ValueError(
-            f"ไม่รองรับ version '{version}' "
-            f"รองรับเฉพาะ: {list(BASELINE_FILE_MAP.keys())}"
-        )
-    path = os.path.join(DATA_PATH, filename)
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+def resolve_baseline_path(version_id: str) -> tuple[str, object]:
+    try:
+        cfg = get_config(version_id, data_path=DATA_PATH)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+ 
+    path = os.path.join(DATA_PATH, cfg.filename)
     if not os.path.exists(path):
-        raise FileNotFoundError(f"ไม่พบไฟล์ baseline: {path}")
-    return path
+        raise HTTPException(
+            status_code=400,
+            detail=f"ไม่พบไฟล์ baseline: {path}"
+        )
+    return path, cfg
 
 
 # ---------------------------------------------------------------------------
 # In-memory Job Store
 # ---------------------------------------------------------------------------
-class AgentScanRequest(BaseModel):
-    host:    str = Field(..., example="192.168.1.50")
-    version: str = Field("Windows 11 v24H2")
 
 class ScanJob:
     def __init__(self):
@@ -100,8 +117,8 @@ class ScanJob:
         self.error    = ""
 
 def _new_job() -> tuple[str, ScanJob]:
-    job_id = str(uuid.uuid4())
-    job    = ScanJob()
+    job_id        = str(uuid.uuid4())
+    job           = ScanJob()
     _jobs[job_id] = job
     return job_id, job
 
@@ -122,12 +139,20 @@ class RemoteScanRequest(BaseModel):
 class LocalScanRequest(BaseModel):
     version: str = Field("Windows 11 v24H2")
 
+class AgentScanRequest(BaseModel):
+    host:    str = Field(..., example="192.168.1.50")
+    version: str = Field("Windows 11 v24H2")
+
 class ConnectionTestRequest(BaseModel):
     host:          str
     username:      str
     password:      str
     use_ssl:       bool = False
     skip_ca_check: bool = True
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password:     str
 
 
 # ---------------------------------------------------------------------------
@@ -147,12 +172,13 @@ def get_db():
 # ---------------------------------------------------------------------------
 
 async def _run_scan_job(
-    job:           ScanJob,
-    baseline_path: str,
-    version:       str,
-    target_label:  str,
+    job:            ScanJob,
+    baseline_path:  str,
+    baseline_cfg,                   # BaselineConfig object
+    version:        str,
+    target_label:   str,
     executor=None,
-    user_id: int = None,
+    user_id:        int = None,
 ):
     job.status   = "running"
     job.progress = 5
@@ -162,6 +188,7 @@ async def _run_scan_job(
         scanner = SecurityBaselineScanner(
             data_path=DATA_PATH,
             executor=executor,
+            baseline_config=baseline_cfg,   # ← ส่ง config เข้า scanner
         )
         scanner.target_file = baseline_path
 
@@ -174,8 +201,8 @@ async def _run_scan_job(
                 timeout=SCAN_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
-            job.status  = "error"
-            job.error   = f"Scan timeout หลังจาก {SCAN_TIMEOUT_SECONDS}s — ตรวจสอบการเชื่อมต่อ WinRM"
+            job.status = "error"
+            job.error  = f"Scan timeout หลังจาก {SCAN_TIMEOUT_SECONDS}s — ตรวจสอบการเชื่อมต่อ WinRM"
             return
 
         if "Error" in details:
@@ -206,19 +233,18 @@ async def _run_scan_job(
                 db.close()
 
         scan_id = await run_in_threadpool(_save)
-        print(f"DEBUG scan_id = {scan_id}")
 
         job.status   = "done"
         job.progress = 100
         job.message  = "เสร็จสิ้น"
         job.result   = {
-            "scan_id":      scan_id,
-            "target_name":  target_label,
-            "version":      version,
+            "scan_id":       scan_id,
+            "target_name":   target_label,
+            "version":       version,
             "baseline_file": os.path.basename(baseline_path),
-            "score":        score,
+            "score":         score,
             "items_scanned": len(details),
-            "details":      details,
+            "details":       details,
         }
 
     except Exception as e:
@@ -256,9 +282,6 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         "role":         user.role,
     }
 
-class ChangePasswordRequest(BaseModel):
-    current_password: str
-    new_password:     str
 
 @app.post("/api/user/change-password")
 def change_password(
@@ -266,19 +289,16 @@ def change_password(
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_user),
 ):
-    # เช็ค password เดิมถูกไหม
     if not verify_password(body.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="รหัสผ่านเดิมไม่ถูกต้อง")
-    
-    # เช็ค password ใหม่ขั้นต่ำ
     if len(body.new_password) < 6:
         raise HTTPException(status_code=400, detail="รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร")
-    
-    # อัปเดต
     current_user.hashed_password = get_password_hash(body.new_password)
-    db.add(current_user) 
+    db.add(current_user)
     db.commit()
     return {"ok": True, "message": "เปลี่ยนรหัสผ่านสำเร็จ"}
+
+
 # ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
@@ -290,10 +310,10 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
     if not latest:
         return {"total_scans": 0, "latest_score": 0, "target": "No Data", "details": {}}
     return {
-        "total_scans":   count,
-        "latest_score":  latest.score,
-        "target":        latest.target_name,
-        "details":       latest.details,
+        "total_scans":  count,
+        "latest_score": latest.score,
+        "target":       latest.target_name,
+        "details":      latest.details,
     }
 
 
@@ -303,25 +323,21 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
 
 @app.post("/api/scan/run")
 async def run_security_scan(
-    req:                LocalScanRequest,
-    background_tasks:   BackgroundTasks,
+    req:              LocalScanRequest,
+    background_tasks: BackgroundTasks,
 ):
-    try:
-        baseline_path = resolve_baseline_path(req.version)
-    except (ValueError, FileNotFoundError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-    job_id, job = _new_job()
+    baseline_path, baseline_cfg = resolve_baseline_path(req.version)
+    job_id, job  = _new_job()
     target_label = f"localhost ({req.version})"
 
     background_tasks.add_task(
         _run_scan_job,
         job=job,
         baseline_path=baseline_path,
+        baseline_cfg=baseline_cfg,
         version=req.version,
         target_label=target_label,
     )
-
     return {"job_id": job_id, "status": "pending"}
 
 
@@ -337,8 +353,7 @@ async def test_remote_connection(req: ConnectionTestRequest):
             use_ssl=req.use_ssl, skip_ca_check=req.skip_ca_check,
         )
         result = await asyncio.wait_for(
-            run_in_threadpool(executor.test_connection),
-            timeout=15,
+            run_in_threadpool(executor.test_connection), timeout=15,
         )
         return result
     except asyncio.TimeoutError:
@@ -353,10 +368,7 @@ async def run_remote_security_scan(
     background_tasks: BackgroundTasks,
     current_user:     User = Depends(get_current_user),
 ):
-    try:
-        baseline_path = resolve_baseline_path(req.version)
-    except (ValueError, FileNotFoundError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    baseline_path, baseline_cfg = resolve_baseline_path(req.version)
 
     executor = RemoteExecutor(
         host=req.host, username=req.username, password=req.password,
@@ -364,8 +376,7 @@ async def run_remote_security_scan(
     )
     try:
         conn_test = await asyncio.wait_for(
-            run_in_threadpool(executor.test_connection),
-            timeout=15,
+            run_in_threadpool(executor.test_connection), timeout=15,
         )
     except asyncio.TimeoutError:
         raise HTTPException(status_code=408, detail=f"ไม่สามารถเชื่อมต่อ {req.host}: timeout 15s")
@@ -380,19 +391,18 @@ async def run_remote_security_scan(
 
     hostname     = conn_test.get("hostname") or req.host
     target_label = req.target_name.strip() or f"{hostname} ({req.version})"
-
-    job_id, job = _new_job()
+    job_id, job  = _new_job()
 
     background_tasks.add_task(
         _run_scan_job,
         job=job,
         baseline_path=baseline_path,
+        baseline_cfg=baseline_cfg,
         version=req.version,
         target_label=target_label,
         executor=executor,
         user_id=current_user.id,
     )
-
     return {
         "job_id":      job_id,
         "status":      "pending",
@@ -418,21 +428,18 @@ async def get_scan_status(job_id: str):
         "progress": job.progress,
         "message":  job.message,
     }
-
     if job.status == "done":
         resp["result"] = job.result
         async def _cleanup():
             await asyncio.sleep(60)
             _jobs.pop(job_id, None)
         asyncio.create_task(_cleanup())
-
     elif job.status == "error":
         resp["error"] = job.error
         async def _cleanup_err():
             await asyncio.sleep(60)
             _jobs.pop(job_id, None)
         asyncio.create_task(_cleanup_err())
-
     return resp
 
 
@@ -442,15 +449,13 @@ async def get_scan_status(job_id: str):
 
 @app.get("/api/scan/history")
 async def get_scan_history(
-    limit: int = 20,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    limit:        int     = 20,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
 ):
     query = db.query(ScanResult)
-
     if current_user.role != "admin":
         query = query.filter(ScanResult.user_id == current_user.id)
-
     scans = query.order_by(ScanResult.scan_date.desc()).limit(limit).all()
     return [
         {
@@ -467,21 +472,19 @@ async def get_scan_history(
         for s in scans
     ]
 
+
 @app.get("/api/scan/history/{scan_id}")
 async def get_scan_detail(
-    scan_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    scan_id:      int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
 ):
     query = db.query(ScanResult).filter(ScanResult.id == scan_id)
-
     if current_user.role != "admin":
         query = query.filter(ScanResult.user_id == current_user.id)
-
     scan = query.first()
     if not scan:
         raise HTTPException(status_code=404, detail="ไม่พบผลการสแกนนี้หรือไม่มีสิทธิ์เข้าถึง")
-
     return {
         "id":            scan.id,
         "target_name":   scan.target_name,
@@ -493,64 +496,67 @@ async def get_scan_detail(
         "details":       scan.details,
     }
 
+
 @app.delete("/api/scan/history/{scan_id}")
 async def delete_scan(
-    scan_id: int,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    scan_id:      int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
 ):
     query = db.query(ScanResult).filter(ScanResult.id == scan_id)
     if current_user.role != "admin":
         query = query.filter(ScanResult.user_id == current_user.id)
-
     scan = query.first()
     if not scan:
         raise HTTPException(status_code=404, detail="ไม่พบผลการสแกนหรือไม่มีสิทธิ์ลบ")
-
     db.delete(scan)
     db.commit()
     return {"ok": True}
 
+
 @app.get("/api/scan/versions")
 async def get_supported_versions():
+    # force_reload=True ทำให้ detect ไฟล์ใหม่ที่เพิ่งวางได้เสมอ
+    load_configs(DATA_PATH, force_reload=True)
     return [
         {
-            "version":   version,
-            "filename":  filename,
-            "available": os.path.exists(os.path.join(DATA_PATH, filename)),
+            "version_id":   v["version_id"],
+            "display_name": v["display_name"],
+            "filename":     v["filename"],
+            "os_family":    v["os_family"],
+            "available":    os.path.exists(os.path.join(DATA_PATH, v["filename"])),
         }
-        for version, filename in BASELINE_FILE_MAP.items()
+        for v in list_versions(data_path=DATA_PATH)
     ]
+
+# ---------------------------------------------------------------------------
+# Agent Scan
+# ---------------------------------------------------------------------------
 
 @app.post("/api/scan/agent")
 async def run_agent_scan(
-    req:          AgentScanRequest,
+    req:              AgentScanRequest,
     background_tasks: BackgroundTasks,
-    current_user: User = Depends(get_current_user),
+    current_user:     User = Depends(get_current_user),
 ):
-    try:
-        baseline_path = resolve_baseline_path(req.version)
-    except (ValueError, FileNotFoundError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
+    baseline_path, baseline_cfg = resolve_baseline_path(req.version)
     agent_id    = f"agent-{req.host}"
     job_id, job = _new_job()
     job.status  = "running"
     job.message = "รอ agent รับงาน..."
-
     enqueue(agent_id, job_id, req.version, baseline_path)
-
     return {
-        "job_id":  job_id,
-        "status":  "pending",
-        "host":    req.host,
+        "job_id":   job_id,
+        "status":   "pending",
+        "host":     req.host,
         "agent_id": agent_id,
     }
 
+
 @app.get("/api/agents")
 async def list_agents(
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
 ):
     agents = db.query(AgentToken).order_by(AgentToken.last_seen.desc()).all()
     return [
@@ -562,4 +568,3 @@ async def list_agents(
         }
         for a in agents
     ]
-

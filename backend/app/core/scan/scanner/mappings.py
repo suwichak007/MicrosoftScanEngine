@@ -64,6 +64,16 @@ SPECIAL_VALUE_MAP = {
     "admin approval mode with enhanced privilege protection": "2",
     "no one (blank)": "",
     "block": "block",
+
+        # ── Windows Server 2025 (new) ────────────────────────────────────────
+    # LAN Manager auth level — wording ต่างจาก Win11 (comma แทน period, "Responses" แทน "Response")
+    "send ntlmv2 responses only, refuse lm and ntlm": "5",
+    # NTLMMinClientSec / NTLMMinServerSec — wording ต่างจาก Win11 ("128bit" ไม่มี hyphen)
+    "require ntlmv2 session security, require 128bit encryption": "537395200",
+    # RestrictSendingNTLMTraffic: 1 = Audit all
+    "audit all": "1",
+    # AuditReceivingNTLMTraffic: 2 = Enable auditing for all accounts
+    "enable auditing for all accounts": "2",
 }
 
 FIREWALL_PROFILE_MAP = {
