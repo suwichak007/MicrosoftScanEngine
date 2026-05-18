@@ -76,7 +76,10 @@ app.include_router(summary_router)
 # Constants
 # ---------------------------------------------------------------------------
 
-DATA_PATH            = r"C:\MicrosoftScanEngine\backend\data"
+DATA_PATH = os.environ.get(
+    "DATA_PATH",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+)
 SCAN_TIMEOUT_SECONDS = 120
 
 @app.on_event("startup")
