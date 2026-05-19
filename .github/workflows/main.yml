@@ -5,50 +5,16 @@ on:
     branches: [ main ]
 
 jobs:
-  build-agent:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install dependencies
-        run: |
-          cd agent
-          pip install pyinstaller requests pandas openpyxl pywin32
-
-      - name: Build exe
-        run: |
-          cd agent
-          pyinstaller agent.spec --clean --noconfirm
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: MicrosoftScanAgent
-          path: agent\dist\MicrosoftScanAgent.exe
-
   deploy:
     runs-on: self-hosted
-    needs: build-agent
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Download agent artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: MicrosoftScanAgent
-          path: agent\dist
 
       - name: Run Deploy Script
         env:
           WINRM_USER: ${{ secrets.WINRM_USER }}
           WINRM_PASS: ${{ secrets.WINRM_PASS }}
-          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}   # ← เพิ่ม
-          GROQ_MODEL: ${{ secrets.GROQ_MODEL }}        # ← เพิ่ม
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+          GROQ_MODEL: ${{ secrets.GROQ_MODEL }}
         run: powershell -File deploy.ps1
