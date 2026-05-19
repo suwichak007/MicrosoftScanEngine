@@ -41,12 +41,17 @@ class SecurityScanner:
         self.executor = executor
 
         # ── Baseline config ──────────────────────────────────────────────
-        # ถ้าไม่ส่ง config มา → fallback เป็น Windows 11 v24H2 (backward compat)
         if baseline_config is not None:
             self._cfg = baseline_config
         else:
-            from .baseline_config import BASELINE_CONFIGS
-            self._cfg = BASELINE_CONFIGS["Windows 11 v24H2"]
+            from .baseline_config import load_configs
+            _data_path = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "..", "data")
+            )
+            configs = load_configs(_data_path)
+            if not configs:
+                raise RuntimeError(f"ไม่พบ baseline ใดๆ ใน {_data_path}")
+            self._cfg = next(iter(configs.values()))
 
         # ── File path ────────────────────────────────────────────────────
         default_data_path = data_path or r"D:\MiniProject\backend\data"
