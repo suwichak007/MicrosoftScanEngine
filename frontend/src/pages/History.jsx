@@ -53,6 +53,7 @@ function History() {
               targetName: data.target_name,
               hostname:   data.hostname || '',
               version:    data.version  || '',
+              scan_id:    data.id,        // ← เพิ่ม
             },
           },
         });

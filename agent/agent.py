@@ -47,17 +47,35 @@ BASELINE_FILE_MAP = {
 
 def run_scan(job: dict, data_path: str):
     from scanner.security_scanner import SecurityScanner
+    from scanner.baseline_config import load_configs, auto_detect_baseline
+    import os
 
-    s = SecurityScanner(data_path=data_path)
+    version  = job.get("version", "")
+    filename = os.path.basename(job.get("baseline_path", ""))
 
-    if "baseline_path" in job:
-        # backend ส่ง path มาตรงๆ (กรณี path ตรงกัน)
-        filename = os.path.basename(job["baseline_path"])
-        s.target_file = os.path.join(data_path, filename)
+    # หา baseline_config จาก version หรือ filename
+    configs = load_configs(data_path)
+
+    if version and version in configs:
+        baseline_cfg = configs[version]
+    elif filename:
+        # ลองหาจากชื่อไฟล์
+        matched = next((c for c in configs.values() if c.filename == filename), None)
+        if matched:
+            baseline_cfg = matched
+        else:
+            # detect ตรงจากไฟล์
+            fpath = os.path.join(data_path, filename)
+            baseline_cfg = auto_detect_baseline(fpath)
     else:
-        version  = job.get("version", "Windows 11 v24H2")
-        filename = BASELINE_FILE_MAP.get(version, BASELINE_FILE_MAP["Windows 11 v24H2"])
-        s.target_file = os.path.join(data_path, filename)
+        # ใช้ตัวแรกที่เจอ
+        baseline_cfg = next(iter(configs.values()))
+
+    s = SecurityScanner(
+        data_path=data_path,
+        baseline_config=baseline_cfg,
+    )
+    s.target_file = os.path.join(data_path, baseline_cfg.filename)
 
     return s.run_baseline_scan()
 

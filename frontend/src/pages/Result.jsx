@@ -330,11 +330,13 @@ export default function Result() {
       window.history.replaceState({}, document.title);
       return 'scanning';
     }
+    if (location.state?.fromHistory) return 'done';   // ← เพิ่ม
     if (sessionStorage.getItem(SESSION_KEY)) return 'done';
     return 'redirect';
   });
 
-  const [scanData,      setScanData]      = useState(() => {
+  const [scanData, setScanData] = useState(() => {
+    if (location.state?.fromHistory) return location.state.fromHistory;  // ← เพิ่ม
     const saved = sessionStorage.getItem(SESSION_KEY);
     return saved ? JSON.parse(saved) : null;
   });
