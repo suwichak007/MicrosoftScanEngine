@@ -159,8 +159,19 @@ def check_security_template(scanner, policy_path, policy_name, reg_info, expecte
     reg_str = str(reg_info).strip() if pd.notna(reg_info) else ""
 
     if policy_path == "Security Options":
-        if reg_str and reg_str.lower() not in ("not a registry key", "nan", ""):
-            return check_single_registry(scanner, reg_str, expected)
+        # รองรับทั้ง format "HKLM\...\key!value" (Win11) และ "MACHINE\...\key" (Server)
+        # Server Excel ใช้ format "MACHINE\path\keyname" โดยไม่มี "!"
+        reg_clean = reg_str.lower()
+        if reg_clean and reg_clean not in ("not a registry key", "nan", ""):
+            # ถ้าไม่มี "!" → แปลง MACHINE\path\key เป็น MACHINE\path!key แล้วส่งให้ checker
+            if "!" not in reg_str:
+                # แยก key_name จาก path สุดท้าย
+                last_backslash = reg_str.rfind("\\")
+                if last_backslash != -1:
+                    reg_with_bang = reg_str[:last_backslash] + "!" + reg_str[last_backslash + 1:]
+                    return check_single_registry(scanner, reg_with_bang, expected)
+            else:
+                return check_single_registry(scanner, reg_str, expected)
         if policy_name == "Network access: Allow anonymous SID/Name translation":
             return check_lsa_anonymous(scanner, expected)
 
