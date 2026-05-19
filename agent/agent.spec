@@ -5,6 +5,7 @@ block_cipher = None
 
 datas = [
     ("scanner", "scanner"),
+    ("data", "data"),
 ]
 
 hiddenimports = [
