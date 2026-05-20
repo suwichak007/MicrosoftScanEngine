@@ -32,7 +32,7 @@ SHEET_TYPE_MAP: dict[str, str] = {
     "firewall":           "firewall",
     "services":           "services",
     "applocker":          "skip",
-    "applocker for dcs":  "skip",
+    "applocker for dcs":  "applocker_dc", 
     "information":        "skip",
     "revision history":   "skip",
 }
@@ -172,6 +172,18 @@ def auto_detect_baseline(filepath: str) -> BaselineConfig:
             # ไม่มี target column → skip sheet นี้
             continue
 
+        if sheet_type == "applocker_dc":
+            sheets[sheet_name] = SheetConfig(
+                sheet_type       = sheet_type,
+                target_columns   = ["Domain Controller"],
+                policy_name_col  = "Policy Setting Name",
+                policy_path_col  = "Policy Path",
+                reg_info_col     = "Policy Group or Registry Key",
+                service_name_col = "Policy Setting",
+                service_type_col = "Policy Type",
+            )
+            continue
+
         sheets[sheet_name] = SheetConfig(
             sheet_type      = sheet_type,
             target_columns  = target_cols,
@@ -275,8 +287,11 @@ def list_versions(data_path: str = "") -> list[dict]:
     ]
 
 
-def resolve_target_col(sheet_cfg: SheetConfig, columns: list) -> Optional[str]:
-    """หา target column ตามลำดับ priority"""
+def resolve_target_col(sheet_cfg: SheetConfig, columns: list, role: str = "Member Server") -> Optional[str]:
+    # ถ้า role ตรงกับ column ที่มีในชีทนี้ → ใช้เลย
+    if role in columns:
+        return role
+    # fallback ตาม priority เดิม
     for candidate in sheet_cfg.target_columns:
         if candidate in columns:
             return candidate

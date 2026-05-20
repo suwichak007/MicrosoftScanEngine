@@ -115,6 +115,9 @@ def reset_password(
     if not user:
         raise HTTPException(status_code=404, detail="ไม่พบ user")
 
+    if not user.hashed_password:
+        raise HTTPException(status_code=400, detail="LDAP user password must be managed in LDAP/AD")
+
     user.hashed_password = get_password_hash(body.new_password)
     db.commit()
     return {"ok": True, "user_id": user_id}

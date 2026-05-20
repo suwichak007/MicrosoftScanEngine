@@ -34,11 +34,13 @@ class SecurityScanner:
         data_path: str = None,
         executor=None,
         baseline_config: BaselineConfig = None,
+        role: str = "Member Server",
     ):
         self.results  = {}
         self.passed   = 0
         self.total    = 0
         self.executor = executor
+        self._role = role
 
         # ── Baseline config ──────────────────────────────────────────────
         # ถ้าไม่ส่ง config มา → fallback เป็น Windows 11 v24H2 (backward compat)
@@ -317,6 +319,78 @@ class SecurityScanner:
             self._audit_cache = {}
             return {}
 
+    def _fetch_applocker_policy(self) -> str:
+        if hasattr(self, "_applocker_xml"):
+            return self._applocker_xml
+        try:
+            cmd = "Get-AppLockerPolicy -Effective -Xml"
+            if self.executor:
+                output = self._run_cmd(cmd)
+            else:
+                output = subprocess.check_output(
+                    ["powershell", "-NoProfile", "-Command", cmd],
+                    stderr=subprocess.STDOUT,
+                    timeout=SUBPROCESS_TIMEOUT,
+                ).decode(errors="replace")
+            self._applocker_xml = output
+            return output
+        except Exception:
+            self._applocker_xml = ""
+            return ""
+
+
+    def check_applocker_dc(self, row) -> str | None:
+        """
+        Check AppLocker for Domain Controller
+        3 ประเภท:
+        1. EnforcementMode  — check registry
+        2. Value (Rule)     — check XML guid
+        3. Service          — check AppIDSvc
+        """
+        reg_key        = str(row.get("Policy Group or Registry Key") or "").strip()
+        policy_setting = str(row.get("Policy Setting") or "").strip()
+        expected_val   = str(row.get("Domain Controller") or "").strip()
+
+        # ── Case 3: Application Identity Service ─────────────────────────
+        if reg_key == "Service General Setting":
+            service_name   = policy_setting.strip('"')
+            expected_start = "Automatic" if "Automatic" in expected_val else expected_val
+            actual         = self._svc_cache.get(service_name)
+            if actual is None or actual == "NOT_FOUND":
+                return f"Fail (Not Configured, Target: {expected_start})"
+            if actual.lower() == expected_start.lower():
+                return self._mark_pass()
+            return f"Fail (Target: {expected_start}, Actual: {actual})"
+
+        # ── Case 1: EnforcementMode ───────────────────────────────────────
+        if policy_setting == "EnforcementMode":
+            reg_entry = f"HKLM\\{reg_key}!EnforcementMode"
+            expected_norm = "1"  # Enforce rules = 1
+            return self.check_registry(reg_entry, expected_norm)
+
+        # ── Case 2: Rule GUID — check XML ────────────────────────────────
+        if policy_setting == "Value":
+            guid = reg_key.split("\\")[-1] if "\\" in reg_key else ""
+            if not guid:
+                return "Manual Check Required (No GUID)"
+
+            xml = self._fetch_applocker_policy()
+            if not xml:
+                return "Manual Check Required (Cannot get AppLocker policy)"
+
+            if guid.lower() in xml.lower():
+                return self._mark_pass()
+
+            rule_desc = expected_val.split("|")[-1].strip() if "|" in expected_val else expected_val
+            return f"Fail (Rule not found: {rule_desc})"
+
+        # ── empty expected (DLL/Script/MSI ไม่มี rule) ───────────────────
+        if not expected_val:
+            self.total -= 1
+            return None
+
+        return "Manual Check Required"
+
     def check_advanced_audit(self, policy_name, expected):
         subcategory_map = {
             "Audit Credential Validation":              "Credential Validation",
@@ -571,6 +645,9 @@ class SecurityScanner:
                         if not name:
                             continue
                         (task_names if row_type == "Scheduled Task" else service_names).append(name)
+        if self._role == "Domain Controller" and "AppIDSvc" not in service_names:
+            service_names.append("AppIDSvc")
+
         self._fetch_all_services(service_names, task_names)
         if not hasattr(self, "_svc_cache"):
             self._svc_cache = {}
@@ -587,7 +664,7 @@ class SecurityScanner:
                 continue
 
             # หา target column
-            target_col = resolve_target_col(sheet_cfg, list(df.columns))
+            target_col = resolve_target_col(sheet_cfg, list(df.columns), role=self._role)
             if not target_col:
                 continue
 
@@ -641,8 +718,33 @@ class SecurityScanner:
                         self.results[full_key] = "Manual Check Required"
 
                 elif stype == "applocker":
-                    # AppLocker ต้องการ engine แยก → Manual สำหรับตอนนี้
                     self.results[full_key] = "Manual Check Required (AppLocker)"
+
+                elif stype == "applocker_dc":
+                    if self._role != "Domain Controller":
+                        self.total -= 1
+                        continue
+                    result = self.check_applocker_dc(row)
+                    if result is None:
+                        continue
+                    self.results[full_key] = result
+
+                elif stype == "applocker_dc":
+                    # check เฉพาะเมื่อ role เป็น Domain Controller
+                    if self._role == "Domain Controller":
+                        reg_path = str(row.get(sheet_cfg.policy_path_col) or "").strip()
+                        reg_group = str(row.get("Policy Group or Registry Key") or "").strip()
+                        policy_setting = str(row.get("Policy Setting") or "").strip()
+                        expected_val = str(expected).strip()
+
+                        if reg_group and policy_setting and expected_val:
+                            full_reg = f"HKLM\\{reg_group}!{policy_setting}"
+                            self.results[full_key] = self.check_registry(full_reg, expected_val)
+                        else:
+                            self.results[full_key] = "Manual Check Required (AppLocker Rule)"
+                    else:
+                        # Member Server ไม่ต้องสแกน AppLocker for DCs
+                        self.total -= 1   # ไม่นับ
 
                 else:
                     self.results[full_key] = "Manual Check Required"

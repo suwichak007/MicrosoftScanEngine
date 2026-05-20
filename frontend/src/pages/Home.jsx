@@ -25,6 +25,7 @@ function Home() {
   const [selectedAgent, setSelectedAgent] = useState('');
   const [loadingAgents, setLoadingAgents] = useState(false);
   const [agentError, setAgentError] = useState('');
+  const [role, setRole] = useState('Member Server');
 
   useEffect(() => {
     const fetchBaselines = async () => {
@@ -108,7 +109,7 @@ function Home() {
     setErrorMsg('');
     navigate('/result', {
       state: {
-        scanParams: { host: ip, username, password, version, use_ssl: false, skip_ca_check: true, target_name: `${ip} (${version})` },
+        scanParams: { host: ip, username, password, version, role, use_ssl: false, skip_ca_check: true, target_name: `${ip} (${version})` },
       },
     });
   };
@@ -282,6 +283,21 @@ function Home() {
                   <label className="fieldLabel">Password</label>
                   <input className="inp" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
                 </div>
+                {/* แสดง Role เฉพาะ version ที่เป็น Server */}
+                {baselines.find(b => b.version_id === version)?.os_family === 'windows_server' && (
+                  <div className="field">
+                    <label className="fieldLabel">Target Role</label>
+                    <div className="selectWrap">
+                      <select className="sel" value={role} onChange={(e) => setRole(e.target.value)}>
+                        <option value="Member Server">Member Server</option>
+                        <option value="Domain Controller">Domain Controller</option>
+                      </select>
+                      <svg className="selArrow" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M2 4l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="connRow">

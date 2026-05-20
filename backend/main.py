@@ -35,6 +35,8 @@ from app.models.scan import ScanResult
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.scan import ScanResultResponse
 from app.core.security import get_password_hash, verify_password, create_access_token
+from app.core.config import AUTH_PROVIDER
+from app.core.ldap_auth import authenticate_ldap
 from app.core.scan.scanner.security_scanner import SecurityScanner as SecurityBaselineScanner
 from app.core.scan.scanner.baseline_config import (
     get_config,
@@ -135,6 +137,7 @@ class RemoteScanRequest(BaseModel):
     username:      str  = Field(...,  example=".\\Administrator")
     password:      str  = Field(...,  example="P@ssw0rd")
     version:       str  = Field("Windows 11 v24H2")
+    role:          str  = Field("Member Server")   # ← เพิ่ม
     use_ssl:       bool = Field(False)
     skip_ca_check: bool = Field(True)
     target_name:   str  = Field("")
@@ -175,13 +178,9 @@ def get_db():
 # ---------------------------------------------------------------------------
 
 async def _run_scan_job(
-    job:            ScanJob,
-    baseline_path:  str,
-    baseline_cfg,                   # BaselineConfig object
-    version:        str,
-    target_label:   str,
-    executor=None,
-    user_id:        int = None,
+    job, baseline_path, baseline_cfg, version, target_label,
+    role: str = "Member Server",   # ← เพิ่ม
+    executor=None, user_id=None,
 ):
     job.status   = "running"
     job.progress = 5
@@ -192,6 +191,7 @@ async def _run_scan_job(
             data_path=DATA_PATH,
             executor=executor,
             baseline_config=baseline_cfg,   # ← ส่ง config เข้า scanner
+            role=role,        
         )
         scanner.target_file = baseline_path
 
@@ -274,9 +274,33 @@ def register(user_data: UserCreate, db: Session = Depends(get_db)):
 
 @app.post("/login")
 def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == form_data.username).first()
-    if not user or not verify_password(form_data.password, user.hashed_password):
-        raise HTTPException(status_code=400, detail="Username or password incorrect")
+    user = None
+
+    if AUTH_PROVIDER in ("ldap", "hybrid"):
+        try:
+            ldap_user = authenticate_ldap(form_data.username, form_data.password)
+            user = db.query(User).filter(User.username == ldap_user.username).first()
+            if not user:
+                user = User(
+                    username=ldap_user.username,
+                    hashed_password="",
+                    role=ldap_user.role,
+                    is_active=True,
+                )
+                db.add(user)
+            else:
+                user.role = ldap_user.role
+                user.is_active = True
+            db.commit()
+            db.refresh(user)
+        except HTTPException:
+            if AUTH_PROVIDER == "ldap":
+                raise
+
+    if user is None:
+        user = db.query(User).filter(User.username == form_data.username).first()
+        if not user or not user.hashed_password or not verify_password(form_data.password, user.hashed_password):
+            raise HTTPException(status_code=400, detail="Username or password incorrect")
     access_token = create_access_token(data={"sub": user.username, "role": user.role})
     return {
         "access_token": access_token,
@@ -292,6 +316,8 @@ def change_password(
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_user),
 ):
+    if not current_user.hashed_password:
+        raise HTTPException(status_code=400, detail="LDAP users cannot change password here")
     if not verify_password(body.current_password, current_user.hashed_password):
         raise HTTPException(status_code=400, detail="รหัสผ่านเดิมไม่ถูกต้อง")
     if len(body.new_password) < 6:
@@ -402,6 +428,7 @@ async def run_remote_security_scan(
         baseline_path=baseline_path,
         baseline_cfg=baseline_cfg,
         version=req.version,
+        role=req.role,             # ← เพิ่ม
         target_label=target_label,
         executor=executor,
         user_id=current_user.id,

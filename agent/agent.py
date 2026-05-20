@@ -23,10 +23,11 @@ CONFIG_PATH = os.path.join(BASE_DIR, "agent_config.json")
 def load_config() -> dict:
     if not os.path.exists(CONFIG_PATH):
         default = {
-            "backend_url":   "http://BACKEND_IP:8000",
-            "agent_token":   "ใส่ token ที่ได้จาก POST /agent/register",
-            "poll_interval": 10,
-            "data_path":     os.path.join(BASE_DIR, "data"),
+            "backend_url":      "http://BACKEND_IP:8000",
+            "agent_token":      "ใส่ token ที่ได้จาก POST /agent/register",
+            "poll_interval":    10,
+            "request_timeout":  300,
+            "data_path":        os.path.join(BASE_DIR, "data"),
         }
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(default, f, indent=2, ensure_ascii=False)
@@ -34,49 +35,53 @@ def load_config() -> dict:
         print("[Agent] กรุณาแก้ไข config แล้วรันใหม่")
         sys.exit(1)
 
-    with open(CONFIG_PATH, encoding="utf-8-sig") as f:  
+    with open(CONFIG_PATH, encoding="utf-8-sig") as f:
         return json.load(f)
 
 
 # ── scan ──────────────────────────────────────────────────────────
-BASELINE_FILE_MAP = {
-    "Windows 11 v24H2": "MS Security Baseline Windows 11 v24H2.xlsx",
-    "Windows 11 v25H2": "MS Security Baseline Windows 11 v25H2.xlsx",
-}
+
+# role ที่รองรับ — ใช้ validate ก่อนส่งเข้า scanner
+VALID_ROLES = {"Member Server", "Domain Controller"}
 
 
 def run_scan(job: dict, data_path: str):
     from scanner.security_scanner import SecurityScanner
     from scanner.baseline_config import load_configs, auto_detect_baseline
-    import os
 
     version  = job.get("version", "")
     filename = os.path.basename(job.get("baseline_path", ""))
 
-    # หา baseline_config จาก version หรือ filename
+    # ── role: รับจาก job, fallback "Member Server" ────────────────
+    raw_role = str(job.get("role", "Member Server")).strip()
+    role     = raw_role if raw_role in VALID_ROLES else "Member Server"
+
+    # ── หา baseline config ────────────────────────────────────────
     configs = load_configs(data_path)
 
     if version and version in configs:
         baseline_cfg = configs[version]
     elif filename:
-        # ลองหาจากชื่อไฟล์
-        matched = next((c for c in configs.values() if c.filename == filename), None)
+        matched = next(
+            (c for c in configs.values() if c.filename == filename), None
+        )
         if matched:
             baseline_cfg = matched
         else:
-            # detect ตรงจากไฟล์
-            fpath = os.path.join(data_path, filename)
+            fpath        = os.path.join(data_path, filename)
             baseline_cfg = auto_detect_baseline(fpath)
     else:
-        # ใช้ตัวแรกที่เจอ
         baseline_cfg = next(iter(configs.values()))
 
+    # ── สร้าง scanner พร้อม role ──────────────────────────────────
     s = SecurityScanner(
-        data_path=data_path,
-        baseline_config=baseline_cfg,
+        data_path       = data_path,
+        baseline_config = baseline_cfg,
+        role            = role,
     )
     s.target_file = os.path.join(data_path, baseline_cfg.filename)
 
+    print(f"[Agent] baseline={baseline_cfg.version_id}  role={role}")
     return s.run_baseline_scan()
 
 
@@ -84,12 +89,13 @@ def run_scan(job: dict, data_path: str):
 def main():
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
-    cfg  = load_config()
-    URL  = cfg["backend_url"].rstrip("/")
-    HDR  = {"X-Agent-Token": cfg["agent_token"]}
-    POLL = int(cfg.get("poll_interval", 10))
-    DATA = cfg["data_path"]
-    TIMEOUT = int(cfg.get("request_timeout", 300))  # ← เพิ่ม
+
+    cfg     = load_config()
+    URL     = cfg["backend_url"].rstrip("/")
+    HDR     = {"X-Agent-Token": cfg["agent_token"]}
+    POLL    = int(cfg.get("poll_interval", 10))
+    DATA    = cfg["data_path"]
+    TIMEOUT = int(cfg.get("request_timeout", 300))
 
     print(f"[Agent] backend -> {URL}")
     print(f"[Agent] data    -> {DATA}")
@@ -112,9 +118,10 @@ def main():
             jobs = resp.json().get("jobs", [])
 
             for job in jobs:
-                jid = job["job_id"]
-                ver = job.get("version", "?")
-                print(f"[Agent] รับ job {jid}  version={ver}")
+                jid  = job["job_id"]
+                ver  = job.get("version", "?")
+                role = job.get("role", "Member Server")
+                print(f"[Agent] รับ job {jid}  version={ver}  role={role}")
 
                 try:
                     score, details = run_scan(job, DATA)
@@ -124,7 +131,10 @@ def main():
                         "details": details,
                         "error":   "",
                     }
-                    print(f"[Agent] สแกนเสร็จ  score={score}  items={len(details)}")
+                    print(
+                        f"[Agent] สแกนเสร็จ  score={score}"
+                        f"  items={len(details)}  role={role}"
+                    )
                 except Exception as e:
                     payload = {
                         "job_id":  jid,
