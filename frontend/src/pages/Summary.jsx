@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ExportButton from './ExportButton';
 import './Summary.css';
+import { authHeaders, clearAuth } from '../auth';
 
 // ─── Severity helpers ─────────────────────────────────────────────────────────
 const CRITICAL_KEYWORDS = ['remote desktop','lsa protection','credential','ntlm','kerberos','bitlocker'];
@@ -75,7 +76,7 @@ function Layout({ children, navigate }) {
             </button>
           </nav>
         </div>
-        <button className="logoutBtn" onClick={() => navigate('/')}>
+        <button className="logoutBtn" onClick={() => { clearAuth(); navigate('/login'); }}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M5 2H2v10h3M9 10l3-3-3-3M12 7H5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -294,13 +295,16 @@ export default function Summary() {
       try {
         const res = await fetch(`http://${apiHost}:8000/api/summary/stream`, {
           method: 'POST',
-          headers: {
-            'Content-Type':  'application/json',
-            'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-          },
+          headers: authHeaders({ 'Content-Type': 'application/json' }),
           body,
           signal: controller.signal,
         });
+
+        if (res.status === 401) {
+          clearAuth();
+          navigate('/login');
+          return;
+        }
 
         if (!res.ok) {
           const err = await res.json().catch(() => ({ detail: 'Server error' }));

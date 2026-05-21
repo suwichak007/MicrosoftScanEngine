@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { clearAuth } from '../auth';
 
 const API_BASE = `http://${window.location.hostname}:8000`;
 
@@ -245,7 +246,7 @@ export default function AdminUsers() {
     setErrorMsg('');
     try {
       const res = await fetch(`${API_BASE}/api/admin/users`, { headers: authHeader() });
-      if (res.status === 401) { localStorage.removeItem('token'); navigate('/'); return; }
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       if (res.status === 403) { setErrorMsg('ต้องการสิทธิ์ Admin'); setLoading(false); return; }
       const data = await res.json();
       if (res.ok) setUsers(data);
@@ -372,7 +373,7 @@ export default function AdminUsers() {
               ))}
             </nav>
           </div>
-          <button style={S.logoutBtn} onClick={() => { localStorage.removeItem('token'); navigate('/'); }}>
+          <button style={S.logoutBtn} onClick={() => { clearAuth(); navigate('/login'); }}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
               <path d="M5 2H2v10h3M9 10l3-3-3-3M12 7H5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>

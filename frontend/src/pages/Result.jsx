@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import './Result.css';
+import { authHeaders, clearAuth } from '../auth';
 
 // -----------------------------------------------------------------------
 // Severity classification
@@ -149,7 +150,7 @@ function Layout({ children, navigate }) {
           </nav>
         </div>
 
-        <button className="logoutBtn" onClick={() => navigate('/')}>
+        <button className="logoutBtn" onClick={() => { clearAuth(); navigate('/login'); }}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M5 2H2v10h3M9 10l3-3-3-3M12 7H5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
@@ -208,10 +209,7 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
 
     fetch(endpoint, {
       method:  'POST',
-      headers: {
-        'Content-Type':  'application/json',
-        'Authorization': `Bearer ${localStorage.getItem('token') || ''}`,
-      },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(
         scanParams._mode === 'agent'
           ? { host: scanParams.host, version: scanParams.version }
@@ -220,8 +218,8 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
     })
       .then((r) => {
         if (r.status === 401) {
-          localStorage.removeItem('token');
-          navigate('/');
+          clearAuth();
+          navigate('/login');
           return Promise.reject('Not authenticated');
         }
         if (!r.ok) return r.json().then((e) => Promise.reject(e.detail || 'Scan failed'));
@@ -231,7 +229,16 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
         let step = 0;
         pollRef.current = setInterval(async () => {
           try {
-            const res = await fetch(`http://${apiHost}:8000/api/scan/status/${job_id}`);
+            const res = await fetch(`http://${apiHost}:8000/api/scan/status/${job_id}`, {
+              headers: authHeaders(),
+            });
+
+            if (res.status === 401) {
+              clearInterval(pollRef.current);
+              clearAuth();
+              navigate('/login');
+              return;
+            }
 
             if (res.status === 404) {
               clearInterval(pollRef.current);
@@ -321,6 +328,7 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
 export default function Result() {
   const navigate = useNavigate();
   const location = useLocation();
+  const { id: routeScanId } = useParams();
 
   const scanParamsRef = useRef(null);
 
@@ -332,6 +340,7 @@ export default function Result() {
     }
     if (location.state?.fromHistory) return 'done';   // ← เพิ่ม
     if (sessionStorage.getItem(SESSION_KEY)) return 'done';
+    if (routeScanId && location.pathname.toLowerCase().endsWith('/report')) return 'loading-history';
     return 'redirect';
   });
 
@@ -351,6 +360,38 @@ export default function Result() {
   useEffect(() => {
     if (phase === 'redirect') navigate('/home', { replace: true });
   }, [phase]);
+
+  useEffect(() => {
+    if (phase !== 'loading-history' || !routeScanId) return;
+
+    fetch(`http://${window.location.hostname}:8000/api/scan/history/${routeScanId}`, {
+      headers: authHeaders(),
+    })
+      .then((res) => {
+        if (res.status === 401) {
+          clearAuth();
+          navigate('/login');
+          return Promise.reject('Not authenticated');
+        }
+        if (!res.ok) return res.json().then((e) => Promise.reject(e.detail || 'Report not found'));
+        return res.json();
+      })
+      .then((data) => {
+        setScanData({
+          score:      data.score,
+          details:    data.details,
+          targetName: data.target_name,
+          hostname:   data.hostname || '',
+          version:    data.version || '',
+          scan_id:    data.id,
+        });
+        setPhase('done');
+      })
+      .catch((err) => {
+        setErrorMsg(typeof err === 'string' ? err : 'ไม่สามารถโหลดรายงานได้');
+        setPhase('error');
+      });
+  }, [phase, routeScanId, navigate]);
 
   const tabs = ['ALL', 'critical', 'high', 'medium', 'low'];
   const handleSearch = () => setSearch(searchInput);
@@ -395,6 +436,20 @@ export default function Result() {
 
   if (phase === 'redirect') return null;
 
+  if (phase === 'loading-history') {
+    return (
+      <Layout navigate={navigate}>
+        <Topbar />
+        <div className="scanProgressWrap">
+          <div className="scanStepMsg">กำลังโหลดรายงาน...</div>
+          <div className="scanBarWrap">
+            <div className="scanBar" style={{ width: '35%' }} />
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+
   if (phase === 'scanning') {
     return (
       <Layout navigate={navigate}>
@@ -405,7 +460,13 @@ export default function Result() {
         </div>
         <ScanProgress
           scanParams={scanParamsRef.current}
-          onScanComplete={(data) => { setScanData(data); setPhase('done'); }}
+          onScanComplete={(data) => {
+            setScanData(data);
+            setPhase('done');
+            if (data.scan_id) {
+              navigate(`/scan/${data.scan_id}/report`, { replace: true, state: { fromHistory: data } });
+            }
+          }}
           onError={(msg)         => { setErrorMsg(msg);  setPhase('error'); }}
         />
       </Layout>
@@ -609,7 +670,7 @@ export default function Result() {
         <div className="resultFooter">
           <button
             className="statButton"
-            onClick={() => navigate('/Summary', { state: { scanData: { ...scanData, scan_id: scanData?.scan_id } } })}
+            onClick={() => navigate('/summary', { state: { scanData: { ...scanData, scan_id: scanData?.scan_id } } })}
           >
             Summary
           </button>

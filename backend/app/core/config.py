@@ -19,3 +19,8 @@ LDAP_USER_FILTER = os.environ.get("LDAP_USER_FILTER", "(sAMAccountName={username
 LDAP_DOMAIN = os.environ.get("LDAP_DOMAIN", "")
 LDAP_DEFAULT_ROLE = os.environ.get("LDAP_DEFAULT_ROLE", "viewer")
 LDAP_ADMIN_GROUP_DN = os.environ.get("LDAP_ADMIN_GROUP_DN", "")
+
+# Development-only LDAP mock. Use this when AD/Azure AD DS details are not ready yet.
+# Format: username:password:role:display_name:email,username2:password2:role
+LDAP_MOCK_ENABLED = os.environ.get("LDAP_MOCK_ENABLED", "false").lower() in ("1", "true", "yes", "on")
+LDAP_MOCK_USERS = os.environ.get("LDAP_MOCK_USERS", "")

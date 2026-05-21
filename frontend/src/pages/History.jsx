@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './History.css';
+import { clearAuth } from '../auth';
 
 const API_BASE = `http://${window.location.hostname}:8000`;
 
@@ -25,7 +26,7 @@ function History() {
     setErrorMsg('');
     try {
       const res = await fetch(`${API_BASE}/api/scan/history?limit=50`, { headers: authHeader() });
-      if (res.status === 401) { localStorage.removeItem('token'); navigate('/'); return; }
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
       if (res.ok && Array.isArray(data)) {
         setHistory(data);
@@ -42,10 +43,10 @@ function History() {
   const handleView = async (id) => {
     try {
       const res = await fetch(`${API_BASE}/api/scan/history/${id}`, { headers: authHeader() });
-      if (res.status === 401) { localStorage.removeItem('token'); navigate('/'); return; }
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
       if (res.ok) {
-        navigate('/result', {
+        navigate(`/scan/${id}/report`, {
           state: {
             fromHistory: {
               score:      data.score,
@@ -73,7 +74,7 @@ function History() {
         method: 'DELETE',
         headers: authHeader(),
       });
-      if (res.status === 401) { localStorage.removeItem('token'); navigate('/'); return; }
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       if (res.ok) {
         setHistory((prev) => prev.filter((h) => h.id !== id));
       } else {
@@ -132,7 +133,7 @@ function History() {
             )}
           </nav>
         </div>
-        <button className="logoutBtn" onClick={() => navigate('/')}>
+        <button className="logoutBtn" onClick={() => { clearAuth(); navigate('/login'); }}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M5 2H2v10h3M9 10l3-3-3-3M12 7H5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>

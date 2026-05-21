@@ -333,9 +333,16 @@ def change_password(
 # ---------------------------------------------------------------------------
 
 @app.get("/api/dashboard/stats")
-async def get_dashboard_stats(db: Session = Depends(get_db)):
-    latest = db.query(ScanResult).order_by(ScanResult.scan_date.desc()).first()
-    count  = db.query(func.count(ScanResult.id)).scalar()
+async def get_dashboard_stats(
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+):
+    query = db.query(ScanResult)
+    if current_user.role != "admin":
+        query = query.filter(ScanResult.user_id == current_user.id)
+
+    latest = query.order_by(ScanResult.scan_date.desc()).first()
+    count  = query.with_entities(func.count(ScanResult.id)).scalar()
     if not latest:
         return {"total_scans": 0, "latest_score": 0, "target": "No Data", "details": {}}
     return {
@@ -354,6 +361,7 @@ async def get_dashboard_stats(db: Session = Depends(get_db)):
 async def run_security_scan(
     req:              LocalScanRequest,
     background_tasks: BackgroundTasks,
+    current_user:     User = Depends(get_current_user),
 ):
     baseline_path, baseline_cfg = resolve_baseline_path(req.version)
     job_id, job  = _new_job()
@@ -366,6 +374,7 @@ async def run_security_scan(
         baseline_cfg=baseline_cfg,
         version=req.version,
         target_label=target_label,
+        user_id=current_user.id,
     )
     return {"job_id": job_id, "status": "pending"}
 
@@ -375,7 +384,10 @@ async def run_security_scan(
 # ---------------------------------------------------------------------------
 
 @app.post("/api/scan/test-connection")
-async def test_remote_connection(req: ConnectionTestRequest):
+async def test_remote_connection(
+    req:          ConnectionTestRequest,
+    current_user: User = Depends(get_current_user),
+):
     try:
         executor = RemoteExecutor(
             host=req.host, username=req.username, password=req.password,
@@ -447,7 +459,10 @@ async def run_remote_security_scan(
 # ---------------------------------------------------------------------------
 
 @app.get("/api/scan/status/{job_id}")
-async def get_scan_status(job_id: str):
+async def get_scan_status(
+    job_id:       str,
+    current_user: User = Depends(get_current_user),
+):
     job = _jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="ไม่พบ job นี้")
@@ -545,7 +560,7 @@ async def delete_scan(
 
 
 @app.get("/api/scan/versions")
-async def get_supported_versions():
+async def get_supported_versions(current_user: User = Depends(get_current_user)):
     # force_reload=True ทำให้ detect ไฟล์ใหม่ที่เพิ่งวางได้เสมอ
     load_configs(DATA_PATH, force_reload=True)
     return [

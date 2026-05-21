@@ -8,6 +8,8 @@ from app.core.config import (
     LDAP_BIND_PASSWORD,
     LDAP_DEFAULT_ROLE,
     LDAP_DOMAIN,
+    LDAP_MOCK_ENABLED,
+    LDAP_MOCK_USERS,
     LDAP_SERVER_URI,
     LDAP_USER_BASE_DN,
     LDAP_USER_FILTER,
@@ -20,6 +22,12 @@ class LdapUser:
     display_name: str
     email: str
     role: str
+
+
+DEFAULT_MOCK_USERS = (
+    "azure.admin@example.com:Test@12345:admin:Azure Admin:azure.admin@example.com,"
+    "azure.viewer@example.com:Test@12345:viewer:Azure Viewer:azure.viewer@example.com"
+)
 
 
 def _require_ldap3():
@@ -49,6 +57,37 @@ def _direct_bind_name(username: str) -> str:
     return f"{LDAP_DOMAIN}\\{username}"
 
 
+def _mock_login(username: str, password: str) -> LdapUser | None:
+    mock_users = LDAP_MOCK_USERS or DEFAULT_MOCK_USERS
+    normalized_username = username.strip().lower()
+
+    for raw_user in mock_users.split(","):
+        parts = [part.strip() for part in raw_user.split(":")]
+        if len(parts) < 3:
+            continue
+
+        mock_username, mock_password, mock_role = parts[:3]
+        mock_display_name = parts[3] if len(parts) > 3 and parts[3] else mock_username
+        mock_email = parts[4] if len(parts) > 4 and parts[4] else (
+            mock_username if "@" in mock_username else ""
+        )
+
+        aliases = {mock_username.lower()}
+        if "@" in mock_username:
+            aliases.add(mock_username.split("@", 1)[0].lower())
+
+        if normalized_username in aliases and password == mock_password:
+            role = mock_role if mock_role in ("admin", "viewer") else "viewer"
+            return LdapUser(
+                username=mock_username,
+                display_name=mock_display_name,
+                email=mock_email,
+                role=role,
+            )
+
+    return None
+
+
 def _connect(bind_user: str, password: str):
     ALL, NTLM, Connection, Server = _require_ldap3()
     server = Server(LDAP_SERVER_URI, get_info=ALL)
@@ -63,6 +102,12 @@ def _connect(bind_user: str, password: str):
 
 
 def authenticate_ldap(username: str, password: str) -> LdapUser:
+    if LDAP_MOCK_ENABLED:
+        mock_user = _mock_login(username, password)
+        if mock_user:
+            return mock_user
+        raise HTTPException(status_code=400, detail="Username or password incorrect")
+
     if not LDAP_SERVER_URI:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,

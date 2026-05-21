@@ -267,7 +267,10 @@ def _get_groq_client():
 # ─── SSE Streaming endpoint ───────────────────────────────────────────────────
 
 @router.post("/api/summary/stream")
-async def generate_summary_stream(req: SummaryRequest):
+async def generate_summary_stream(
+    req: SummaryRequest,
+    current_user: User = Depends(get_current_user),
+):
     """
     SSE endpoint — ส่ง progress events ระหว่าง Groq กำลัง generate
     Events:
@@ -416,7 +419,10 @@ async def generate_summary_stream(req: SummaryRequest):
 # ─── Non-streaming endpoint (fallback) ───────────────────────────────────────
 
 @router.post("/api/summary", response_model=SummaryResponse)
-async def generate_summary(req: SummaryRequest):
+async def generate_summary(
+    req: SummaryRequest,
+    current_user: User = Depends(get_current_user),
+):
     """
     รับผลสแกน → ส่งให้ Groq วิเคราะห์ → คืน structured summary (blocking)
     """

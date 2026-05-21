@@ -6,7 +6,6 @@ import time
 import io
 import requests
 
-# ── path handling (ปกติ vs exe) ───────────────────────────────────
 if getattr(sys, "frozen", False):
     BASE_DIR = os.path.dirname(sys.executable)
     INTERNAL = sys._MEIPASS
@@ -18,8 +17,31 @@ sys.path.insert(0, INTERNAL)
 
 CONFIG_PATH = os.path.join(BASE_DIR, "agent_config.json")
 
+VALID_ROLES = {"Member Server", "Domain Controller"}
 
-# ── config ────────────────────────────────────────────────────────
+
+# ── เพิ่มตรงนี้ ก่อน run_scan ──────────────────────────────────
+def detect_role() -> str:
+    try:
+        import winreg
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SYSTEM\CurrentControlSet\Control\ProductOptions"
+        )
+        product_type, _ = winreg.QueryValueEx(key, "ProductType")
+        winreg.CloseKey(key)
+
+        product_type = product_type.strip().lower()
+        if product_type == "lanmannt":
+            return "Domain Controller"
+        elif product_type == "servernt":
+            return "Member Server"
+        else:
+            return "Member Server"
+    except Exception:
+        return "Member Server"
+
+
 def load_config() -> dict:
     if not os.path.exists(CONFIG_PATH):
         default = {
@@ -39,12 +61,6 @@ def load_config() -> dict:
         return json.load(f)
 
 
-# ── scan ──────────────────────────────────────────────────────────
-
-# role ที่รองรับ — ใช้ validate ก่อนส่งเข้า scanner
-VALID_ROLES = {"Member Server", "Domain Controller"}
-
-
 def run_scan(job: dict, data_path: str):
     from scanner.security_scanner import SecurityScanner
     from scanner.baseline_config import load_configs, auto_detect_baseline
@@ -52,9 +68,12 @@ def run_scan(job: dict, data_path: str):
     version  = job.get("version", "")
     filename = os.path.basename(job.get("baseline_path", ""))
 
-    # ── role: รับจาก job, fallback "Member Server" ────────────────
-    raw_role = str(job.get("role", "Member Server")).strip()
-    role     = raw_role if raw_role in VALID_ROLES else "Member Server"
+    # ── detect role จากเครื่อง, job override ได้ ─────────────────
+    detected_role = detect_role()
+    raw_role      = str(job.get("role", detected_role)).strip()
+    role          = raw_role if raw_role in VALID_ROLES else detected_role
+
+    print(f"[Agent] detected={detected_role}  job_role={job.get('role', '-')}  final={role}")
 
     # ── หา baseline config ────────────────────────────────────────
     configs = load_configs(data_path)
@@ -73,7 +92,6 @@ def run_scan(job: dict, data_path: str):
     else:
         baseline_cfg = next(iter(configs.values()))
 
-    # ── สร้าง scanner พร้อม role ──────────────────────────────────
     s = SecurityScanner(
         data_path       = data_path,
         baseline_config = baseline_cfg,
@@ -85,7 +103,6 @@ def run_scan(job: dict, data_path: str):
     return s.run_baseline_scan()
 
 
-# ── main loop ─────────────────────────────────────────────────────
 def main():
     sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
@@ -120,7 +137,7 @@ def main():
             for job in jobs:
                 jid  = job["job_id"]
                 ver  = job.get("version", "?")
-                role = job.get("role", "Member Server")
+                role = job.get("role", "-")
                 print(f"[Agent] รับ job {jid}  version={ver}  role={role}")
 
                 try:
@@ -131,10 +148,7 @@ def main():
                         "details": details,
                         "error":   "",
                     }
-                    print(
-                        f"[Agent] สแกนเสร็จ  score={score}"
-                        f"  items={len(details)}  role={role}"
-                    )
+                    print(f"[Agent] สแกนเสร็จ  score={score}  items={len(details)}")
                 except Exception as e:
                     payload = {
                         "job_id":  jid,
