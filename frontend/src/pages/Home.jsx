@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Home.css';
+import { authHeaders, clearAuth } from '../auth';
 
 const API_BASE = `http://${window.location.hostname}:8000`;
 const API_SCAN = `http://${window.location.hostname}:8000`;
@@ -32,7 +33,10 @@ function Home() {
       setLoadingBaselines(true);
       setBaselineError('');
       try {
-        const res = await fetch(`${API_BASE}/api/scan/versions`);
+        const res = await fetch(`${API_BASE}/api/scan/versions`, {
+          headers: authHeaders(),
+        });
+        if (res.status === 401) { clearAuth(); navigate('/login'); return; }
         const data = await res.json();
         if (res.ok && Array.isArray(data) && data.length > 0) {
           setBaselines(data);
@@ -55,10 +59,10 @@ function Home() {
       setLoadingAgents(true);
       setAgentError('');
       try {
-        const res = await fetch(`${API_SCAN}/agent/list`, {
-          headers: { Authorization: `Bearer ${localStorage.getItem('token') || ''}` },
+        const res = await fetch(`${API_SCAN}/api/agents`, {
+          headers: authHeaders(),
         });
-        if (res.status === 401) { navigate('/'); return; }
+        if (res.status === 401) { clearAuth(); navigate('/login'); return; }
         const data = await res.json();
         if (res.ok && Array.isArray(data) && data.length > 0) {
           setAgents(data);
@@ -86,9 +90,10 @@ function Home() {
     try {
       const res = await fetch(`${API_BASE}/api/scan/test-connection`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ host: ip, username, password, use_ssl: false, skip_ca_check: true }),
       });
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
       if (res.ok && data.success) {
         setConnStatus('success');
@@ -172,7 +177,7 @@ function Home() {
           </nav>
         </div>
 
-        <button className="logoutBtn" onClick={() => navigate('/')}>
+        <button className="logoutBtn" onClick={() => { clearAuth(); navigate('/login'); }}>
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
             <path d="M5 2H2v10h3M9 10l3-3-3-3M12 7H5" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
