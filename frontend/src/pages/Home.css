@@ -525,3 +525,68 @@ body {
 
 /* ── Anim ────────────────────────────────────────────────── */
 .animIn { animation: fadeUp 0.18s ease; }
+
+.avatarWrap {
+  position: relative;
+}
+
+.userMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--paper);
+  border: 1px solid var(--cream-mid);
+  border-radius: 12px;
+  padding: 8px;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(43, 35, 24, 0.12);
+  z-index: 100;
+}
+
+.userMenuName {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+  padding: 6px 10px 2px;
+}
+
+.userMenuRole {
+  font-size: 11px;
+  color: var(--ink-lt);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 10px 8px;
+}
+
+.userMenuDivider {
+  height: 1px;
+  background: var(--cream-mid);
+  margin: 4px 0;
+}
+
+.userMenuItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 13px;
+  color: var(--ink-mid);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.userMenuItem:hover {
+  background: var(--cream);
+}
+
+.userMenuItemDanger {
+  color: var(--red);
+}
+
+.userMenuItemDanger:hover {
+  background: #fdf0ee;
+}

@@ -1,11 +1,11 @@
 """
-main.py  (updated — config-driven multi-OS support)
+main.py  (updated — config-driven multi-OS support via JSON baselines)
 
 เปลี่ยนหลักๆ:
-  - BASELINE_FILE_MAP ถูกแทนที่ด้วย baseline_config.BASELINE_CONFIGS
-  - resolve_baseline_path() ใช้ get_config() แทน
-  - _run_scan_job() ส่ง baseline_config ให้ SecurityScanner
-  - /api/scan/versions คืนข้อมูลจาก list_versions()
+  - ถอดการโหลดและแกะไฟล์ Excel/XLSX ตัวเก่าออกทั้งหมด
+  - ใช้ load_checks() และ list_available_versions() เพื่อดึงข้อมูลตรงจาก JSON แทน
+  - ปรับปรุง _run_scan_job ให้ส่งฟังก์ชัน checks เข้า run_baseline_scan()
+  - ปรับปรุงทุก Endpoint (/run, /remote, /versions, /agent) ให้รองรับโครงสร้างใหม่
 """
 
 import os
@@ -39,9 +39,8 @@ from app.core.config import AUTH_PROVIDER
 from app.core.ldap_auth import authenticate_ldap
 from app.core.scan.scanner.security_scanner import SecurityScanner as SecurityBaselineScanner
 from app.core.scan.scanner.baseline_config import (
-    get_config,
-    list_versions,
-    load_configs,
+    load_checks,               # ← ใหม่: load checks จาก JSON
+    list_available_versions,   # ← ใหม่: list จาก JSON files
 )
 from app.core.scan.scanner.executors.remote_executor import RemoteExecutor
 from fastapi.concurrency import run_in_threadpool
@@ -54,6 +53,7 @@ from app.models.agent import AgentToken
 from app.core.job_store import _jobs
 from app.core.export_routes import router as export_router
 from app.core.admin_routes import router as admin_router
+from app.core.baseline_metadata import enrich_scan_details, summarize_findings
 
 Base.metadata.create_all(bind=engine)
 
@@ -86,27 +86,12 @@ SCAN_TIMEOUT_SECONDS = 120
 
 @app.on_event("startup")
 async def startup_event():
-    """โหลด baseline configs จาก data directory ตอนเริ่ม"""
-    load_configs(DATA_PATH)
-    print(f"[startup] loaded baselines: {list_versions()}")
-
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def resolve_baseline_path(version_id: str) -> tuple[str, object]:
+    """ตรวจสอบหรือแสดงผลระบบจัดเก็บ Baseline แบบใหม่ตอนเริ่มต้นระบบ"""
     try:
-        cfg = get_config(version_id, data_path=DATA_PATH)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
- 
-    path = os.path.join(DATA_PATH, cfg.filename)
-    if not os.path.exists(path):
-        raise HTTPException(
-            status_code=400,
-            detail=f"ไม่พบไฟล์ baseline: {path}"
-        )
-    return path, cfg
+        versions = list_available_versions()
+        print(f"[startup] Available JSON baselines detected: {versions}")
+    except Exception as e:
+        print(f"[startup] Warning during baseline detection: {str(e)}")
 
 
 # ---------------------------------------------------------------------------
@@ -133,11 +118,11 @@ def _new_job() -> tuple[str, ScanJob]:
 # ---------------------------------------------------------------------------
 
 class RemoteScanRequest(BaseModel):
-    host:          str  = Field(...,  example="192.168.1.50")
-    username:      str  = Field(...,  example=".\\Administrator")
-    password:      str  = Field(...,  example="P@ssw0rd")
+    host:          str  = Field(...,   example="192.168.1.50")
+    username:      str  = Field(...,   example=".\\Administrator")
+    password:      str  = Field(...,   example="P@ssw0rd")
     version:       str  = Field("Windows 11 v24H2")
-    role:          str  = Field("Member Server")   # ← เพิ่ม
+    role:          str  = Field("Member Server")   
     use_ssl:       bool = Field(False)
     skip_ca_check: bool = Field(True)
     target_name:   str  = Field("")
@@ -174,47 +159,65 @@ def get_db():
 
 
 # ---------------------------------------------------------------------------
-# Background scan worker
+# Background scan worker (จุดที่ 2 ตามหลักการแก้โค้ดใหม่)
 # ---------------------------------------------------------------------------
 
 async def _run_scan_job(
-    job, baseline_path, baseline_cfg, version, target_label,
-    role: str = "Member Server",   # ← เพิ่ม
+    job, version, target_label,
+    role: str = "Member Server",
     executor=None, user_id=None,
 ):
     job.status   = "running"
     job.progress = 5
-    job.message  = "กำลังเตรียม scanner..."
+    job.message  = "กำลังโหลด check definitions..."
+
+    # ── โหลด checks จาก JSON แทนการแกะไฟล์ตัวเก่า ──────────────────
+    try:
+        checks = load_checks(version, role=role)
+    except FileNotFoundError as e:
+        job.status = "error"
+        job.error  = str(e)
+        return
+
+    if not checks:
+        job.status = "error"
+        job.error  = f"ไม่พบ check definitions สำหรับ version '{version}'"
+        return
+
+    job.progress = 15
+    job.message  = "กำลังสแกน Security Policy..."
 
     try:
+        # ── สร้าง scanner ไม่ต้องส่ง baseline_config / data_path อีกแล้ว ──
+        from app.core.scan.scanner.security_scanner import SecurityScanner as SecurityBaselineScanner
         scanner = SecurityBaselineScanner(
-            data_path=DATA_PATH,
             executor=executor,
-            baseline_config=baseline_cfg,   # ← ส่ง config เข้า scanner
-            role=role,        
+            role=role,
         )
-        scanner.target_file = baseline_path
-
-        job.progress = 15
-        job.message  = "กำลังสแกน Security Policy..."
-
+        
+        import asyncio
+        from fastapi.concurrency import run_in_threadpool
+        
+        SCAN_TIMEOUT_SECONDS = 120
         try:
             score, details = await asyncio.wait_for(
-                run_in_threadpool(scanner.run_baseline_scan),
+                run_in_threadpool(scanner.run_baseline_scan, checks),  # ← ส่งตัวแปร checks เข้าไปตรงๆ
                 timeout=SCAN_TIMEOUT_SECONDS,
             )
         except asyncio.TimeoutError:
             job.status = "error"
-            job.error  = f"Scan timeout หลังจาก {SCAN_TIMEOUT_SECONDS}s — ตรวจสอบการเชื่อมต่อ WinRM"
-            return
-
-        if "Error" in details:
-            job.status = "error"
-            job.error  = details["Error"]
+            job.error  = f"Scan timeout หลังจาก {SCAN_TIMEOUT_SECONDS}s"
             return
 
         job.progress = 90
         job.message  = "กำลังบันทึกผล..."
+
+        findings        = enrich_scan_details(details, version=version, role=role)
+        finding_summary = summarize_findings(findings)
+
+        import datetime
+        from app.core.database import SessionLocal
+        from app.models.scan import ScanResult
 
         def _save():
             db = SessionLocal()
@@ -222,7 +225,7 @@ async def _run_scan_job(
                 new_scan = ScanResult(
                     target_name=target_label,
                     score=score,
-                    details=details,
+                    details=details,          # เก็บ dict ครบ metadata
                     scan_date=datetime.datetime.now(),
                     version=version,
                     hostname=executor.host if executor else "localhost",
@@ -244,10 +247,11 @@ async def _run_scan_job(
             "scan_id":       scan_id,
             "target_name":   target_label,
             "version":       version,
-            "baseline_file": os.path.basename(baseline_path),
             "score":         score,
             "items_scanned": len(details),
             "details":       details,
+            "findings":      findings,
+            "summary":       finding_summary,
         }
 
     except Exception as e:
@@ -354,7 +358,7 @@ async def get_dashboard_stats(
 
 
 # ---------------------------------------------------------------------------
-# Local Scan
+# Local Scan (จุดที่ 4 - แก้ไข Local Scan เอา resolve_baseline_path ออก)
 # ---------------------------------------------------------------------------
 
 @app.post("/api/scan/run")
@@ -363,15 +367,12 @@ async def run_security_scan(
     background_tasks: BackgroundTasks,
     current_user:     User = Depends(get_current_user),
 ):
-    baseline_path, baseline_cfg = resolve_baseline_path(req.version)
     job_id, job  = _new_job()
     target_label = f"localhost ({req.version})"
 
     background_tasks.add_task(
         _run_scan_job,
         job=job,
-        baseline_path=baseline_path,
-        baseline_cfg=baseline_cfg,
         version=req.version,
         target_label=target_label,
         user_id=current_user.id,
@@ -380,7 +381,7 @@ async def run_security_scan(
 
 
 # ---------------------------------------------------------------------------
-# Remote Scan
+# Remote Scan (จุดที่ 4 - แก้ไข Remote Scan เอา resolve_baseline_path ออก)
 # ---------------------------------------------------------------------------
 
 @app.post("/api/scan/test-connection")
@@ -409,7 +410,9 @@ async def run_remote_security_scan(
     background_tasks: BackgroundTasks,
     current_user:     User = Depends(get_current_user),
 ):
-    baseline_path, baseline_cfg = resolve_baseline_path(req.version)
+    from app.core.scan.scanner.executors.remote_executor import RemoteExecutor
+    import asyncio
+    from fastapi.concurrency import run_in_threadpool
 
     executor = RemoteExecutor(
         host=req.host, username=req.username, password=req.password,
@@ -437,10 +440,8 @@ async def run_remote_security_scan(
     background_tasks.add_task(
         _run_scan_job,
         job=job,
-        baseline_path=baseline_path,
-        baseline_cfg=baseline_cfg,
         version=req.version,
-        role=req.role,             # ← เพิ่ม
+        role=req.role,            
         target_label=target_label,
         executor=executor,
         user_id=current_user.id,
@@ -513,6 +514,7 @@ async def get_scan_history(
             "items_scanned": len(s.details) if s.details else 0,
             "pass_count":    sum(1 for v in (s.details or {}).values() if str(v) == "Pass"),
             "fail_count":    sum(1 for v in (s.details or {}).values() if str(v).startswith("Fail")),
+            "na_count":      sum(1 for v in (s.details or {}).values() if "Manual" in str(v) or "Not Found" in str(v)),
         }
         for s in scans
     ]
@@ -530,6 +532,8 @@ async def get_scan_detail(
     scan = query.first()
     if not scan:
         raise HTTPException(status_code=404, detail="ไม่พบผลการสแกนนี้หรือไม่มีสิทธิ์เข้าถึง")
+    role = "Domain Controller" if "Domain Controller" in (scan.target_name or "") else "Member Server"
+    findings = enrich_scan_details(scan.details, version=scan.version or "", role=role)
     return {
         "id":            scan.id,
         "target_name":   scan.target_name,
@@ -539,6 +543,8 @@ async def get_scan_detail(
         "hostname":      scan.hostname or "",
         "items_scanned": len(scan.details) if scan.details else 0,
         "details":       scan.details,
+        "findings":      findings,
+        "summary":       summarize_findings(findings),
     }
 
 
@@ -559,23 +565,14 @@ async def delete_scan(
     return {"ok": True}
 
 
+# ── จุดที่ 3 - แก้ไขเวอร์ชันให้อ่านจาก /baselines/generated/*.json แทน ──
 @app.get("/api/scan/versions")
 async def get_supported_versions(current_user: User = Depends(get_current_user)):
-    # force_reload=True ทำให้ detect ไฟล์ใหม่ที่เพิ่งวางได้เสมอ
-    load_configs(DATA_PATH, force_reload=True)
-    return [
-        {
-            "version_id":   v["version_id"],
-            "display_name": v["display_name"],
-            "filename":     v["filename"],
-            "os_family":    v["os_family"],
-            "available":    os.path.exists(os.path.join(DATA_PATH, v["filename"])),
-        }
-        for v in list_versions(data_path=DATA_PATH)
-    ]
+    return list_available_versions()
+
 
 # ---------------------------------------------------------------------------
-# Agent Scan
+# Agent Scan (ปรับตัวแปรตามสถาปัตยกรรม JSON ใหม่)
 # ---------------------------------------------------------------------------
 
 @app.post("/api/scan/agent")
@@ -584,11 +581,14 @@ async def run_agent_scan(
     background_tasks: BackgroundTasks,
     current_user:     User = Depends(get_current_user),
 ):
-    baseline_path, baseline_cfg = resolve_baseline_path(req.version)
+    # ปรับเปลี่ยนให้ชี้ไปยัง Path ของไฟล์ JSON ในระบบใหม่แทน
+    baseline_path = os.path.join(ROOT_DIR, "baselines", "generated", f"{req.version}.json")
+    
     agent_id    = f"agent-{req.host}"
     job_id, job = _new_job()
     job.status  = "running"
     job.message = "รอ agent รับงาน..."
+    
     enqueue(agent_id, job_id, req.version, baseline_path)
     return {
         "job_id":   job_id,

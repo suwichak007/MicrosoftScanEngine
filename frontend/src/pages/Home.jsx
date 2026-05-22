@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Home.css';
 import { authHeaders, clearAuth } from '../auth';
@@ -17,7 +17,7 @@ function Home() {
   const [scanMode, setScanMode] = useState('remote');
 
   const [ip, setIp] = useState('192.168.2.83');
-  const [username, setUsername] = useState('');
+  const [scanUsername, setScanUsername] = useState('');   // ← เปลี่ยนชื่อจาก username
   const [password, setPassword] = useState('');
   const [connStatus, setConnStatus] = useState('idle');
   const [connMessage, setConnMessage] = useState('');
@@ -27,6 +27,22 @@ function Home() {
   const [loadingAgents, setLoadingAgents] = useState(false);
   const [agentError, setAgentError] = useState('');
   const [role, setRole] = useState('Member Server');
+
+  // ── Avatar dropdown ──────────────────────────────────────────────────
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const userMenuRef = useRef(null);
+  const loggedInUser = localStorage.getItem('username') || 'User';  // ← ชื่อต่างจาก state
+  const avatarChar = loggedInUser.charAt(0).toUpperCase();
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowUserMenu(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const fetchBaselines = async () => {
@@ -40,7 +56,7 @@ function Home() {
         const data = await res.json();
         if (res.ok && Array.isArray(data) && data.length > 0) {
           setBaselines(data);
-          setVersion(data[0].version_id); 
+          setVersion(data[0].version_id);
         } else {
           setBaselineError(data?.detail || 'ไม่พบไฟล์ baseline ในระบบ');
         }
@@ -80,7 +96,7 @@ function Home() {
   }, [scanMode]);
 
   const handleConnect = async () => {
-    if (!ip || !username || !password) {
+    if (!ip || !scanUsername || !password) {
       setErrorMsg('กรุณากรอก IP, Username และ Password ให้ครบ');
       return;
     }
@@ -91,7 +107,7 @@ function Home() {
       const res = await fetch(`${API_BASE}/api/scan/test-connection`, {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
-        body: JSON.stringify({ host: ip, username, password, use_ssl: false, skip_ca_check: true }),
+        body: JSON.stringify({ host: ip, username: scanUsername, password, use_ssl: false, skip_ca_check: true }),
       });
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
@@ -114,7 +130,11 @@ function Home() {
     setErrorMsg('');
     navigate('/result', {
       state: {
-        scanParams: { host: ip, username, password, version, role, use_ssl: false, skip_ca_check: true, target_name: `${ip} (${version})` },
+        scanParams: {
+          host: ip, username: scanUsername, password, version, role,
+          use_ssl: false, skip_ca_check: true,
+          target_name: `${ip} (${version})`,
+        },
       },
     });
   };
@@ -149,7 +169,7 @@ function Home() {
           <div className="logo">
             <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
               <circle cx="11" cy="11" r="10" stroke="#c8813a" strokeWidth="1.5" />
-              <circle cx="11" cy="11" r="5" stroke="#c8813a" strokeWidth="1.5" />
+              <circle cx="11" cy="11" r="5"  stroke="#c8813a" strokeWidth="1.5" />
               <circle cx="11" cy="11" r="1.5" fill="#c8813a" />
             </svg>
             <span className="logoText">SecureScan</span>
@@ -190,7 +210,9 @@ function Home() {
         {/* Header */}
         <header className="topbar">
           <div className="topbarMeta">
-            <p className="topbarDate">{new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            <p className="topbarDate">
+              {new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+            </p>
           </div>
           <div className="topbarActions">
             <button className="notifBtn">
@@ -199,7 +221,36 @@ function Home() {
               </svg>
               <span className="notifDot" />
             </button>
-            <div className="avatar">จ</div>
+
+            {/* ── Avatar dropdown ── */}
+            <div className="avatarWrap" ref={userMenuRef}>
+              <button
+                className="avatar"
+                onClick={() => setShowUserMenu(!showUserMenu)}
+              >
+                {avatarChar}
+              </button>
+
+              {showUserMenu && (
+                <div className="userMenu">
+                  <div className="userMenuName">{loggedInUser}</div>
+                  <div className="userMenuRole">{localStorage.getItem('role') || 'viewer'}</div>
+                  <div className="userMenuDivider" />
+                  <button
+                    className="userMenuItem"
+                    onClick={() => { setShowUserMenu(false); navigate('/change-password'); }}
+                  >
+                    🔑 Change Password
+                  </button>
+                  <button
+                    className="userMenuItem userMenuItemDanger"
+                    onClick={() => { clearAuth(); navigate('/login'); }}
+                  >
+                    ↩ Log out
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 
@@ -256,7 +307,6 @@ function Home() {
             <h2 className="sectionTitle">เลือก Target</h2>
           </div>
 
-          {/* Mode tabs */}
           <div className="tabs">
             <button
               className={`tab ${scanMode === 'remote' ? 'active' : ''}`}
@@ -278,17 +328,19 @@ function Home() {
               <div className="fieldRow">
                 <div className="field">
                   <label className="fieldLabel">IP Address</label>
-                  <input className="inp" type="text" placeholder="192.168.1.50" value={ip} onChange={(e) => setIp(e.target.value)} />
+                  <input className="inp" type="text" placeholder="192.168.1.50"
+                    value={ip} onChange={(e) => setIp(e.target.value)} />
                 </div>
                 <div className="field">
                   <label className="fieldLabel">Username</label>
-                  <input className="inp" type="text" placeholder=".\Administrator" value={username} onChange={(e) => setUsername(e.target.value)} />
+                  <input className="inp" type="text" placeholder=".\Administrator"
+                    value={scanUsername} onChange={(e) => setScanUsername(e.target.value)} />
                 </div>
                 <div className="field">
                   <label className="fieldLabel">Password</label>
-                  <input className="inp" type="password" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
+                  <input className="inp" type="password" placeholder="••••••••"
+                    value={password} onChange={(e) => setPassword(e.target.value)} />
                 </div>
-                {/* แสดง Role เฉพาะ version ที่เป็น Server */}
                 {baselines.find(b => b.version_id === version)?.os_family === 'windows_server' && (
                   <div className="field">
                     <label className="fieldLabel">Target Role</label>
@@ -306,7 +358,8 @@ function Home() {
               </div>
 
               <div className="connRow">
-                <button className={`connBtn ${connStatus}`} onClick={handleConnect} disabled={connStatus === 'loading' || loadingBaselines}>
+                <button className={`connBtn ${connStatus}`} onClick={handleConnect}
+                  disabled={connStatus === 'loading' || loadingBaselines}>
                   {connStatus === 'loading' ? <><span className="spin" />กำลังเชื่อมต่อ</> : 'ทดสอบการเชื่อมต่อ'}
                 </button>
                 {connMessage && (

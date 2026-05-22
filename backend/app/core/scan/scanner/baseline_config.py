@@ -1,28 +1,31 @@
 """
-baseline_config.py  (v2 — auto-detect)
+baseline_config.py  (v3 — JSON-first)
 
-แทนที่ BASELINE_CONFIGS dict แบบ hardcode ด้วย auto_detect_baseline()
-ที่อ่าน Excel แล้ว detect sheet/column เองอัตโนมัติ
-
-เพิ่ม OS ใหม่ = วางไฟล์ .xlsx ใน /data เท่านั้น
-ไม่ต้องแก้โค้ดใดๆ
+เปลี่ยนหลักๆ:
+  - เพิ่ม load_checks() / get_checks_for_version()
+    อ่าน check definitions จาก /baselines/generated/*.json
+    แทนการอ่าน Excel ตอน runtime
+  - auto_detect_baseline() และ scan_data_directory() ยังอยู่
+    แต่ใช้เฉพาะใน generate_baseline_json.py เท่านั้น
+  - runtime ไม่แตะ .xlsx อีกเลย
 """
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
 import openpyxl
 
 # ---------------------------------------------------------------------------
-# Constants — hardcode เพียงส่วนเดียวที่จำเป็น
+# Constants (ใช้ใน auto_detect_baseline สำหรับ generate script เท่านั้น)
 # ---------------------------------------------------------------------------
 
-# sheet name (lowercase) → sheet_type
 SHEET_TYPE_MAP: dict[str, str] = {
     "computer":           "computer",
     "user":               "user",
@@ -32,12 +35,11 @@ SHEET_TYPE_MAP: dict[str, str] = {
     "firewall":           "firewall",
     "services":           "services",
     "applocker":          "skip",
-    "applocker for dcs":  "applocker_dc", 
+    "applocker for dcs":  "applocker_dc",
     "information":        "skip",
     "revision history":   "skip",
 }
 
-# ลำดับ priority ในการหา target column
 TARGET_COLUMN_PRIORITY: list[str] = [
     "Member Server",
     "Domain Controller",
@@ -51,34 +53,29 @@ TARGET_COLUMN_PRIORITY: list[str] = [
     "Windows Server 2019",
 ]
 
-# column name candidates สำหรับแต่ละ field
 REG_INFO_CANDIDATES:    list[str] = ["Registry Information", "Reg Info", "Registry"]
 POLICY_NAME_CANDIDATES: list[str] = ["Policy Setting Name", "Name", "Policy Name"]
 POLICY_PATH_CANDIDATES: list[str] = ["Policy Path", "Path"]
 SERVICE_NAME_CANDIDATES: list[str] = ["Name", "Service Name"]
 SERVICE_TYPE_CANDIDATES: list[str] = ["Type", "Service Type"]
 
-# regex สำหรับดึง version string จากชื่อไฟล์
-# รองรับ: "MS Security Baseline Windows 11 v24H2.xlsx"
-#          "MS Security Baseline Windows Server 2025 v2602.xlsx"
 _FILENAME_RE = re.compile(
     r"MS[_ ]Security[_ ]Baseline[_ ](.+?)(?:\s*v[\d.]+)?\s*\.xlsx$",
     re.IGNORECASE,
 )
-_VERSION_RE = re.compile(r"v([\dH.]+)", re.IGNORECASE)
 
 
 # ---------------------------------------------------------------------------
-# Data classes (เหมือนเดิม — scanner ใช้ได้โดยไม่ต้องแก้)
+# Data classes (ใช้ใน generate script + backward compat)
 # ---------------------------------------------------------------------------
 
 @dataclass
 class SheetConfig:
-    sheet_type:      str
-    target_columns:  list[str]
-    policy_name_col: str = "Policy Setting Name"
-    policy_path_col: str = "Policy Path"
-    reg_info_col:    str = "Registry Information"
+    sheet_type:       str
+    target_columns:   list[str]
+    policy_name_col:  str = "Policy Setting Name"
+    policy_path_col:  str = "Policy Path"
+    reg_info_col:     str = "Registry Information"
     service_name_col: str = "Name"
     service_type_col: str = "Type"
 
@@ -94,41 +91,23 @@ class BaselineConfig:
 
 
 # ---------------------------------------------------------------------------
-# Auto-detect core
+# auto_detect_baseline  (ใช้เฉพาะ generate script)
 # ---------------------------------------------------------------------------
 
 def _detect_os_family(filename: str) -> str:
-    """ดู os_family จากชื่อไฟล์"""
-    lower = filename.lower()
-    if "server" in lower:
-        return "windows_server"
-    return "windows_client"
+    return "windows_server" if "server" in filename.lower() else "windows_client"
 
 
 def _derive_version_id(filename: str) -> str:
-    """
-    แปลงชื่อไฟล์ → version_id
-    "MS Security Baseline Windows Server 2025 v2602.xlsx"
-    → "Windows Server 2025 v2602"
-    """
-    # ตัด prefix "MS Security Baseline " และ extension
     name = os.path.splitext(filename)[0]
-    prefixes = [
-        "MS_Security_Baseline_",
-        "MS Security Baseline ",
-        "MSSecurityBaseline",
-    ]
-    for p in prefixes:
+    for p in ["MS_Security_Baseline_", "MS Security Baseline ", "MSSecurityBaseline"]:
         if name.startswith(p):
             name = name[len(p):]
             break
-    # normalize underscore → space
-    name = name.replace("_", " ").strip()
-    return name
+    return name.replace("_", " ").strip()
 
 
 def _first_match(candidates: list[str], headers: list[str]) -> Optional[str]:
-    """คืน candidate แรกที่เจอใน headers"""
     for c in candidates:
         if c in headers:
             return c
@@ -136,18 +115,7 @@ def _first_match(candidates: list[str], headers: list[str]) -> Optional[str]:
 
 
 def auto_detect_baseline(filepath: str) -> BaselineConfig:
-    """
-    อ่าน Excel แล้ว detect config อัตโนมัติ
-
-    Parameters
-    ----------
-    filepath : str
-        absolute path ของไฟล์ .xlsx
-
-    Returns
-    -------
-    BaselineConfig พร้อมใช้งาน
-    """
+    """อ่าน Excel → BaselineConfig  (ใช้เฉพาะ generate_baseline_json.py)"""
     filename   = os.path.basename(filepath)
     version_id = _derive_version_id(filename)
     os_family  = _detect_os_family(filename)
@@ -166,10 +134,8 @@ def auto_detect_baseline(filepath: str) -> BaselineConfig:
             continue
         headers = [str(h).strip() if h is not None else "" for h in rows[0]]
 
-        # หา target columns ตาม priority
         target_cols = [c for c in TARGET_COLUMN_PRIORITY if c in headers]
         if not target_cols:
-            # ไม่มี target column → skip sheet นี้
             continue
 
         if sheet_type == "applocker_dc":
@@ -185,51 +151,34 @@ def auto_detect_baseline(filepath: str) -> BaselineConfig:
             continue
 
         sheets[sheet_name] = SheetConfig(
-            sheet_type      = sheet_type,
-            target_columns  = target_cols,
-            policy_name_col = _first_match(POLICY_NAME_CANDIDATES, headers) or "Policy Setting Name",
-            policy_path_col = _first_match(POLICY_PATH_CANDIDATES, headers) or "Policy Path",
-            reg_info_col    = _first_match(REG_INFO_CANDIDATES,    headers) or "Registry Information",
-            service_name_col= _first_match(SERVICE_NAME_CANDIDATES, headers) or "Name",
-            service_type_col= _first_match(SERVICE_TYPE_CANDIDATES, headers) or "Type",
+            sheet_type       = sheet_type,
+            target_columns   = target_cols,
+            policy_name_col  = _first_match(POLICY_NAME_CANDIDATES, headers) or "Policy Setting Name",
+            policy_path_col  = _first_match(POLICY_PATH_CANDIDATES, headers) or "Policy Path",
+            reg_info_col     = _first_match(REG_INFO_CANDIDATES,    headers) or "Registry Information",
+            service_name_col = _first_match(SERVICE_NAME_CANDIDATES, headers) or "Name",
+            service_type_col = _first_match(SERVICE_TYPE_CANDIDATES, headers) or "Type",
         )
 
     wb.close()
-
     return BaselineConfig(
         version_id   = version_id,
         display_name = f"{version_id} (MS Security Baseline)",
         filename     = filename,
         os_family    = os_family,
         sheets       = sheets,
-        skip_sheets  = {
-            s for s in wb.sheetnames
-            if SHEET_TYPE_MAP.get(s.lower(), "skip") == "skip"
-        },
+        skip_sheets  = {s for s in wb.sheetnames if SHEET_TYPE_MAP.get(s.lower(), "skip") == "skip"},
     )
 
 
-# ---------------------------------------------------------------------------
-# Registry  (cache per data_path)
-# ---------------------------------------------------------------------------
-
 def scan_data_directory(data_path: str) -> dict[str, BaselineConfig]:
-    """
-    Scan folder หา .xlsx ทั้งหมดแล้ว detect config
-
-    Returns
-    -------
-    dict[version_id, BaselineConfig]
-    """
+    """Scan folder หา .xlsx  (ใช้เฉพาะ generate script)"""
     configs: dict[str, BaselineConfig] = {}
-
     if not os.path.isdir(data_path):
         return configs
-
     for fname in os.listdir(data_path):
         if not fname.lower().endswith(".xlsx"):
             continue
-        # ข้ามไฟล์ที่ไม่ใช่ baseline (เช่น scan_summary.log)
         if "security baseline" not in fname.lower() and "securitybaseline" not in fname.lower():
             continue
         fpath = os.path.join(data_path, fname)
@@ -237,23 +186,159 @@ def scan_data_directory(data_path: str) -> dict[str, BaselineConfig]:
             cfg = auto_detect_baseline(fpath)
             configs[cfg.version_id] = cfg
         except Exception as e:
-            # ถ้าไฟล์ใดอ่านไม่ได้ให้ข้ามแทนที่จะ crash ทั้งหมด
             print(f"[baseline_config] skip {fname}: {e}")
-
     return configs
 
 
 # ---------------------------------------------------------------------------
-# Public API  (เหมือนเดิม — main.py ไม่ต้องแก้มาก)
+# resolve_target_col  (ยังใช้ได้ใน generate script)
 # ---------------------------------------------------------------------------
 
-# lazy cache — โหลดครั้งแรกที่ใช้
+def resolve_target_col(sheet_cfg: SheetConfig, columns: list,
+                        role: str = "Member Server") -> Optional[str]:
+    if role in columns:
+        return role
+    for candidate in sheet_cfg.target_columns:
+        if candidate in columns:
+            return candidate
+    return None
+
+
+# ===========================================================================
+# JSON-first API  (ใช้ใน runtime / scanner)
+# ===========================================================================
+
+def _slug(value: str) -> str:
+    return re.sub(r"[^a-zA-Z0-9]+", "-", value).strip("-").lower()
+
+
+# ---------------------------------------------------------------------------
+# load_checks — PUBLIC API สำหรับ scanner
+# ---------------------------------------------------------------------------
+
+# default path (override ได้ด้วย BASELINES_DIR env)
+_DEFAULT_BASELINES_DIR = str(
+    Path(__file__).resolve().parents[4] / "baselines" / "generated"
+)
+
+# cache: baseline_id → list[check]
+_checks_cache: dict[str, list[dict]] = {}
+_baselines_dir: str = ""
+
+
+def _get_baselines_dir() -> str:
+    return os.environ.get("BASELINES_DIR", _DEFAULT_BASELINES_DIR)
+
+
+@lru_cache(maxsize=16)
+def _load_json(filepath: str) -> dict:
+    with open(filepath, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def load_checks(version_id: str, role: str = "Member Server") -> list[dict]:
+    """
+    โหลด check definitions จาก JSON สำหรับ version และ role ที่ระบุ
+
+    Parameters
+    ----------
+    version_id : str  เช่น "Windows 11 v24H2"
+    role       : str  "Member Server" | "Domain Controller"
+
+    Returns
+    -------
+    list[dict]  — checks ที่กรองแล้วตาม role
+                  แต่ละ check มีครบ: check_id, check_name, category,
+                  severity, registry_path, policy_path, expected_value,
+                  remediation, applies_to, source
+    """
+    baseline_id = _slug(version_id)
+    baselines_dir = _get_baselines_dir()
+    filepath = os.path.join(baselines_dir, f"{baseline_id}.json")
+
+    if not os.path.exists(filepath):
+        raise FileNotFoundError(
+            f"ไม่พบ baseline definition: {filepath}\n"
+            f"กรุณารัน: python scripts/generate_baseline_json.py"
+        )
+
+    data   = _load_json(filepath)
+    checks = data.get("checks", [])
+
+    # กรองตาม role (applies_to)
+    # ถ้า applies_to ว่าง → ใช้ได้กับทุก role
+    filtered = [
+        c for c in checks
+        if not c.get("applies_to") or _role_matches(c["applies_to"], role)
+    ]
+    return filtered
+
+
+def _role_matches(applies_to: list[str], role: str) -> bool:
+    """
+    ตรวจว่า check นี้ apply กับ role ที่ต้องการหรือไม่
+    role = "Member Server" → match กับ applies_to ที่มี "Member Server" หรือ "Windows 11..."
+    role = "Domain Controller" → match กับ "Domain Controller"
+    """
+    role_lower = role.lower()
+    for col in applies_to:
+        col_lower = col.lower()
+        if role_lower in col_lower:
+            return True
+        # Member Server ยังรองรับ Windows 11 / Windows 10
+        if role_lower == "member server" and (
+            "windows 11" in col_lower or "windows 10" in col_lower
+            or "policy value" in col_lower
+        ):
+            return True
+    return False
+
+
+def list_available_versions(baselines_dir: str = "") -> list[dict]:
+    """
+    คืน list ของ baseline versions ที่มี JSON พร้อมใช้
+
+    Returns
+    -------
+    list[dict]:  version_id, display_name, os_family, filename, check_count
+    """
+    bdir = baselines_dir or _get_baselines_dir()
+    if not os.path.isdir(bdir):
+        return []
+
+    versions = []
+    for fname in sorted(os.listdir(bdir)):
+        if not fname.endswith(".json"):
+            continue
+        fpath = os.path.join(bdir, fname)
+        try:
+            data = _load_json(fpath)
+            versions.append({
+                "version_id":   data.get("baseline_name", fname),
+                "display_name": data.get("baseline_name", fname),
+                "os_family":    data.get("os_family", "unknown"),
+                "filename":     fname,
+                "check_count":  len(data.get("checks", [])),
+            })
+        except Exception as e:
+            print(f"[baseline_config] skip {fname}: {e}")
+
+    return versions
+
+
+# ---------------------------------------------------------------------------
+# Backward-compat shims  (main.py ยังเรียก load_configs / list_versions ได้)
+# ---------------------------------------------------------------------------
+
 _config_cache: dict[str, BaselineConfig] = {}
 _cache_data_path: str = ""
 
 
 def load_configs(data_path: str, force_reload: bool = False) -> dict[str, BaselineConfig]:
-    """โหลด (และ cache) configs จาก data_path"""
+    """
+    [compat] สแกน data_path หา .xlsx แล้ว return BaselineConfig
+    ยังใช้งานได้แต่ runtime ไม่ควรเรียกแล้ว
+    """
     global _config_cache, _cache_data_path
     if force_reload or _cache_data_path != data_path or not _config_cache:
         _config_cache    = scan_data_directory(data_path)
@@ -262,7 +347,7 @@ def load_configs(data_path: str, force_reload: bool = False) -> dict[str, Baseli
 
 
 def get_config(version_id: str, data_path: str = "") -> BaselineConfig:
-    """ดึง config ตาม version_id"""
+    """[compat] ดึง BaselineConfig ตาม version_id จาก .xlsx"""
     configs = load_configs(data_path) if data_path else _config_cache
     cfg = configs.get(version_id)
     if cfg is None:
@@ -274,7 +359,7 @@ def get_config(version_id: str, data_path: str = "") -> BaselineConfig:
 
 
 def list_versions(data_path: str = "") -> list[dict]:
-    """คืน list ข้อมูล version ทั้งหมด"""
+    """[compat] คืน list versions จาก .xlsx"""
     configs = load_configs(data_path) if data_path else _config_cache
     return [
         {
@@ -285,14 +370,3 @@ def list_versions(data_path: str = "") -> list[dict]:
         }
         for cfg in configs.values()
     ]
-
-
-def resolve_target_col(sheet_cfg: SheetConfig, columns: list, role: str = "Member Server") -> Optional[str]:
-    # ถ้า role ตรงกับ column ที่มีในชีทนี้ → ใช้เลย
-    if role in columns:
-        return role
-    # fallback ตาม priority เดิม
-    for candidate in sheet_cfg.target_columns:
-        if candidate in columns:
-            return candidate
-    return None

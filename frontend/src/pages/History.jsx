@@ -51,6 +51,8 @@ function History() {
             fromHistory: {
               score:      data.score,
               details:    data.details,
+              findings:   data.findings || [],
+              summary:    data.summary || null,
               targetName: data.target_name,
               hostname:   data.hostname || '',
               version:    data.version  || '',

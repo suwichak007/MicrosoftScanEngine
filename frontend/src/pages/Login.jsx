@@ -22,7 +22,7 @@ function Login() {
         localStorage.setItem('token', data.access_token);
         localStorage.setItem('username', data.username);
         localStorage.setItem('role', data.role);  
-        navigate('/Home');
+        navigate('/home');
       } else {
         const errorData = await response.json();
         setError(errorData.detail || 'Login failed');

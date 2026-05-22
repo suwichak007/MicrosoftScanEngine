@@ -87,10 +87,40 @@ const SCAN_STEPS = [
 
 const SESSION_KEY = 'scanResult';
 
-function parseResults(details) {
+function normalizeSeverity(value) {
+  const sev = String(value || 'low').toLowerCase();
+  return ['critical', 'high', 'medium', 'low'].includes(sev) ? sev : 'low';
+}
+
+function parseFindings(findings) {
+  if (!Array.isArray(findings)) return [];
+  return findings.map((item) => {
+    const statusRaw = String(item.status || '').toLowerCase();
+    const status = statusRaw === 'pass' ? 'pass'
+                 : statusRaw === 'fail' ? 'fail'
+                 : 'na';
+    return {
+      key: item.source_key || item.check_id || item.check_name,
+      checkId: item.check_id || '',
+      name: item.check_name || item.source_key || 'Unknown check',
+      section: item.category || 'General',
+      severity: normalizeSeverity(item.severity),
+      solution: { text: item.remediation || 'Review this setting in Group Policy or Local Security Policy.', link: '' },
+      target: item.expected_value || '',
+      actual: item.current_value || '',
+      status,
+      raw: item.raw_result || '',
+      policyPath: item.policy_path || '',
+      registryPath: item.registry_path || '',
+    };
+  });
+}
+
+function parseResults(details, findings = null) {
+  const enriched = parseFindings(findings);
+  if (enriched.length > 0) return enriched;
   if (!details) return [];
   return Object.entries(details)
-    .filter(([, v]) => !String(v).startsWith('Pass'))
     .map(([key, value]) => {
       const sectionMatch = key.match(/^\[([^\]]+)\]/);
       const section  = sectionMatch ? sectionMatch[1] : 'General';
@@ -110,6 +140,7 @@ function parseResults(details) {
       const status = raw.startsWith('Fail')       ? 'fail'
                    : raw.includes('Manual')        ? 'manual'
                    : raw.includes('Not Found')     ? 'notfound'
+                   : raw === 'Pass'                ? 'pass'
                    : 'other';
 
       return { key, name, section, severity, solution, target, actual, status, raw };
@@ -263,6 +294,8 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
               const result = {
                 score:      r.score,
                 details:    r.details || {},
+                findings:   r.findings || [],
+                summary:    r.summary || null,
                 targetName: r.target_name || scanParams.target_name,
                 hostname:   scanParams.host,
                 version:    r.version || scanParams.version,
@@ -356,6 +389,7 @@ export default function Result() {
   const [search,        setSearch]        = useState('');
   const [expanded,      setExpanded]      = useState(null);
   const [sectionFilter, setSectionFilter] = useState('ALL');
+  const [statusFilter,  setStatusFilter]  = useState('ALL');
 
   useEffect(() => {
     if (phase === 'redirect') navigate('/home', { replace: true });
@@ -380,6 +414,8 @@ export default function Result() {
         setScanData({
           score:      data.score,
           details:    data.details,
+          findings:   data.findings || [],
+          summary:    data.summary || null,
           targetName: data.target_name,
           hostname:   data.hostname || '',
           version:    data.version || '',
@@ -400,12 +436,13 @@ export default function Result() {
   const {
     score      = 0,
     details    = {},
+    findings   = [],
     hostname   = '',
     targetName = '',
     version    = '',
   } = scanData || {};
 
-  const allItems = useMemo(() => parseResults(details), [details]);
+  const allItems = useMemo(() => parseResults(details, findings), [details, findings]);
 
   const sections = useMemo(() => {
     const s = new Set(allItems.map((i) => i.section));
@@ -415,11 +452,12 @@ export default function Result() {
   const filtered = useMemo(() => allItems.filter((item) => {
     const matchTab     = activeTab === 'ALL' || item.severity === activeTab;
     const matchSection = sectionFilter === 'ALL' || item.section === sectionFilter;
+    const matchStatus  = statusFilter === 'ALL' || item.status === statusFilter;
     const matchSearch  = !search
       || item.name.toLowerCase().includes(search.toLowerCase())
       || item.section.toLowerCase().includes(search.toLowerCase());
-    return matchTab && matchSection && matchSearch;
-  }), [allItems, activeTab, sectionFilter, search]);
+    return matchTab && matchSection && matchStatus && matchSearch;
+  }), [allItems, activeTab, sectionFilter, statusFilter, search]);
 
   const counts = useMemo(() => {
     const c = { ALL: allItems.length, critical: 0, high: 0, medium: 0, low: 0 };
@@ -427,8 +465,9 @@ export default function Result() {
     return c;
   }, [allItems]);
 
-  const passCount  = Object.values(details).filter((v) => String(v) === 'Pass').length;
-  const totalCount = Object.values(details).length;
+  const passCount  = allItems.filter((v) => v.status === 'pass').length;
+  const failCount  = allItems.filter((v) => v.status === 'fail').length;
+  const totalCount = allItems.length || Object.values(details).length;
 
   // Score colour using ink/amber/green palette
   const scoreColor = score >= 70 ? 'var(--green)' : score >= 40 ? 'var(--amber)' : 'var(--red)';
@@ -522,7 +561,7 @@ export default function Result() {
           <div className="scoreVersion">{version}</div>
           <div className="scoreCounts">
             <span className="countBadge pass">✔ {passCount} Pass</span>
-            <span className="countBadge fail">✖ {totalCount - passCount} Fail</span>
+            <span className="countBadge fail">✖ {failCount} Fail</span>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: 4 }}>
             {tabs.slice(1).map((sev) => (
@@ -557,6 +596,17 @@ export default function Result() {
           ))}
 
           <div className="tabRowRight">
+            <select
+              className="sectionSelect"
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+            >
+              <option value="ALL">All Status</option>
+              <option value="pass">Pass</option>
+              <option value="fail">Fail</option>
+              <option value="na">N/A</option>
+            </select>
+
             <select
               className="sectionSelect"
               value={sectionFilter}
@@ -632,9 +682,9 @@ export default function Result() {
                   {/* Col 3 — Solution */}
                   <div>
                     <div className={`solutionChip ${item.status}`}>
-                      {item.status === 'fail'   ? 'Fix Available ▾'
-                     : item.status === 'manual' ? 'Manual Check'
-                     : 'Not Found'}
+                      {item.status === 'pass' ? 'Compliant'
+                     : item.status === 'fail' ? 'Fix Available ▾'
+                     : 'N/A'}
                     </div>
                   </div>
                 </div>
@@ -654,9 +704,11 @@ export default function Result() {
                       <div className="detailBlock full">
                         <div className="detailLabel">Solution</div>
                         <div className="detailValue">{item.solution.text}</div>
-                        <a className="msLink" href={item.solution.link} target="_blank" rel="noreferrer">
-                          📖 Microsoft Documentation ↗
-                        </a>
+                        {item.solution.link && (
+                          <a className="msLink" href={item.solution.link} target="_blank" rel="noreferrer">
+                            📖 Microsoft Documentation ↗
+                          </a>
+                        )}
                       </div>
                     </div>
                   </div>

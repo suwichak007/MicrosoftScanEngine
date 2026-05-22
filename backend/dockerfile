@@ -1,17 +1,35 @@
-FROM python:3.12-windowsservercore-ltsc2022
+# Stage 1: Generate baselines
+FROM python:3.12-windowsservercore-ltsc2022 as baseline-builder
 
+ENV PYTHONUTF8=1
+WORKDIR /build
+
+COPY backend/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY backend backend
+COPY tools tools
+COPY baselines baselines
+
+RUN python tools/convert_baselines.py --data-dir baselines --output-dir baselines/generated
+
+
+# Stage 2: Backend runtime
+FROM python:3.12-windowsservercore-ltsc2022
 
 ENV PYTHONUTF8=1
 WORKDIR C:/MicrosoftScanEngine/backend
 
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir openpyxl bcrypt==4.0.1
 RUN pip install --no-cache-dir llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 
-COPY . .
+COPY backend .
+
+# Copy generated baselines from stage 1
+COPY --from=baseline-builder /build/baselines/generated baselines/generated
 
 EXPOSE 8000
- 
-CMD ["powershell", "-ExecutionPolicy", "Bypass", "-File", "start.ps1"] 
 
+CMD ["powershell", "-ExecutionPolicy", "Bypass", "-File", "start.ps1"]

@@ -230,6 +230,24 @@ export default function Summary() {
 
   // ─── Parse fail items ─────────────────────────────────────────────────────
   const failItems = useMemo(() => {
+    if (Array.isArray(scanData?.findings) && scanData.findings.length > 0) {
+      return scanData.findings
+        .filter((item) => String(item.status).toLowerCase() === 'fail')
+        .map((item) => ({
+          key: item.source_key || item.check_id,
+          name: item.check_name,
+          section: item.category || 'General',
+          severity: ['critical', 'high', 'medium', 'low'].includes(String(item.severity || '').toLowerCase())
+            ? String(item.severity).toLowerCase()
+            : getSeverity(`${item.category || ''} ${item.check_name || ''}`),
+          target: item.expected_value || '',
+          actual: item.current_value || '',
+        }))
+        .sort((a, b) => {
+          const order = { critical: 0, high: 1, medium: 2, low: 3 };
+          return order[a.severity] - order[b.severity];
+        });
+    }
     if (!scanData?.details) return [];
     return Object.entries(scanData.details)
       .filter(([, v]) => String(v).startsWith('Fail'))
@@ -255,10 +273,15 @@ export default function Summary() {
     return c;
   }, [failItems]);
 
-  const passCount  = useMemo(() =>
-    Object.values(scanData?.details || {}).filter(v => String(v) === 'Pass').length,
-  [scanData]);
-  const totalCount = Object.keys(scanData?.details || {}).length;
+  const passCount  = useMemo(() => {
+    if (Array.isArray(scanData?.findings) && scanData.findings.length > 0) {
+      return scanData.findings.filter(v => String(v.status).toLowerCase() === 'pass').length;
+    }
+    return Object.values(scanData?.details || {}).filter(v => String(v) === 'Pass').length;
+  }, [scanData]);
+  const totalCount = Array.isArray(scanData?.findings) && scanData.findings.length > 0
+    ? scanData.findings.length
+    : Object.keys(scanData?.details || {}).length;
 
   // ─── SSE streaming ────────────────────────────────────────────────────────
   useEffect(() => {
