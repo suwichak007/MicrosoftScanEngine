@@ -13,7 +13,7 @@ COPY tools tools
 COPY baselines baselines
 
 # ← แก้ชื่อ script และ path data ให้ถูก
-RUN python tools/generate_baseline_json.py \
+RUN python tools/convert_baselines.py \
     --data-dir backend/data \
     --output-dir baselines/generated
 
