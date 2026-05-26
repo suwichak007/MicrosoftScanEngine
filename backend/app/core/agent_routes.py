@@ -57,7 +57,6 @@ def job_result(
     body:     JobResult,
     agent_id: str = Depends(get_agent_id),
 ):
-
     job = _jobs.get(job_id)
     if not job:
         raise HTTPException(status_code=404, detail="job not found")
@@ -66,13 +65,25 @@ def job_result(
         job.status = "error"
         job.error  = body.error
     else:
+        from app.core.baseline_metadata import enrich_scan_details, summarize_findings
+
+        # ดึง version จาก job โดยตรง (enqueue เก็บไว้แล้ว)
+        version = getattr(job, "version", "")
+
+        findings        = enrich_scan_details(body.details, version=version, role="Member Server")
+        finding_summary = summarize_findings(findings)
+
         job.status   = "done"
         job.progress = 100
         job.message  = "เสร็จสิ้น"
         job.result   = {
             "score":         body.score,
             "details":       body.details,
+            "findings":      findings,
+            "summary":       finding_summary,
             "items_scanned": len(body.details),
+            "version":       version,
+            "target_name":   agent_id,
         }
 
         db: Session = SessionLocal()
@@ -83,6 +94,7 @@ def job_result(
                 details     = body.details,
                 scan_date   = datetime.datetime.now(),
                 hostname    = agent_id,
+                version     = version,
             )
             db.add(scan_record)
             db.commit()
@@ -144,3 +156,7 @@ def enqueue(agent_id: str, job_id: str, version: str, baseline_path: str):
         "version":       version,
         "baseline_path": baseline_path,
     })
+    # เก็บ version ไว้ใน job ด้วย
+    job = _jobs.get(job_id)
+    if job:
+        job.version = version
