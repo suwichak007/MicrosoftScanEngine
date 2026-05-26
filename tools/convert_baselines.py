@@ -265,7 +265,7 @@ def convert_workbook(path: Path) -> dict[str, Any]:
 
                 role = _col_to_role(target_col)
                 # deduplication key
-                dedup_key = (stype, check_name, policy_path, expected_value)
+                dedup_key = (stype, check_name, policy_path, expected_value, role)
 
                 if dedup_key in seen:
                     continue
