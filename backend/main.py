@@ -604,7 +604,7 @@ async def get_scan_history(
                 if isinstance(v, dict) and "Manual" in str(v.get("status", ""))
             ),
         }
-        for s in scans
+        for s in scans 
     ]
 
 
