@@ -57,12 +57,10 @@ $backendRunArgs += @(
   "-e", "WINRM_PASS=$env:WINRM_PASS",
   "-e", "GROQ_API_KEY=$env:GROQ_API_KEY",
   "-e", "GROQ_MODEL=$env:GROQ_MODEL",
-  "-e", "BASELINES_DIR=C:/MicrosoftScanEngine/backend/baselines/generated",
-  "-v", "${PWD}/data:C:/MicrosoftScanEngine/backend/data",
-  "-v", "${PWD}/../agent/dist:C:/MicrosoftScanEngine/agent/dist",
   "--restart", "always",
   "scan-api"
 )
+
 docker @backendRunArgs
 
 Write-Host "Backend container:"

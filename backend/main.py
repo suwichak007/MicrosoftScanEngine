@@ -12,6 +12,7 @@ import os
 import uuid
 import datetime
 import asyncio
+import time
 
 try:
     from dotenv import load_dotenv
@@ -82,7 +83,7 @@ DATA_PATH = os.environ.get(
     "DATA_PATH",
     os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 )
-SCAN_TIMEOUT_SECONDS = 120
+SCAN_TIMEOUT_SECONDS = int(os.environ.get("SCAN_TIMEOUT_SECONDS", "600"))
 
 @app.on_event("startup")
 async def startup_event():
@@ -167,9 +168,16 @@ async def _run_scan_job(
     role: str = "Member Server",
     executor=None, user_id=None,
 ):
+    started_at = time.perf_counter()
+
+    def _log_stage(stage: str, detail: str = ""):
+        suffix = f" ({detail})" if detail else ""
+        print(f"[scan-timing] {stage}: {time.perf_counter() - started_at:.2f}s{suffix}")
+
     job.status   = "running"
     job.progress = 5
     job.message  = "กำลังโหลด check definitions..."
+    _log_stage("job_started", f"version={version} role={role} target={target_label}")
 
     # ── โหลด checks จาก JSON แทนการแกะไฟล์ตัวเก่า ──────────────────
     try:
@@ -177,15 +185,81 @@ async def _run_scan_job(
     except FileNotFoundError as e:
         job.status = "error"
         job.error  = str(e)
+        _log_stage("load_checks_failed", str(e))
         return
 
     if not checks:
         job.status = "error"
         job.error  = f"ไม่พบ check definitions สำหรับ version '{version}'"
+        _log_stage("load_checks_empty")
         return
+
+    job.progress = 10
+    job.message  = "กำลังเตรียมข้อมูล Registry..."
+    _log_stage("checks_loaded", f"count={len(checks)}")
+
+    if executor and hasattr(executor, "prefetch_registry_bulk"):
+        registry_keys = []
+        for c in checks:
+            rp = c.get("registry_path", "")
+            if rp and "!" in rp:
+                path_part, key_name = rp.split("!", 1)
+                # normalize hive
+                import re as _re
+                path_upper = path_part.upper()
+                if path_upper.startswith("HKLM\\") or path_upper.startswith("HKEY_LOCAL_MACHINE\\"):
+                    sub = _re.sub(r"^(HKEY_LOCAL_MACHINE|HKLM)\\", "", path_part, flags=_re.IGNORECASE)
+                    registry_keys.append(("HKLM", sub, key_name))
+                elif path_upper.startswith("HKCU\\") or path_upper.startswith("HKEY_CURRENT_USER\\"):
+                    sub = _re.sub(r"^(HKEY_CURRENT_USER|HKCU)\\", "", path_part, flags=_re.IGNORECASE)
+                    registry_keys.append(("HKCU", sub, key_name))
+                elif path_upper.startswith("MACHINE\\"):  # ← เพิ่มนี้
+                    sub = _re.sub(r"^MACHINE\\", "", path_part, flags=_re.IGNORECASE)
+                    registry_keys.append(("HKLM", sub, key_name))
+                elif path_upper.startswith("SOFTWARE\\"):  # ← เพิ่มนี้
+                    registry_keys.append(("HKLM", path_part, key_name))
+        if registry_keys:
+            batch_size = 100
+            total_batches = (len(registry_keys) + batch_size - 1) // batch_size
+            _log_stage("prefetch_registry_start", f"keys={len(registry_keys)} batches={total_batches}")
+            for index in range(0, len(registry_keys), batch_size):
+                batch_number = index // batch_size + 1
+                batch = registry_keys[index:index + batch_size]
+                job.progress = 10 + int(4 * (batch_number - 1) / max(total_batches, 1))
+                job.message = f"กำลังเตรียมข้อมูล Registry... ({batch_number}/{total_batches})"
+                _log_stage("prefetch_registry_batch_start", f"batch={batch_number}/{total_batches} keys={len(batch)}")
+                # ใช้ timeout รอบการ prefetch แต่ละ batch เพื่อป้องกันการค้างทั้งหมด
+                try:
+                    batch_timeout = getattr(executor, "_REGISTRY_PREFETCH_TIMEOUT", 25)
+                    # cap timeout to a reasonable upper bound
+                    batch_timeout = int(batch_timeout or 25)
+                    await asyncio.wait_for(
+                        run_in_threadpool(executor.prefetch_registry_bulk, batch),
+                        timeout=batch_timeout,
+                    )
+                    _log_stage("prefetch_registry_batch_done", f"batch={batch_number}/{total_batches} keys={len(batch)}")
+                except asyncio.TimeoutError:
+                    # ถ้าบาง batch timeout ให้บันทึกแล้วยุติการ prefetch ทั้งหมด
+                    # (การรอให้ timeout ซ้ำหลาย batch ทำให้เสียเวลาเป็นจำนวนมาก)
+                    _log_stage("prefetch_registry_batch_timeout", f"batch={batch_number}/{total_batches}")
+                    job.message = f"กำลังเตรียมข้อมูล Registry... (ยกเลิกการ prefetch เนื่องจาก timeout ที่ batch {batch_number})"
+                    prefetch_failed = True
+                    break
+                except Exception as e:
+                    _log_stage("prefetch_registry_batch_error", f"batch={batch_number}/{total_batches} err={type(e).__name__}: {e}")
+                    job.message = f"เกิดข้อผิดพลาดขณะเตรียม Registry (batch {batch_number})"
+                    prefetch_failed = True
+                    break
+            # end for batches
+            if 'prefetch_failed' in locals() and prefetch_failed:
+                _log_stage("prefetch_registry_aborted", f"after batch={batch_number}")
+            else:
+                _log_stage("prefetch_registry_done", f"keys={len(registry_keys)} batches={total_batches}")
+            
 
     job.progress = 15
     job.message  = "กำลังสแกน Security Policy..."
+    _log_stage("scan_phase_start", f"checks={len(checks)}")
 
     try:
         # ── สร้าง scanner ไม่ต้องส่ง baseline_config / data_path อีกแล้ว ──
@@ -195,22 +269,22 @@ async def _run_scan_job(
             role=role,
         )
         
-        import asyncio
-        from fastapi.concurrency import run_in_threadpool
-        
-        SCAN_TIMEOUT_SECONDS = 120
         try:
+            _log_stage("scanner_run_start")
             score, details = await asyncio.wait_for(
                 run_in_threadpool(scanner.run_baseline_scan, checks),  # ← ส่งตัวแปร checks เข้าไปตรงๆ
                 timeout=SCAN_TIMEOUT_SECONDS,
             )
+            _log_stage("scanner_run_done", f"score={score} details={len(details)}")
         except asyncio.TimeoutError:
             job.status = "error"
             job.error  = f"Scan timeout หลังจาก {SCAN_TIMEOUT_SECONDS}s"
+            _log_stage("scanner_run_timeout", f"timeout={SCAN_TIMEOUT_SECONDS}s")
             return
 
         job.progress = 90
         job.message  = "กำลังบันทึกผล..."
+        _log_stage("save_phase_start")
 
         findings        = enrich_scan_details(details, version=version, role=role)
         finding_summary = summarize_findings(findings)
@@ -239,6 +313,7 @@ async def _run_scan_job(
                 db.close()
 
         scan_id = await run_in_threadpool(_save)
+        _log_stage("save_phase_done", f"scan_id={scan_id}")
 
         job.status   = "done"
         job.progress = 100
@@ -253,10 +328,12 @@ async def _run_scan_job(
             "findings":      findings,
             "summary":       finding_summary,
         }
+        _log_stage("job_done", f"score={score} items={len(details)}")
 
     except Exception as e:
         job.status = "error"
         job.error  = str(e)
+        _log_stage("job_error", f"{type(e).__name__}: {e}")
 
 
 # ---------------------------------------------------------------------------
@@ -393,6 +470,7 @@ async def test_remote_connection(
         executor = RemoteExecutor(
             host=req.host, username=req.username, password=req.password,
             use_ssl=req.use_ssl, skip_ca_check=req.skip_ca_check,
+            timeout=SCAN_TIMEOUT_SECONDS,
         )
         result = await asyncio.wait_for(
             run_in_threadpool(executor.test_connection), timeout=15,
@@ -417,6 +495,7 @@ async def run_remote_security_scan(
     executor = RemoteExecutor(
         host=req.host, username=req.username, password=req.password,
         use_ssl=req.use_ssl, skip_ca_check=req.skip_ca_check,
+        timeout=SCAN_TIMEOUT_SECONDS,
     )
     try:
         conn_test = await asyncio.wait_for(
@@ -512,9 +591,18 @@ async def get_scan_history(
             "version":       s.version or "",
             "hostname":      s.hostname or "",
             "items_scanned": len(s.details) if s.details else 0,
-            "pass_count":    sum(1 for v in (s.details or {}).values() if str(v) == "Pass"),
-            "fail_count":    sum(1 for v in (s.details or {}).values() if str(v).startswith("Fail")),
-            "na_count":      sum(1 for v in (s.details or {}).values() if "Manual" in str(v) or "Not Found" in str(v)),
+            "pass_count": sum(
+                1 for v in (s.details or {}).values()
+                if isinstance(v, dict) and v.get("status") == "Pass"
+            ),
+            "fail_count": sum(
+                1 for v in (s.details or {}).values()
+                if isinstance(v, dict) and str(v.get("status", "")).startswith("Fail")
+            ),
+            "na_count": sum(
+                1 for v in (s.details or {}).values()
+                if isinstance(v, dict) and "Manual" in str(v.get("status", ""))
+            ),
         }
         for s in scans
     ]

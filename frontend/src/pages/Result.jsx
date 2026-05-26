@@ -92,22 +92,75 @@ function normalizeSeverity(value) {
   return ['critical', 'high', 'medium', 'low'].includes(sev) ? sev : 'low';
 }
 
+function normalizeText(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+}
+
+function isNotConfigured(value) {
+  const text = normalizeText(value);
+  return text === 'not configured' || text.includes('not configured');
+}
+
+function isDisabledBaseline(value) {
+  const text = normalizeText(value).replace(/[\s\]})>]+$/g, '').replace(/[.,;:]+$/g, '');
+  return /^(disabled|disable|off|0|false|no|n\/a)(\b|$)/.test(text);
+}
+
+function classifyStatus(rawStatus, targetValue = '', actualValue = '', rawResult = '') {
+  const raw = normalizeText(rawStatus);
+  const target = normalizeText(targetValue);
+  const actual = normalizeText(actualValue);
+  const result = normalizeText(rawResult);
+
+  if (raw.includes('manual') || result.includes('manual')) return 'manual';
+
+  if (isNotConfigured(actual) || result.includes('not configured')) {
+    return isDisabledBaseline(target) ? 'pass' : 'fail';
+  }
+
+  if (raw === 'pass' || raw.includes('pass')) return 'pass';
+
+  if (target && actual && target === actual) return 'pass';
+
+  return 'fail';
+}
+
 function parseFindings(findings) {
   if (!Array.isArray(findings)) return [];
   return findings.map((item) => {
-    const statusRaw = String(item.status || '').toLowerCase();
-    const status = statusRaw === 'pass' ? 'pass'
-                 : statusRaw === 'fail' ? 'fail'
-                 : 'na';
+    const targetValue = item.expected_value || '';
+    const actualValue = item.current_value || 'Not Configured';
+    
+    // ใช้ status จาก backend โดยตรง
+    const rawStatus = String(item.status || '').toLowerCase();
+    let status;
+    if (rawStatus === 'pass') {
+      status = 'pass';
+    } else if (rawStatus.startsWith('fail')) {
+      status = 'fail';
+    } else if (rawStatus.includes('manual')) {
+      status = 'manual';
+    } else {
+      status = 'fail';
+    }
+
+    const solutionKey = `${item.category || ''} ${item.check_name || ''} ${item.source_key || ''}`.trim();
+    const fallbackSolution = getSolution(solutionKey);
     return {
       key: item.source_key || item.check_id || item.check_name,
       checkId: item.check_id || '',
       name: item.check_name || item.source_key || 'Unknown check',
       section: item.category || 'General',
       severity: normalizeSeverity(item.severity),
-      solution: { text: item.remediation || 'Review this setting in Group Policy or Local Security Policy.', link: '' },
-      target: item.expected_value || '',
-      actual: item.current_value || '',
+      solution: {
+        text: item.remediation || fallbackSolution.text,
+        link: fallbackSolution.link,
+      },
+      target: targetValue,
+      actual: actualValue,
       status,
       raw: item.raw_result || '',
       policyPath: item.policy_path || '',
@@ -115,7 +168,6 @@ function parseFindings(findings) {
     };
   });
 }
-
 function parseResults(details, findings = null) {
   const enriched = parseFindings(findings);
   if (enriched.length > 0) return enriched;
@@ -137,11 +189,7 @@ function parseResults(details, findings = null) {
       const actualMatch = raw.match(/Actual:\s*(.+?)(?:\s*\)\s*$|\s*$)/);
       if (actualMatch) actual = actualMatch[1].trim().replace(/\)\s*$/, '');
 
-      const status = raw.startsWith('Fail')       ? 'fail'
-                   : raw.includes('Manual')        ? 'manual'
-                   : raw.includes('Not Found')     ? 'notfound'
-                   : raw === 'Pass'                ? 'pass'
-                   : 'other';
+      const status = classifyStatus(raw, target, actual, raw);
 
       return { key, name, section, severity, solution, target, actual, status, raw };
     });
@@ -229,6 +277,7 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
 
   const [progress,  setProgress]  = useState(0);
   const [stepIndex, setStepIndex] = useState(0);
+  const [statusMessage, setStatusMessage] = useState(SCAN_STEPS[0]);
   const pollRef = useRef(null);
 
   useEffect(() => {
@@ -257,7 +306,6 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
         return r.json();
       })
       .then(({ job_id }) => {
-        let step = 0;
         pollRef.current = setInterval(async () => {
           try {
             const res = await fetch(`http://${apiHost}:8000/api/scan/status/${job_id}`, {
@@ -279,14 +327,31 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
 
             if (!res.ok) throw new Error('Status check failed');
             const data = await res.json();
+            const status = data.status;
 
-            if (typeof data.progress === 'number') setProgress(data.progress);
-            if (step < SCAN_STEPS.length - 1) { step += 1; setStepIndex(step); }
+            if (data.message) {
+              setStatusMessage(data.message);
+            }
 
-            if (data.status === 'done') {
+            if (typeof data.progress === 'number') {
+              const nextProgress = Math.max(0, Math.min(100, data.progress));
+              setProgress(nextProgress);
+              if (status === 'done') {
+                setStepIndex(SCAN_STEPS.length - 1);
+              } else {
+                const maxIdx = SCAN_STEPS.length - 2;
+                const idx = Math.min(maxIdx, Math.floor((nextProgress / 100) * (SCAN_STEPS.length - 1)));
+                setStepIndex(idx);
+              }
+            } else if (status === 'done') {
+              setStepIndex(SCAN_STEPS.length - 1);
+            }
+
+            if (status === 'done') {
               clearInterval(pollRef.current);
               setProgress(100);
               setStepIndex(SCAN_STEPS.length - 1);
+              setStatusMessage(data.message || SCAN_STEPS[SCAN_STEPS.length - 1]);
 
               const r = data.result;
               if (!r || !r.details) { onError('ผลการสแกนไม่สมบูรณ์'); return; }
@@ -304,8 +369,9 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
               sessionStorage.setItem(SESSION_KEY, JSON.stringify(result));
               setTimeout(() => onScanComplete(result), 600);
 
-            } else if (data.status === 'error') {
+            } else if (status === 'error') {
               clearInterval(pollRef.current);
+              setStatusMessage(data.message || data.error || 'Scan failed');
               onError(data.error || 'Scan failed');
             }
           } catch (e) {
@@ -338,7 +404,7 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
         </svg>
         <div className="scoreText">{progress}%</div>
       </div>
-      <div className="scanStepMsg">{SCAN_STEPS[stepIndex]}</div>
+      <div className="scanStepMsg">{statusMessage || SCAN_STEPS[stepIndex]}</div>
       <div className="scanBarWrap">
         <div className="scanBar" style={{ width: `${progress}%` }} />
       </div>
@@ -695,7 +761,9 @@ export default function Result() {
                     <div className="detailGrid">
                       <div className="detailBlock">
                         <div className="detailLabel">Current Value</div>
-                        <div className="detailValue fail">{item.actual || 'Not Configured'}</div>
+                        <div className={`detailValue ${item.status === 'pass' ? 'pass' : item.status === 'fail' ? 'fail' : ''}`}>
+                          {item.actual || 'Not Configured'}
+                        </div>
                       </div>
                       <div className="detailBlock">
                         <div className="detailLabel">Required Value</div>

@@ -89,6 +89,16 @@ _SHEET_PREFIX_MAP = {
     "applocker_dc":     "APL",
 }
 
+def _col_to_role(col: str) -> str:
+    col_lower = col.lower()
+    if "domain controller" in col_lower:
+        return "Domain Controller"
+    if "member server" in col_lower:
+        return "Member Server"
+    if "windows 11" in col_lower or "windows 10" in col_lower or "policy value" in col_lower:
+        return "Member Server"
+    return col
+
 
 def _os_prefix(version_id: str) -> str:
     low = version_id.lower()
@@ -253,13 +263,11 @@ def convert_workbook(path: Path) -> dict[str, Any]:
                 cat = _category(sheet_name, stype, policy_path, check_name)
                 sev = _severity(cat, policy_path, check_name, registry_path)
 
+                role = _col_to_role(target_col)
                 # deduplication key
                 dedup_key = (stype, check_name, policy_path, expected_value)
 
                 if dedup_key in seen:
-                    # merge applies_to แทนสร้าง check ใหม่
-                    if target_col not in seen[dedup_key]["applies_to"]:
-                        seen[dedup_key]["applies_to"].append(target_col)
                     continue
 
                 # สร้าง check_id สั้นๆ เช่น WIN11-COMP-0001
@@ -276,7 +284,7 @@ def convert_workbook(path: Path) -> dict[str, Any]:
                     "expected_value": expected_value,
                     "remediation":   _remediation(cat, policy_path, check_name,
                                                    registry_path, expected_value),
-                    "applies_to":    [target_col],
+                    "applies_to":    [role],
                     "source": {
                         "sheet":      sheet_name,
                         "sheet_type": stype,
@@ -353,7 +361,6 @@ def main() -> int:
             print(f"  → {out}  ({len(definition['checks'])} checks)")
 
     return 0
-
 
 if __name__ == "__main__":
     raise SystemExit(main())

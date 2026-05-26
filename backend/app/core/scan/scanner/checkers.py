@@ -144,6 +144,8 @@ def check_single_registry(scanner, reg_entry, expected):
         return f"Fail (Target: {expected}, Actual: {actual_val})"
 
     except FileNotFoundError:
+        if normalize_value(expected) in ("0", "disabled", "off", "false", "no"):
+            return "Pass"
         return f"Fail (Not Configured, Target: {expected})"
     except OSError as e:
         return f"Manual Check Required ({e})"

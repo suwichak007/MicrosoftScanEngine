@@ -101,9 +101,11 @@ def _detect_os_family(filename: str) -> str:
 def _derive_version_id(filename: str) -> str:
     name = os.path.splitext(filename)[0]
     for p in ["MS_Security_Baseline_", "MS Security Baseline ", "MSSecurityBaseline"]:
-        if name.startswith(p):
+        if name.lower().startswith(p.lower()):
             name = name[len(p):]
             break
+    # ลบ suffix "MS Security Baseline" ที่อาจติดมาท้ายชื่อ
+    name = re.sub(r'\s*\(?\bMS[\s_]Security[\s_]Baseline\b\)?', '', name, flags=re.IGNORECASE)
     return name.replace("_", " ").strip()
 
 
@@ -237,24 +239,32 @@ def _load_json(filepath: str) -> dict:
 
 
 def load_checks(version_id: str, role: str = "Member Server") -> list[dict]:
-    """
-    โหลด check definitions จาก JSON สำหรับ version และ role ที่ระบุ
-
-    Parameters
-    ----------
-    version_id : str  เช่น "Windows 11 v24H2"
-    role       : str  "Member Server" | "Domain Controller"
-
-    Returns
-    -------
-    list[dict]  — checks ที่กรองแล้วตาม role
-                  แต่ละ check มีครบ: check_id, check_name, category,
-                  severity, registry_path, policy_path, expected_value,
-                  remediation, applies_to, source
-    """
-    baseline_id = _slug(version_id)
     baselines_dir = _get_baselines_dir()
-    filepath = os.path.join(baselines_dir, f"{baseline_id}.json")
+
+    # ลอง slug ตรงๆ ก่อน
+    slug = _slug(version_id)
+    filepath = os.path.join(baselines_dir, f"{slug}.json")
+
+    # ถ้าไม่เจอ scan ทุกไฟล์แล้ว match
+    if not os.path.exists(filepath):
+        version_lower = version_id.strip().lower()
+        for fname in sorted(os.listdir(baselines_dir)):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(baselines_dir, fname)
+            try:
+                data = _load_json(fpath)
+                bname = data.get("baseline_name", "").strip().lower()
+                bid   = data.get("baseline_id",   "").strip().lower()
+                # match ถ้าตรงกัน หรือ version_id เป็น substring ของ baseline_name
+                if (bname == version_lower
+                        or bid == slug
+                        or version_lower in bname
+                        or bname in version_lower):
+                    filepath = fpath
+                    break
+            except Exception:
+                continue
 
     if not os.path.exists(filepath):
         raise FileNotFoundError(
@@ -262,11 +272,8 @@ def load_checks(version_id: str, role: str = "Member Server") -> list[dict]:
             f"กรุณารัน: python scripts/generate_baseline_json.py"
         )
 
-    data   = _load_json(filepath)
-    checks = data.get("checks", [])
-
-    # กรองตาม role (applies_to)
-    # ถ้า applies_to ว่าง → ใช้ได้กับทุก role
+    data    = _load_json(filepath)
+    checks  = data.get("checks", [])
     filtered = [
         c for c in checks
         if not c.get("applies_to") or _role_matches(c["applies_to"], role)

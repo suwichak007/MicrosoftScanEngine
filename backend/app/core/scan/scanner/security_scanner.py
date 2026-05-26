@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import re
 import subprocess
+import time
 from typing import Any
 
 from .mappings import (
@@ -69,24 +70,34 @@ class SecurityScanner:
         self.passed += 1
         return "Pass"
 
+    def _log_timing(self, label: str, elapsed: float, detail: str = ""):
+        suffix = f" ({detail})" if detail else ""
+        print(f"[scan-timing] {label}: {elapsed:.2f}s{suffix}")
+
     # ------------------------------------------------------------------
     # Pre-fetch helpers (เรียกครั้งเดียวก่อน loop)
     # ------------------------------------------------------------------
 
     def _prefetch_security_policy(self):
         """export secedit แล้ว parse เป็น dict"""
+        started_at = time.perf_counter()
         remote_path = r"C:\Windows\Temp\secedit_export.inf"
         try:
             if self.executor:
+                print(f"[secedit] step1: running secedit export...")
                 self.executor.run_subprocess(
                     [self.SECEDIT, "/export", "/cfg", remote_path],
                     capture_output=True, text=True,
                 )
+                print(f"[secedit] step1 done: {time.perf_counter() - started_at:.2f}s")
+
+                print(f"[secedit] step2: reading file...")
                 proc = self.executor.run_subprocess(
                     [self.POWERSHELL, "-NoProfile", "-Command",
-                     f"Get-Content -Path '{remote_path}' -Encoding Unicode -Raw"],
+                    f"Get-Content -Path '{remote_path}' -Encoding Unicode -Raw"],
                     capture_output=True, text=True,
                 )
+                print(f"[secedit] step2 done: rc={proc.returncode} len={len(proc.stdout)} elapsed={time.perf_counter() - started_at:.2f}s")
                 content = proc.stdout if proc.returncode == 0 else ""
             else:
                 local_path = "secedit_export.inf"
@@ -115,8 +126,10 @@ class SecurityScanner:
             k, v = line.split("=", 1)
             parsed[k.strip()] = v.strip()
         self._security_map = parsed
+        self._log_timing("prefetch_security_policy", time.perf_counter() - started_at, f"keys={len(parsed)}")
 
     def _prefetch_audit_policy(self):
+        started_at = time.perf_counter()
         try:
             if self.executor:
                 proc = self.executor.run_subprocess(
@@ -148,8 +161,10 @@ class SecurityScanner:
                     found.append("Failure")
                 cache[subcat.lower()] = " and ".join(found) if found else "No Auditing"
         self._audit_cache = cache
+        self._log_timing("prefetch_audit_policy", time.perf_counter() - started_at, f"entries={len(cache)}")
 
     def _prefetch_mp_preference(self):
+        started_at = time.perf_counter()
         try:
             cmd = "Get-MpPreference | ConvertTo-Json -Depth 4"
             if self.executor:
@@ -168,8 +183,10 @@ class SecurityScanner:
             self._mp_pref = (data[0] if isinstance(data, list) else data) or {}
         except Exception:
             self._mp_pref = {}
+        self._log_timing("prefetch_mp_preference", time.perf_counter() - started_at, f"loaded={bool(self._mp_pref)}")
 
     def _prefetch_services(self, service_names: list[str], task_names: list[str]):
+        started_at = time.perf_counter()
         svc_cache: dict[str, str] = {}
 
         def _parse(out: str):
@@ -220,6 +237,11 @@ class SecurityScanner:
                     pass
 
         self._svc_cache = svc_cache
+        self._log_timing(
+            "prefetch_services",
+            time.perf_counter() - started_at,
+            f"services={len(service_names)} tasks={len(task_names)} cached={len(svc_cache)}",
+        )
 
     # ------------------------------------------------------------------
     # Check dispatcher  (อ่าน sheet_type จาก check["source"]["sheet_type"])
@@ -341,6 +363,9 @@ class SecurityScanner:
             return f"Fail (Target: {expected}, Actual: {actual_val})"
 
         except FileNotFoundError:
+            # ถ้า baseline ต้องการให้ key ไม่มีอยู่ (Disabled/0) → Pass
+            if self._normalize(expected) in ("0", "disabled", "off", "false", "no"):
+                return self.mark_pass()
             return f"Fail (Not Configured, Target: {expected})"
         except OSError as e:
             return f"Manual Check Required ({e})"
@@ -568,7 +593,7 @@ class SecurityScanner:
     # Main Scan  (JSON-driven)
     # ------------------------------------------------------------------
 
-    def run_baseline_scan(self, checks: list[dict]) -> tuple[int, dict[str, dict]]:
+    def run_baseline_scan(self, checks: list[dict], progress_callback=None) -> tuple[int, dict[str, dict]]:
         """
         สแกนตาม check definitions จาก JSON
 
@@ -588,6 +613,7 @@ class SecurityScanner:
         self.results = {}
         self.passed  = 0
         self.total   = 0
+        started_at = time.perf_counter()
 
         # ── Pre-fetch ──────────────────────────────────────────────────
         self._prefetch_security_policy()
@@ -605,17 +631,24 @@ class SecurityScanner:
             service_names.append("AppIDSvc")
         self._prefetch_services(service_names, task_names)
 
-        # ── Main loop ──────────────────────────────────────────────────
+
+    # ── Main loop ──────────────────────────────────────────────────
+        total_checks = len(checks)    # ← ต้องอยู่ก่อน for loop
+        done = 0                      # ← ต้องอยู่ก่อน for loop
+
         for check in checks:
             status = self._dispatch(check)
             if status == "__SKIP__":
                 continue
 
             self.total += 1
+            done += 1
             if status == "Pass":
                 self.passed += 1
 
-            # parse current_value จาก status string
+            if progress_callback is not None:
+                progress_callback(done, total_checks, check)
+
             current_value = ""
             if status.startswith("Fail"):
                 m = re.search(r"Actual:\s*(.+?)(?:\s*\)\s*$|\s*$)", status)
@@ -638,7 +671,14 @@ class SecurityScanner:
                 "current_value": current_value,
             }
 
-        score = int((self.passed / self.total) * 100) if self.total > 0 else 0
+        actual_pass  = sum(1 for r in self.results.values() if r["status"] == "Pass")
+        actual_total = len(self.results)
+        score = int((actual_pass / actual_total) * 100) if actual_total > 0 else 0
+        self._log_timing(
+            "scan_total",
+            time.perf_counter() - started_at,
+            f"total={self.total} pass={self.passed} score={score}",
+        )
         self._print_summary(score)
         return score, self.results
 
