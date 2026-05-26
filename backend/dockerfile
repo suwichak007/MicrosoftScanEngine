@@ -6,13 +6,16 @@ WORKDIR /build
 
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir openpyxl pandas
 
 COPY backend backend
 COPY tools tools
 COPY baselines baselines
 
-RUN python tools/convert_baselines.py --data-dir baselines --output-dir baselines/generated
-
+# ← แก้ชื่อ script และ path data ให้ถูก
+RUN python tools/generate_baseline_json.py \
+    --data-dir backend/data \
+    --output-dir baselines/generated
 
 # Stage 2: Backend runtime
 FROM python:3.12-windowsservercore-ltsc2022
@@ -23,7 +26,6 @@ WORKDIR C:/MicrosoftScanEngine/backend
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir openpyxl bcrypt==4.0.1
-RUN pip install --no-cache-dir llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
 
 COPY backend .
 
