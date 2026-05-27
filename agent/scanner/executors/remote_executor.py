@@ -69,6 +69,11 @@ class RemoteExecutor(BaseExecutor):
 
     # Sentinel string สำหรับแยก output แต่ละ command
     _SENTINEL = "<<<CMD_END_8f3a2b1c>>>"
+    _REGISTRY_PREFETCH_TIMEOUT = 25
+
+    def _log_timing(self, label: str, elapsed: float, detail: str = ""):
+        suffix = f" ({detail})" if detail else ""
+        print(f"[scan-timing] {label}: {elapsed:.2f}s{suffix}")
 
     def __init__(
         self,
@@ -104,36 +109,34 @@ class RemoteExecutor(BaseExecutor):
     # ------------------------------------------------------------------
 
     def _get_or_create_ps_process(self) -> subprocess.Popen:
-        """
-        สร้างหรือคืน PowerShell process ที่รันอยู่แล้ว
-        Process นี้จะเปิด PSSession ไปยัง remote host ครั้งเดียว
-        แล้วใช้ Invoke-Command ซ้ำผ่าน session เดิม
-        """
         if self._ps_process is not None and self._ps_process.poll() is None:
             return self._ps_process
 
-        # Script เริ่มต้น: สร้าง persistent session
+        print(f"[ps-session] creating new PSSession to {self.host}...")
         ssl_flag = "$true" if self.use_ssl else "$false"
-        skip_ca = "$true" if self.skip_ca_check else "$false"
+        skip_ca  = "$true" if self.skip_ca_check else "$false"
 
-        init_script = textwrap.dedent(f"""
-            $ErrorActionPreference = 'SilentlyContinue'
-            $pass = ConvertTo-SecureString '{self.password}' -AsPlainText -Force
-            $cred = New-Object System.Management.Automation.PSCredential('{self.username}', $pass)
-            $so   = New-PSSessionOption -SkipCACheck:{skip_ca} -SkipCNCheck:$true
-            $global:_RemoteSession = New-PSSession `
-                -ComputerName '{self.host}' `
-                -Credential $cred `
-                -Authentication Negotiate `
-                -UseSSL:{ssl_flag} `
-                -SessionOption $so `
-                -ErrorAction Stop
-            Write-Output 'SESSION_READY'
-        """).strip()
+        # สร้าง session ด้วย one-shot ก่อน เพื่อทดสอบว่า connect ได้
+        init_script = (
+            f"$ErrorActionPreference = 'Stop';"
+            f"$pass = ConvertTo-SecureString '{self.password}' -AsPlainText -Force;"
+            f"$cred = New-Object System.Management.Automation.PSCredential('{self.username}', $pass);"
+            f"$so = New-PSSessionOption -SkipCACheck:{skip_ca} -SkipCNCheck:$true;"
+            f"$global:_RemoteSession = New-PSSession "
+            f"-ComputerName '{self.host}' "
+            f"-Credential $cred "
+            f"-Authentication Negotiate "
+            f"-UseSSL:{ssl_flag} "
+            f"-SessionOption $so "
+            f"-ErrorAction Stop;"
+            f"Write-Output 'SESSION_READY'"
+        )
 
         self._ps_process = subprocess.Popen(
-            [self.powershell_exe, "-NoProfile", "-NonInteractive", "-Command", "-"],
-            stdin=subprocess.PIPE,
+            [self.powershell_exe, "-NoProfile", "-NonInteractive",
+            "-OutputFormat", "Text",   # ← เพิ่ม
+            "-Command", init_script],  # ← เปลี่ยนจาก "-" เป็น script โดยตรง
+            stdin=subprocess.DEVNULL,   # ← ปิด stdin
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -141,120 +144,35 @@ class RemoteExecutor(BaseExecutor):
             errors="replace",
         )
 
-        # ส่ง init script และรอ SESSION_READY
-        self._ps_process.stdin.write(init_script + "\n")
-        self._ps_process.stdin.flush()
+        deadline = time.time() + 30
+        while time.time() < deadline:
+            line = self._ps_process.stdout.readline()
+            if not line:
+                err = ""
+                try:
+                    err = self._ps_process.stderr.read(1000)
+                except Exception:
+                    pass
+                print(f"[ps-session] EOF — stderr: {err}")
+                raise RuntimeError(f"PSSession init failed: {err}")
+            print(f"[ps-session] init line: {repr(line)}")
+            if "SESSION_READY" in line:
+                print(f"[ps-session] session ready ✓")
+                return self._ps_process
+            if "ERROR" in line.upper() or "EXCEPTION" in line.upper():
+                raise RuntimeError(f"PSSession init failed: {line.strip()}")
+
+        raise RuntimeError("Timeout waiting for PSSession to be ready")
 
     def _run_remote_command(self, inner_cmd: str) -> tuple[str, str, int]:
         """
-        รัน command บน remote ผ่าน persistent session
-        ส่งคืน (stdout, stderr, returncode)
+        รัน command บน remote — ใช้ oneshot ทุกครั้ง (เสถียรกว่า persistent pipe)
         """
-        with self._ps_lock:
-            try:
-                proc = self._get_or_create_ps_process()
-
-                # Wrap ด้วย try/catch และ sentinel
-                wrapped = textwrap.dedent(f"""
-                    try {{
-                        $__out = Invoke-Command -Session $global:_RemoteSession -ScriptBlock {{
-                            {inner_cmd}
-                        }}
-                        if ($__out -ne $null) {{ Write-Output $__out }}
-                        Write-Output '{self._SENTINEL}:0'
-                    }} catch {{
-                        Write-Error $_.Exception.Message
-                        Write-Output '{self._SENTINEL}:1'
-                    }}
-                """).strip()
-
-                proc.stdin.write(wrapped + "\n")
-                proc.stdin.flush()
-
-                stdout_lines = []
-                stderr_lines = []
-                returncode = 0
-                deadline = time.time() + self.timeout
-
-                while time.time() < deadline:
-                    line = proc.stdout.readline()
-                    if not line:
-                        break
-                    if self._SENTINEL in line:
-                        try:
-                            returncode = int(line.strip().split(":")[-1])
-                        except Exception:
-                            returncode = 0
-                        break
-                    stdout_lines.append(line)
-
-                return "".join(stdout_lines), "".join(stderr_lines), returncode
-
-            except Exception as e:
-                # ถ้า process ตาย ให้ reset แล้ว fallback ไป one-shot
-                self._ps_process = None
-                return self._run_oneshot_command(inner_cmd)
-
-    def _run_remote_command(self, inner_cmd: str) -> tuple[str, str, int]:
-        with self._ps_lock:
-            try:
-                proc = self._get_or_create_ps_process()
-
-                wrapped = textwrap.dedent(f"""
-                    try {{
-                        $__out = Invoke-Command -Session $global:_RemoteSession -ScriptBlock {{
-                            {inner_cmd}
-                        }}
-                        if ($__out -ne $null) {{ Write-Output $__out }}
-                        Write-Output '{self._SENTINEL}:0'
-                    }} catch {{
-                        Write-Error $_.Exception.Message
-                        Write-Output '{self._SENTINEL}:1'
-                    }}
-                """).strip()
-
-                proc.stdin.write(wrapped + "\n")
-                proc.stdin.flush()
-
-                # ── อ่าน stdout ใน thread แยก เพื่อให้ timeout ทำงานได้จริง ──
-                stdout_lines = []
-                returncode = 0
-                done_event = threading.Event()
-
-                def _reader():
-                    nonlocal returncode
-                    while True:
-                        try:
-                            line = proc.stdout.readline()
-                        except Exception:
-                            break
-                        if not line:
-                            break
-                        if self._SENTINEL in line:
-                            try:
-                                returncode = int(line.strip().split(":")[-1])
-                            except Exception:
-                                returncode = 0
-                            done_event.set()
-                            return
-                        stdout_lines.append(line)
-                    done_event.set()
-
-                reader_thread = threading.Thread(target=_reader, daemon=True)
-                reader_thread.start()
-
-                timed_out = not done_event.wait(timeout=self.timeout)
-
-                if timed_out:
-                    # process ค้าง → reset แล้ว fallback
-                    self._ps_process = None
-                    return "", "Timeout waiting for sentinel", 1
-
-                return "".join(stdout_lines), "", returncode
-
-            except Exception as e:
-                self._ps_process = None
-                return self._run_oneshot_command(inner_cmd)
+        started_at = time.perf_counter()
+        result = self._run_oneshot_command(inner_cmd)
+        self._log_timing("remote_command", time.perf_counter() - started_at, 
+                        f"rc={result[2]} bytes={len(result[0])}")
+        return result
 
     def close(self):
         """ปิด persistent session และ process"""
@@ -313,74 +231,119 @@ class RemoteExecutor(BaseExecutor):
     # ------------------------------------------------------------------
     # Registry: Bulk Prefetch + Cache
     # ------------------------------------------------------------------
-
     def prefetch_registry_bulk(self, keys: list[tuple]) -> dict:
         """
         อ่าน registry หลาย key พร้อมกันในครั้งเดียว (batch)
         keys = [(hive, sub_path, key_name), ...]
         ส่งคืน dict: "HIVE\\sub_path\\key_name" -> value_string
         """
+        started_at = time.perf_counter()
         if not keys:
             return {}
 
-        # สร้าง PowerShell script ที่อ่านทุก key แล้ว export JSON
-        lines = ["$out = [ordered]@{}"]
-        for hive, sub_path, key_name in keys:
-            cache_key = f"{hive}\\{sub_path}\\{key_name}"
-            # escape single quotes
-            safe_hive = hive.replace("'", "''")
-            safe_sub = sub_path.replace("'", "''")
-            safe_key = key_name.replace("'", "''")
-            safe_cache = cache_key.replace("'", "''").replace("\\", "\\\\")
+        original_timeout = self.timeout
+        self.timeout = min(self.timeout, self._REGISTRY_PREFETCH_TIMEOUT)
+        try:
+            try:
+                test_out, _, test_rc = self._run_remote_command("Write-Output 'PING'")
+                if test_rc != 0 or "PING" not in test_out:
+                    print(f"[prefetch_registry_bulk] session not ready, skipping prefetch")
+                    return {}
+            except Exception as e:
+                print(f"[prefetch_registry_bulk] session test failed: {e}, skipping prefetch")
+                return {}            
+            # ส่ง key list เป็น JSON เข้า PowerShell แทนการ inline ทุก key
+            # ทำให้ script size คงที่ ~700 bytes ไม่ว่าจะมีกี่ key
+            keys_json = json.dumps([
+                {"hive": h, "sub": s, "key": k}
+                for h, s, k in keys
+            ])
 
-            lines.append(
-                f"try {{ "
-                f"$__v = (Get-ItemProperty -Path '{safe_hive}:\\{safe_sub}' "
-                f"-Name '{safe_key}' -ErrorAction Stop).'{safe_key}'; "
-                f"$out['{safe_cache}'] = [string]$__v "
-                f"}} catch {{ $out['{safe_cache}'] = $null }}"
-            )
+            ps_script = f"""
+    $keys = '{keys_json}' | ConvertFrom-Json
+    $out = @{{}}
+    $cache = @{{}}
+    foreach ($item in $keys) {{
+        $path = "$($item.hive):\\$($item.sub)"
+        $cacheKey = "$($item.hive)\\$($item.sub)\\$($item.key)"
+        if (-not $cache.ContainsKey($path)) {{
+            try {{
+                $cache[$path] = Get-ItemProperty -Path $path -ErrorAction Stop
+            }} catch {{
+                $cache[$path] = $null
+            }}
+        }}
+        $props = $cache[$path]
+        if ($props -ne $null -and $props.PSObject.Properties.Match($item.key)) {{
+            $out[$cacheKey] = [string]$props.($item.key)
+        }} else {{
+            $out[$cacheKey] = $null
+        }}
+    }}
+    $out | ConvertTo-Json -Compress -Depth 1
+    """.strip()
 
-        lines.append("$out | ConvertTo-Json -Compress -Depth 1")
-        ps_script = "\n".join(lines)
+            self._log_timing("prefetch_registry_bulk_call", time.perf_counter() - started_at,
+                            f"keys={len(keys)} script_bytes={len(ps_script)}")
 
-        stdout, _, returncode = self._run_remote_command(ps_script)
-        result = {}
+            stdout, stderr, returncode = self._run_remote_command(ps_script)
+            result = {}
 
-        if stdout.strip():
-            # หา JSON ใน output (อาจมี junk ก่อนหน้า)
-            for line in reversed(stdout.strip().splitlines()):
-                line = line.strip()
-                if line.startswith("{") and line.endswith("}"):
-                    try:
-                        raw = json.loads(line)
-                        for k, v in raw.items():
-                            # แปลง key กลับ (escaped backslash)
-                            real_key = k.replace("\\\\", "\\")
-                            result[real_key] = v
-                        break
-                    except json.JSONDecodeError:
-                        continue
+            self._log_timing("prefetch_registry_bulk_ret", time.perf_counter() - started_at,
+                            f"rc={returncode} out_bytes={len(stdout)} err_bytes={len(stderr) if stderr else 0}")
 
-        self._registry_cache.update(result)
-        self._registry_cache_loaded = True
-        return result
+            if returncode != 0 and stderr:
+                snippet = stderr.strip().replace('\n', ' ')[:300]
+                print(f"[prefetch_registry_bulk] remote stderr: {snippet}")
+
+            # fallback ไป oneshot ถ้า persistent session timeout
+            if returncode == 1 and stderr and "Timeout waiting for sentinel" in stderr:
+                print(f"[prefetch_registry_bulk] persistent session timeout, trying oneshot")
+                try:
+                    out2, err2, rc2 = self._run_oneshot_command(ps_script)
+                    self._log_timing("prefetch_registry_bulk_oneshot_ret", time.perf_counter() - started_at,
+                                    f"rc={rc2} out_bytes={len(out2)} err_bytes={len(err2) if err2 else 0}")
+                    if rc2 != 0 and err2:
+                        print(f"[prefetch_registry_bulk] oneshot stderr: {err2.strip()[:800]}")
+                    stdout = out2
+                    stderr = err2
+                    returncode = rc2
+                except Exception as e:
+                    print(f"[prefetch_registry_bulk] oneshot fallback failed: {e}")
+
+            if stdout.strip():
+                for line in reversed(stdout.strip().splitlines()):
+                    line = line.strip()
+                    if line.startswith("{") and line.endswith("}"):
+                        try:
+                            raw = json.loads(line)
+                            for k, v in raw.items():
+                                result[k] = v
+                            break
+                        except json.JSONDecodeError:
+                            continue
+
+            self._registry_cache.update(result)
+            self._registry_cache_loaded = True
+            self._log_timing("prefetch_registry_bulk", time.perf_counter() - started_at,
+                            f"keys={len(keys)} hits={len(result)}")
+            return result
+        finally:
+            self.timeout = original_timeout
 
     def read_registry_remote(self, hive: str, sub_path: str, key_name: str):
-        """
-        อ่านค่า registry จาก remote machine
-        ถ้ามีใน cache แล้วจะใช้ cache แทน (ไม่ต้องยิง network ซ้ำ)
-        """
         cache_key = f"{hive}\\{sub_path}\\{key_name}"
 
-        # ตรวจ cache ก่อน
         if self._registry_cache_loaded and cache_key in self._registry_cache:
             val = self._registry_cache[cache_key]
             if val is None:
                 raise FileNotFoundError(f"Registry key not found: {cache_key}")
             return val, None
 
-        # ถ้ายังไม่มีใน cache ให้อ่านตรง
+        # CACHE MISS — log เพื่อดูว่า key format ต่างกันยังไง
+        print(f"[cache-miss] {cache_key}")
+        print(f"[cache-keys-sample] {list(self._registry_cache.keys())[:5]}")  # ดู format จริง
+
         ps_inner = (
             f"(Get-ItemProperty -Path '{hive}:\\{sub_path}' "
             f"-Name '{key_name}' -ErrorAction Stop).'{key_name}'"
@@ -401,6 +364,7 @@ class RemoteExecutor(BaseExecutor):
 
     def test_connection(self) -> dict:
         """ทดสอบการเชื่อมต่อ WinRM ไปยัง remote host"""
+        started_at = time.perf_counter()
         ps_script = textwrap.dedent(f"""
             $pass = ConvertTo-SecureString '{self.password}' -AsPlainText -Force
             $cred = New-Object System.Management.Automation.PSCredential('{self.username}', $pass)
@@ -437,16 +401,22 @@ class RemoteExecutor(BaseExecutor):
             ).decode(errors="replace").strip()
 
             if out.startswith("OK:"):
-                return {"success": True, "message": "Connected", "hostname": out[3:]}
+                result = {"success": True, "message": "Connected", "hostname": out[3:]}
+                self._log_timing("test_connection", time.perf_counter() - started_at, "success")
+                return result
 
             err_msg = out[4:] if out.startswith("ERR:") else out
-            return {"success": False, "message": err_msg, "hostname": ""}
+            result = {"success": False, "message": err_msg, "hostname": ""}
+            self._log_timing("test_connection", time.perf_counter() - started_at, "failed")
+            return result
 
         except Exception as e:
+            self._log_timing("test_connection", time.perf_counter() - started_at, f"error={type(e).__name__}")
             return {"success": False, "message": str(e), "hostname": ""}
 
     def copy_baseline_file(self, local_path: str, remote_dest: str = r"C:\MicrosoftScanEngine\data") -> bool:
         """คัดลอกไฟล์ไปยัง remote machine ผ่าน PSSession"""
+        started_at = time.perf_counter()
         ps_script = textwrap.dedent(f"""
             $pass    = ConvertTo-SecureString '{self.password}' -AsPlainText -Force
             $cred    = New-Object System.Management.Automation.PSCredential('{self.username}', $pass)
@@ -464,8 +434,10 @@ class RemoteExecutor(BaseExecutor):
         argv = [self.powershell_exe, "-NoProfile", "-NonInteractive", "-Command", ps_script]
         try:
             subprocess.check_output(argv, stderr=subprocess.STDOUT, timeout=60, shell=False)
+            self._log_timing("copy_baseline_file", time.perf_counter() - started_at, "success")
             return True
         except Exception:
+            self._log_timing("copy_baseline_file", time.perf_counter() - started_at, "failed")
             return False
 
     # ------------------------------------------------------------------
@@ -511,12 +483,13 @@ class RemoteExecutor(BaseExecutor):
         return " ".join(str(a) for a in args)
 
     def _run_oneshot_command(self, inner_cmd: str) -> tuple[str, str, int]:
-        """
-        Fallback: สร้าง PowerShell process ใหม่ 1 ครั้ง (วิธีเดิม)
-        ใช้เมื่อ persistent process ล้มเหลว
-        """
+        started_at = time.perf_counter()
         ssl_flag = "$true" if self.use_ssl else "$false"
         skip_ca  = "$true" if self.skip_ca_check else "$false"
+
+        # ตัด inner_cmd ให้สั้นสำหรับ log
+        cmd_preview = inner_cmd[:80].replace('\n', ' ')
+        print(f"[oneshot] starting: {cmd_preview}...")
 
         ps_script = textwrap.dedent(f"""
             $pass   = ConvertTo-SecureString '{self.password}' -AsPlainText -Force
@@ -532,6 +505,8 @@ class RemoteExecutor(BaseExecutor):
             $result
         """).strip()
 
+        print(f"[oneshot] script_bytes={len(ps_script)} launching subprocess...")  # ← เพิ่ม
+
         try:
             proc = subprocess.run(
                 [self.powershell_exe, "-NoProfile", "-NonInteractive", "-Command", ps_script],
@@ -542,8 +517,19 @@ class RemoteExecutor(BaseExecutor):
                 timeout=self.timeout,
                 shell=False,
             )
+            elapsed = time.perf_counter() - started_at
+            print(f"[oneshot] done: rc={proc.returncode} bytes={len(proc.stdout)} elapsed={elapsed:.2f}s")
+            if proc.stderr:
+                print(f"[oneshot] stderr: {proc.stderr[:300]}")
+            self._log_timing("remote_command_oneshot", elapsed, f"rc={proc.returncode} bytes={len(proc.stdout)}")
             return proc.stdout, proc.stderr, proc.returncode
         except subprocess.TimeoutExpired:
+            elapsed = time.perf_counter() - started_at
+            print(f"[oneshot] TIMEOUT after {elapsed:.2f}s")
+            self._log_timing("remote_command_oneshot", elapsed, "timeout")
             return "", "Timeout", 1
         except Exception as e:
+            elapsed = time.perf_counter() - started_at
+            print(f"[oneshot] ERROR: {type(e).__name__}: {e}")
+            self._log_timing("remote_command_oneshot", elapsed, f"error={type(e).__name__}")
             return "", str(e), 1

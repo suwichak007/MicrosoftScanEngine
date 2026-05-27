@@ -285,6 +285,8 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
     hasFetched.current = true;
     const endpoint = scanParams._mode === 'agent'
       ? `http://${apiHost}:8000/api/scan/agent`
+      : scanParams._mode === 'subnet'
+      ? `http://${apiHost}:8000/api/scan/subnet`
       : `http://${apiHost}:8000/api/scan/remote`;
 
     fetch(endpoint, {
@@ -293,6 +295,17 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
       body: JSON.stringify(
         scanParams._mode === 'agent'
           ? { host: scanParams.host, version: scanParams.version }
+          : scanParams._mode === 'subnet'
+          ? {
+              subnet:        scanParams.subnet,
+              username:      scanParams.username,
+              password:      scanParams.password,
+              version:       scanParams.version,
+              role:          scanParams.role,
+              use_ssl:       scanParams.use_ssl,
+              skip_ca_check: scanParams.skip_ca_check,
+              max_parallel:  scanParams.max_parallel,
+            }
           : scanParams
       ),
     })
@@ -354,6 +367,21 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
               setStatusMessage(data.message || SCAN_STEPS[SCAN_STEPS.length - 1]);
 
               const r = data.result;
+
+              if (scanParams._mode === 'subnet') {
+                onScanComplete({
+                  isSubnet:    true,
+                  subnet:      r.subnet,
+                  total:       r.total,
+                  success_count: r.success_count,
+                  failed_count:  r.failed_count,
+                  results:     r.results || [],
+                  version:     scanParams.version,
+                  targetName:  scanParams.target_name,
+                });
+                return;
+              }
+
               if (!r || !r.details) { onError('ผลการสแกนไม่สมบูรณ์'); return; }
 
               const result = {
@@ -437,14 +465,21 @@ export default function Result() {
       window.history.replaceState({}, document.title);
       return 'scanning';
     }
-    if (location.state?.fromHistory) return 'done';   // ← เพิ่ม
+    if (location.state?.fromHistory) return 'done';
+    
+    // ถ้าเป็น /scan/:id/report ให้ไป loading-history เสมอ ไม่สนใจ sessionStorage
+    if (routeScanId && location.pathname.toLowerCase().endsWith('/report')) {
+      return 'loading-history';
+    }
+    
     if (sessionStorage.getItem(SESSION_KEY)) return 'done';
-    if (routeScanId && location.pathname.toLowerCase().endsWith('/report')) return 'loading-history';
     return 'redirect';
   });
 
   const [scanData, setScanData] = useState(() => {
-    if (location.state?.fromHistory) return location.state.fromHistory;  // ← เพิ่ม
+    if (location.state?.fromHistory) return location.state.fromHistory;
+    // ถ้าเป็น history route ไม่ต้อง load sessionStorage
+    if (routeScanId && location.pathname.toLowerCase().endsWith('/report')) return null;
     const saved = sessionStorage.getItem(SESSION_KEY);
     return saved ? JSON.parse(saved) : null;
   });
@@ -591,6 +626,83 @@ export default function Result() {
             <h2 className="idleTitle" style={{ color: 'var(--red)' }}>เกิดข้อผิดพลาด</h2>
             <p className="idleDesc">{errorMsg}</p>
             <button className="idleScanBtn" onClick={() => navigate('/home')}>กลับหน้าหลัก</button>
+          </div>
+        </div>
+      </Layout>
+    );
+  }
+  // หลัง phase === 'error' block
+  if (phase === 'done' && scanData?.isSubnet) {
+    return (
+      <Layout navigate={navigate}>
+        <Topbar />
+        <div className="pageHead">
+          <h1 className="pageTitle">Subnet Scan Result</h1>
+          <p className="pageDesc">{scanData.subnet} — {scanData.version}</p>
+        </div>
+
+        <div className="scoreSummary" style={{ marginBottom: 24 }}>
+          <div className="scoreDetail">
+            <div className="scoreLabel">{scanData.subnet}</div>
+            <div className="scoreVersion">{scanData.version}</div>
+            <div className="scoreCounts" style={{ marginTop: 8 }}>
+              <span className="countBadge pass">✔ {scanData.success_count} สำเร็จ</span>
+              <span className="countBadge fail">✖ {scanData.failed_count} ล้มเหลว</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="resultCard">
+          <div className="colHeaders" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
+            <div>Host</div>
+            <div>Score</div>
+            <div>Status</div>
+            <div>Detail</div>
+          </div>
+          <div className="itemList">
+            {scanData.results.map((r) => (
+              <div key={r.host} className="resultRow">
+                <div className="rowSummary" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
+                  <div>
+                    <div className="itemName">{r.hostname || r.host}</div>
+                    <div className="sectionTag">{r.host}</div>
+                  </div>
+                  <div>
+                    <span style={{
+                      fontFamily: 'DM Mono, monospace',
+                      fontSize: 14,
+                      fontWeight: 500,
+                      color: r.score >= 70 ? 'var(--green)' : r.score >= 40 ? 'var(--amber)' : 'var(--red)',
+                    }}>
+                      {r.score}%
+                    </span>
+                  </div>
+                  <div>
+                    <span className={`badge ${r.status === 'done' ? 'on' : 'off'}`}>
+                      {r.status === 'done' ? 'Done' : 'Error'}
+                    </span>
+                    {r.error && <div className="sectionTag" style={{ color: 'var(--red)', marginTop: 4 }}>{r.error}</div>}
+                  </div>
+                  <div>
+                    {r.scan_id && (
+                      <button
+                        className="connBtn"
+                        style={{ padding: '4px 12px', fontSize: 12 }}
+                        onClick={() => navigate(`/scan/${r.scan_id}/report`)}
+                      >
+                        View →
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="resultFooter">
+            <div />
+            <button className="finishButton" onClick={() => navigate('/home')}>
+              Finish
+            </button>
           </div>
         </div>
       </Layout>

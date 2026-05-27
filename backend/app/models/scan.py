@@ -14,3 +14,5 @@ class ScanResult(Base):
     user_id     = Column(Integer, ForeignKey("users.id"))
     version     = Column(String, nullable=True)   # ← ต้องมี
     hostname    = Column(String, nullable=True)   # ← ต้องมี
+    scan_type      = Column(String, default="single")   # "single" | "subnet"
+    parent_scan_id = Column(Integer, nullable=True)     # สำหรับ child scan ของ subnet

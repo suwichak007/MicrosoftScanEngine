@@ -15,12 +15,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
-
-import openpyxl
 
 # ---------------------------------------------------------------------------
 # Constants (ใช้ใน auto_detect_baseline สำหรับ generate script เท่านั้น)
@@ -101,9 +100,11 @@ def _detect_os_family(filename: str) -> str:
 def _derive_version_id(filename: str) -> str:
     name = os.path.splitext(filename)[0]
     for p in ["MS_Security_Baseline_", "MS Security Baseline ", "MSSecurityBaseline"]:
-        if name.startswith(p):
+        if name.lower().startswith(p.lower()):
             name = name[len(p):]
             break
+    # ลบ suffix "MS Security Baseline" ที่อาจติดมาท้ายชื่อ
+    name = re.sub(r'\s*\(?\bMS[\s_]Security[\s_]Baseline\b\)?', '', name, flags=re.IGNORECASE)
     return name.replace("_", " ").strip()
 
 
@@ -116,6 +117,7 @@ def _first_match(candidates: list[str], headers: list[str]) -> Optional[str]:
 
 def auto_detect_baseline(filepath: str) -> BaselineConfig:
     """อ่าน Excel → BaselineConfig  (ใช้เฉพาะ generate_baseline_json.py)"""
+    import openpyxl
     filename   = os.path.basename(filepath)
     version_id = _derive_version_id(filename)
     os_family  = _detect_os_family(filename)
@@ -227,8 +229,12 @@ _baselines_dir: str = ""
 
 
 def _get_baselines_dir() -> str:
-    return os.environ.get("BASELINES_DIR", _DEFAULT_BASELINES_DIR)
-
+    # ถ้ารันใน PyInstaller exe
+    if getattr(sys, "frozen", False):
+        base = Path(sys._MEIPASS)
+    else:
+        base = Path(__file__).resolve().parents[4]
+    return os.environ.get("BASELINES_DIR", str(base / "baselines" / "generated"))
 
 @lru_cache(maxsize=16)
 def _load_json(filepath: str) -> dict:
@@ -237,60 +243,41 @@ def _load_json(filepath: str) -> dict:
 
 
 def load_checks(version_id: str, role: str = "Member Server") -> list[dict]:
-    """
-    โหลด check definitions จาก JSON สำหรับ version และ role ที่ระบุ
-
-    Parameters
-    ----------
-    version_id : str  เช่น "Windows 11 v24H2" หรือ "windows-11-v24h2"
-                      หรือ "Windows Server 2025 v2602 (MS Security Baseline)"
-    role       : str  "Member Server" | "Domain Controller"
-
-    Returns
-    -------
-    list[dict]  — checks ที่กรองแล้วตาม role
-    """
-    # Remove "(MS Security Baseline)" suffix if present
-    clean_version = version_id.replace(" (MS Security Baseline)", "").strip()
-    baseline_id = _slug(clean_version)
     baselines_dir = _get_baselines_dir()
-    filepath = os.path.join(baselines_dir, f"{baseline_id}.json")
+
+    # ลอง slug ตรงๆ ก่อน
+    slug = _slug(version_id)
+    filepath = os.path.join(baselines_dir, f"{slug}.json")
+
+    # ถ้าไม่เจอ scan ทุกไฟล์แล้ว match
+    if not os.path.exists(filepath):
+        version_lower = version_id.strip().lower()
+        for fname in sorted(os.listdir(baselines_dir)):
+            if not fname.endswith(".json"):
+                continue
+            fpath = os.path.join(baselines_dir, fname)
+            try:
+                data = _load_json(fpath)
+                bname = data.get("baseline_name", "").strip().lower()
+                bid   = data.get("baseline_id",   "").strip().lower()
+                # match ถ้าตรงกัน หรือ version_id เป็น substring ของ baseline_name
+                if (bname == version_lower
+                        or bid == slug
+                        or version_lower in bname
+                        or bname in version_lower):
+                    filepath = fpath
+                    break
+            except Exception:
+                continue
 
     if not os.path.exists(filepath):
-        # Try to find matching file by searching all JSON files
-        if os.path.isdir(baselines_dir):
-            for fname in os.listdir(baselines_dir):
-                if fname.endswith(".json"):
-                    fpath = os.path.join(baselines_dir, fname)
-                    try:
-                        data = _load_json(fpath)
-                        # Check multiple matching strategies
-                        data_id = data.get("baseline_id", "")
-                        data_name = data.get("baseline_name", "")
-
-                        if (data_id == baseline_id or
-                            _slug(data_name) == baseline_id or
-                            _slug(data_name.replace(" (MS Security Baseline)", "")) == baseline_id or
-                            data_id == version_id or
-                            data_name == version_id):
-                            filepath = fpath
-                            break
-                    except Exception:
-                        continue
-
-    if not os.path.exists(filepath):
-        available = []
-        if os.path.isdir(baselines_dir):
-            available = [os.path.splitext(f)[0] for f in os.listdir(baselines_dir) if f.endswith('.json')]
         raise FileNotFoundError(
-            f"ไม่พบ baseline: {version_id}\n"
-            f"Available: {available}"
+            f"ไม่พบ baseline definition: {filepath}\n"
+            f"กรุณารัน: python scripts/generate_baseline_json.py"
         )
 
-    data   = _load_json(filepath)
-    checks = data.get("checks", [])
-
-    # กรองตาม role (applies_to)
+    data    = _load_json(filepath)
+    checks  = data.get("checks", [])
     filtered = [
         c for c in checks
         if not c.get("applies_to") or _role_matches(c["applies_to"], role)

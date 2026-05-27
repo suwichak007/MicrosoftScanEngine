@@ -27,6 +27,9 @@ function Home() {
   const [loadingAgents, setLoadingAgents] = useState(false);
   const [agentError, setAgentError] = useState('');
   const [role, setRole] = useState('Member Server');
+  const [subnet, setSubnet] = useState('192.168.1.0/24');      // ← เพิ่มตรงนี้
+  const [maxParallel, setMaxParallel] = useState(5);            // ← เพิ่มตรงนี้
+  
 
   // ── Avatar dropdown ──────────────────────────────────────────────────
   const [showUserMenu, setShowUserMenu] = useState(false);
@@ -151,6 +154,24 @@ function Home() {
     });
   };
 
+  const handleStartSubnetScan = () => {
+    if (!subnet)       { setErrorMsg('กรุณากรอก Subnet'); return; }
+    if (!scanUsername) { setErrorMsg('กรุณากรอก Username'); return; }
+    if (!password)     { setErrorMsg('กรุณากรอก Password'); return; }
+    if (!version)      { setErrorMsg('กรุณาเลือก Baseline Version'); return; }
+    setErrorMsg('');
+    navigate('/result', {
+      state: {
+        scanParams: {
+          subnet, username: scanUsername, password, version, role,
+          use_ssl: false, skip_ca_check: true, max_parallel: maxParallel,
+          _mode: 'subnet',
+          target_name: `${subnet} (${version})`,
+        },
+      },
+    });
+  };
+
   const agentOnline = (a) => {
     if (!a.last_seen) return false;
     return (Date.now() - new Date(a.last_seen).getTime()) < 5 * 60 * 1000;
@@ -159,6 +180,8 @@ function Home() {
   const selectedAgentInfo = agents.find((a) => a.agent_id === selectedAgent);
   const canScan = scanMode === 'remote'
     ? connStatus === 'success' && !loadingBaselines && !baselineError
+    : scanMode === 'subnet'
+    ? !!subnet && !!scanUsername && !!password && !loadingBaselines && !baselineError
     : !!selectedAgent && !loadingAgents && !agentError && !loadingBaselines && !baselineError;
 
   return (
@@ -320,6 +343,12 @@ function Home() {
             >
               Agent Scan
             </button>
+            <button
+              className={`tab ${scanMode === 'subnet' ? 'active' : ''}`}
+              onClick={() => { setScanMode('subnet'); setErrorMsg(''); }}
+            >
+              Subnet Scan
+            </button>
           </div>
 
           {/* Remote */}
@@ -403,6 +432,48 @@ function Home() {
           )}
         </section>
 
+          {/* Subnet */}
+          {scanMode === 'subnet' && (
+            <div className="sectionBody animIn">
+              <div className="fieldRow">
+                <div className="field">
+                  <label className="fieldLabel">Subnet (CIDR)</label>
+                  <input className="inp" type="text" placeholder="192.168.1.0/24"
+                    value={subnet} onChange={(e) => setSubnet(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label className="fieldLabel">Username</label>
+                  <input className="inp" type="text" placeholder=".\Administrator"
+                    value={scanUsername} onChange={(e) => setScanUsername(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label className="fieldLabel">Password</label>
+                  <input className="inp" type="password" placeholder="••••••••"
+                    value={password} onChange={(e) => setPassword(e.target.value)} />
+                </div>
+                <div className="field">
+                  <label className="fieldLabel">Parallel (max)</label>
+                  <input className="inp" type="number" min="1" max="20"
+                    value={maxParallel} onChange={(e) => setMaxParallel(Number(e.target.value))} />
+                </div>
+                {baselines.find(b => b.version_id === version)?.os_family === 'windows_server' && (
+                  <div className="field">
+                    <label className="fieldLabel">Target Role</label>
+                    <div className="selectWrap">
+                      <select className="sel" value={role} onChange={(e) => setRole(e.target.value)}>
+                        <option value="Member Server">Member Server</option>
+                        <option value="Domain Controller">Domain Controller</option>
+                      </select>
+                      <svg className="selArrow" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M2 4l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
         {/* ── Launch ── */}
         <div className="launchRow">
           {version && (
@@ -414,7 +485,11 @@ function Home() {
           )}
           <button
             className="scanBtn"
-            onClick={scanMode === 'remote' ? handleStartRemoteScan : handleStartAgentScan}
+            onClick={
+              scanMode === 'remote' ? handleStartRemoteScan
+              : scanMode === 'subnet' ? handleStartSubnetScan
+              : handleStartAgentScan
+            }
             disabled={!canScan}
           >
             เริ่มสแกน

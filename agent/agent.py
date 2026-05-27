@@ -63,44 +63,23 @@ def load_config() -> dict:
 
 def run_scan(job: dict, data_path: str):
     from scanner.security_scanner import SecurityScanner
-    from scanner.baseline_config import load_configs, auto_detect_baseline
+    from scanner.baseline_config import load_checks
 
-    version  = job.get("version", "")
-    filename = os.path.basename(job.get("baseline_path", ""))
+    version = job.get("version", "")
 
-    # ── detect role จากเครื่อง, job override ได้ ─────────────────
+    # detect role
     detected_role = detect_role()
     raw_role      = str(job.get("role", detected_role)).strip()
     role          = raw_role if raw_role in VALID_ROLES else detected_role
 
     print(f"[Agent] detected={detected_role}  job_role={job.get('role', '-')}  final={role}")
 
-    # ── หา baseline config ────────────────────────────────────────
-    configs = load_configs(data_path)
+    # โหลด checks จาก JSON
+    checks = load_checks(version, role=role)
+    print(f"[Agent] baseline={version}  role={role}  checks={len(checks)}")
 
-    if version and version in configs:
-        baseline_cfg = configs[version]
-    elif filename:
-        matched = next(
-            (c for c in configs.values() if c.filename == filename), None
-        )
-        if matched:
-            baseline_cfg = matched
-        else:
-            fpath        = os.path.join(data_path, filename)
-            baseline_cfg = auto_detect_baseline(fpath)
-    else:
-        baseline_cfg = next(iter(configs.values()))
-
-    s = SecurityScanner(
-        data_path       = data_path,
-        baseline_config = baseline_cfg,
-        role            = role,
-    )
-    s.target_file = os.path.join(data_path, baseline_cfg.filename)
-
-    print(f"[Agent] baseline={baseline_cfg.version_id}  role={role}")
-    return s.run_baseline_scan()
+    s = SecurityScanner(role=role)
+    return s.run_baseline_scan(checks)
 
 
 def main():
@@ -165,12 +144,19 @@ def main():
                     timeout=TIMEOUT,
                 )
 
+        except KeyboardInterrupt:
+            print("[Agent] หยุดทำงาน")
+            break
         except requests.exceptions.ConnectionError:
             print(f"[Agent] เชื่อมต่อ backend ไม่ได้ ลองใหม่ใน {POLL}s")
         except Exception as e:
             print(f"[Agent] error: {e}")
 
-        time.sleep(POLL)
+        try:
+            time.sleep(POLL)
+        except KeyboardInterrupt:
+            print("[Agent] หยุดทำงาน")
+            break
 
 
 if __name__ == "__main__":

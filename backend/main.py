@@ -74,7 +74,6 @@ app.add_middleware(
 )
 app.include_router(summary_router)
 
-
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -147,6 +146,17 @@ class ChangePasswordRequest(BaseModel):
     new_password:     str
 
 
+class SubnetScanRequest(BaseModel):
+    subnet:        str  = Field(..., example="192.168.1.0/24")
+    username:      str  = Field(..., example=".\\Administrator")
+    password:      str  = Field(..., example="P@ssw0rd")
+    version:       str  = Field("Windows Server 2025 v2602 (MS Security Baseline)")
+    role:          str  = Field("Member Server")
+    use_ssl:       bool = Field(False)
+    skip_ca_check: bool = Field(True)
+    max_parallel:  int  = Field(10)  # สแกนพร้อมกันสูงสุด 10 เครื่อง
+
+
 # ---------------------------------------------------------------------------
 # DB Dependency
 # ---------------------------------------------------------------------------
@@ -158,6 +168,203 @@ def get_db():
     finally:
         db.close()
 
+
+async def _run_subnet_scan_job(job, hosts, req, user_id):
+    import asyncio
+    from fastapi.concurrency import run_in_threadpool
+
+    job.status   = "running"
+    job.progress = 0
+    job.message  = f"กำลัง discover hosts ใน {req.subnet}..."
+
+    # สร้าง parent record ก่อน
+    def _save_parent():
+        db = SessionLocal()
+        try:
+            parent = ScanResult(
+                target_name = f"{req.subnet} ({req.version})",
+                score       = 0,
+                details     = {},
+                scan_date   = datetime.datetime.now(),
+                version     = req.version,
+                hostname    = req.subnet,
+                user_id     = user_id,
+                scan_type   = "subnet",
+            )
+            db.add(parent)
+            db.commit()
+            db.refresh(parent)
+            return parent.id
+        finally:
+            db.close()
+
+    parent_id = await run_in_threadpool(_save_parent)
+
+    semaphore = asyncio.Semaphore(req.max_parallel)
+    done      = 0
+    total     = len(hosts)
+
+    async def scan_one(host: str):
+        nonlocal done
+        async with semaphore:
+            try:
+                executor = RemoteExecutor(
+                    host=host,
+                    username=req.username,
+                    password=req.password,
+                    use_ssl=req.use_ssl,
+                    skip_ca_check=req.skip_ca_check,
+                    timeout=15,
+                )
+                conn = await asyncio.wait_for(
+                    run_in_threadpool(executor.test_connection),
+                    timeout=15,
+                )
+                if not conn["success"]:
+                    done += 1
+                    job.progress = int(done / total * 100)
+                    return None
+
+                hostname = conn.get("hostname") or host
+                checks   = load_checks(req.version, role=req.role)
+                scanner  = SecurityBaselineScanner(executor=executor, role=req.role)
+                score, details = await asyncio.wait_for(
+                    run_in_threadpool(scanner.run_baseline_scan, checks),
+                    timeout=SCAN_TIMEOUT_SECONDS,
+                )
+
+                findings        = enrich_scan_details(details, version=req.version, role=req.role)
+                finding_summary = summarize_findings(findings)
+
+                def _save():
+                    db = SessionLocal()
+                    try:
+                        new_scan = ScanResult(
+                            target_name    = f"{hostname} ({req.version})",
+                            score          = score,
+                            details        = details,
+                            scan_date      = datetime.datetime.now(),
+                            version        = req.version,
+                            hostname       = hostname,
+                            user_id        = user_id,
+                            scan_type      = "single",
+                            parent_scan_id = parent_id,
+                        )
+                        db.add(new_scan)
+                        db.commit()
+                        db.refresh(new_scan)
+                        return new_scan.id
+                    finally:
+                        db.close()
+
+                scan_id = await run_in_threadpool(_save)
+                done += 1
+                job.progress = int(done / total * 100)
+                job.message  = f"สแกนแล้ว {done}/{total} hosts"
+
+                return {
+                    "host": host, "hostname": hostname,
+                    "score": score, "scan_id": scan_id, "status": "done",
+                }
+
+            except Exception as e:
+                done += 1
+                job.progress = int(done / total * 100)
+                return {"host": host, "score": 0, "status": "error", "error": str(e)}
+
+    tasks   = [scan_one(h) for h in hosts]
+    scanned = await asyncio.gather(*tasks)
+    results = [r for r in scanned if r is not None]
+
+    success = [r for r in results if r["status"] == "done"]
+    failed  = [r for r in results if r["status"] == "error"]
+
+    # update parent score
+    avg_score = int(sum(r["score"] for r in success) / len(success)) if success else 0
+
+    def _update_parent():
+        db = SessionLocal()
+        try:
+            parent = db.query(ScanResult).filter(ScanResult.id == parent_id).first()
+            if parent:
+                parent.score   = avg_score
+                parent.details = {"results": results, "subnet": req.subnet}
+                db.commit()
+        finally:
+            db.close()
+
+    await run_in_threadpool(_update_parent)
+
+    job.status   = "done"
+    job.progress = 100
+    job.message  = f"เสร็จสิ้น: สำเร็จ {len(success)}, ล้มเหลว {len(failed)}"
+    job.result   = {
+        "subnet":        req.subnet,
+        "total":         total,
+        "success_count": len(success),
+        "failed_count":  len(failed),
+        "results":       results,
+        "scan_id":       parent_id,
+    }
+
+@app.get("/api/scan/history/{scan_id}/children")
+async def get_subnet_children(
+    scan_id:      int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+):
+    query = db.query(ScanResult).filter(ScanResult.parent_scan_id == scan_id)
+    if current_user.role != "admin":
+        query = query.filter(ScanResult.user_id == current_user.id)
+    children = query.order_by(ScanResult.scan_date).all()
+    return [
+        {
+            "id":          c.id,
+            "target_name": c.target_name,
+            "hostname":    c.hostname or "",
+            "score":       c.score,
+            "scan_date":   c.scan_date.isoformat(),
+            "version":     c.version or "",
+            "pass_count":  sum(1 for v in (c.details or {}).values()
+                              if isinstance(v, dict) and v.get("status") == "Pass"),
+            "fail_count":  sum(1 for v in (c.details or {}).values()
+                              if isinstance(v, dict) and str(v.get("status","")).startswith("Fail")),
+        }
+        for c in children
+    ]
+
+@app.post("/api/scan/subnet")
+async def run_subnet_scan(
+    req:              SubnetScanRequest,
+    background_tasks: BackgroundTasks,
+    current_user:     User = Depends(get_current_user),
+):
+    import ipaddress
+    try:
+        network = ipaddress.ip_network(req.subnet, strict=False)
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"subnet ไม่ถูกต้อง: {req.subnet}")
+
+    hosts = [str(h) for h in network.hosts()]
+    if len(hosts) > 254:
+        raise HTTPException(status_code=400, detail="subnet ใหญ่เกินไป (max /24)")
+
+    job_id, job = _new_job()
+    job.message = f"เตรียมสแกน {len(hosts)} hosts..."
+
+    background_tasks.add_task(
+        _run_subnet_scan_job,
+        job=job,
+        hosts=hosts,
+        req=req,
+        user_id=current_user.id,
+    )
+    return {
+        "job_id":  job_id,
+        "status":  "pending",
+        "subnet":  req.subnet,
+        "total_hosts": len(hosts),
+    }
 
 # ---------------------------------------------------------------------------
 # Background scan worker (จุดที่ 2 ตามหลักการแก้โค้ดใหม่)
@@ -578,7 +785,9 @@ async def get_scan_history(
     db:           Session = Depends(get_db),
     current_user: User    = Depends(get_current_user),
 ):
-    query = db.query(ScanResult)
+    query = db.query(ScanResult).filter(
+        ScanResult.parent_scan_id == None  # ← เฉพาะ top-level
+    )
     if current_user.role != "admin":
         query = query.filter(ScanResult.user_id == current_user.id)
     scans = query.order_by(ScanResult.scan_date.desc()).limit(limit).all()
@@ -590,21 +799,14 @@ async def get_scan_history(
             "scan_date":     s.scan_date.isoformat(),
             "version":       s.version or "",
             "hostname":      s.hostname or "",
+            "scan_type":     getattr(s, "scan_type", "single"),
             "items_scanned": len(s.details) if s.details else 0,
-            "pass_count": sum(
-                1 for v in (s.details or {}).values()
-                if isinstance(v, dict) and v.get("status") == "Pass"
-            ),
-            "fail_count": sum(
-                1 for v in (s.details or {}).values()
-                if isinstance(v, dict) and str(v.get("status", "")).startswith("Fail")
-            ),
-            "na_count": sum(
-                1 for v in (s.details or {}).values()
-                if isinstance(v, dict) and "Manual" in str(v.get("status", ""))
-            ),
+            "pass_count":    sum(1 for v in (s.details or {}).values()
+                                if isinstance(v, dict) and v.get("status") == "Pass"),
+            "fail_count":    sum(1 for v in (s.details or {}).values()
+                                if isinstance(v, dict) and str(v.get("status","")).startswith("Fail")),
         }
-        for s in scans 
+        for s in scans
     ]
 
 

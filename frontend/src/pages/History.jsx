@@ -12,6 +12,8 @@ function History() {
   const [loading,  setLoading]  = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [deleting, setDeleting] = useState(null);
+  const [expandedSubnet, setExpandedSubnet] = useState(null);
+  const [subnetChildren, setSubnetChildren] = useState({});
 
   const getToken    = () => localStorage.getItem('token') || '';
   const authHeader  = () => ({
@@ -37,6 +39,24 @@ function History() {
       setErrorMsg(`เกิดข้อผิดพลาด: ${err.message}`);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadChildren = async (scanId) => {
+    if (subnetChildren[scanId]) {
+      setExpandedSubnet(expandedSubnet === scanId ? null : scanId);
+      return;
+    }
+    try {
+      const res = await fetch(`${API_BASE}/api/scan/history/${scanId}/children`, {
+        headers: authHeader(),  // ← แก้จาก authHeaders() เป็น authHeader()
+      });
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
+      const data = await res.json();
+      setSubnetChildren(prev => ({ ...prev, [scanId]: data }));
+      setExpandedSubnet(scanId);
+    } catch (err) {
+      setErrorMsg(`โหลด children ไม่สำเร็จ: ${err.message}`);
     }
   };
 
@@ -200,26 +220,68 @@ function History() {
               </thead>
               <tbody>
                 {history.map((h) => (
-                  <tr key={h.id}>
-                    <td className="monoCell">{formatDate(h.scan_date)}</td>
-                    <td className="targetCell">{h.target_name}</td>
-                    <td className="monoCell">{h.version || '—'}</td>
-                    <td className="scoreCell" style={{ color: scoreColor(h.score) }}>{h.score}%</td>
-                    <td className="passCell">✔ {h.pass_count}</td>
-                    <td className="failCell">✖ {h.fail_count}</td>
-                    <td>
-                      <div className="historyActions">
-                        <button className="viewBtn" onClick={() => handleView(h.id)}>View</button>
-                        <button
-                          className="deleteBtn"
-                          onClick={() => handleDelete(h.id)}
-                          disabled={deleting === h.id}
-                        >
-                          {deleting === h.id ? '…' : 'Delete'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
+                  <React.Fragment key={h.id}>
+                    <tr>
+                      <td className="monoCell">{formatDate(h.scan_date)}</td>
+                      <td className="targetCell">
+                        {h.scan_type === 'subnet' && (
+                          <span style={{
+                            fontSize: 10, background: 'var(--amber-pale)',
+                            color: 'var(--amber)', border: '1px solid var(--amber)',
+                            borderRadius: 4, padding: '1px 6px', marginRight: 6,
+                          }}>
+                            SUBNET
+                          </span>
+                        )}
+                        {h.target_name}
+                      </td>
+                      <td className="monoCell">{h.version || '—'}</td>
+                      <td className="scoreCell" style={{ color: scoreColor(h.score) }}>{h.score}%</td>
+                      <td className="passCell">✔ {h.pass_count}</td>
+                      <td className="failCell">✖ {h.fail_count}</td>
+                      <td>
+                        <div className="historyActions">
+                          {h.scan_type === 'subnet' ? (
+                            <button className="viewBtn" onClick={() => loadChildren(h.id)}>
+                              {expandedSubnet === h.id ? '▲ ซ่อน' : '▼ รายเครื่อง'}
+                            </button>
+                          ) : (
+                            <button className="viewBtn" onClick={() => handleView(h.id)}>View</button>
+                          )}
+                          <button
+                            className="deleteBtn"
+                            onClick={() => handleDelete(h.id)}
+                            disabled={deleting === h.id}
+                          >
+                            {deleting === h.id ? '…' : 'Delete'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+
+                    {/* ── Children rows ── */}
+                    {expandedSubnet === h.id && subnetChildren[h.id]?.map((child) => (
+                      <tr key={child.id} style={{ background: 'var(--cream-dark)' }}>
+                        <td className="monoCell" style={{ paddingLeft: 32 }}>
+                          {formatDate(child.scan_date)}
+                        </td>
+                        <td className="targetCell" style={{ paddingLeft: 32 }}>
+                          ↳ {child.hostname || child.target_name}
+                        </td>
+                        <td className="monoCell">{child.version || '—'}</td>
+                        <td className="scoreCell" style={{ color: scoreColor(child.score) }}>
+                          {child.score}%
+                        </td>
+                        <td className="passCell">✔ {child.pass_count}</td>
+                        <td className="failCell">✖ {child.fail_count}</td>
+                        <td>
+                          <div className="historyActions">
+                            <button className="viewBtn" onClick={() => handleView(child.id)}>View</button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </React.Fragment>
                 ))}
               </tbody>
             </table>
