@@ -4,6 +4,7 @@ import os
 import sys
 import time
 import io
+import socket
 import requests
 
 if getattr(sys, "frozen", False):
@@ -18,6 +19,92 @@ sys.path.insert(0, INTERNAL)
 CONFIG_PATH = os.path.join(BASE_DIR, "agent_config.json")
 
 VALID_ROLES = {"Member Server", "Domain Controller"}
+AGENT_VERSION = "1.0.0"
+
+
+def get_ipv4_addresses() -> list[str]:
+    addresses = set()
+    try:
+        hostname = socket.gethostname()
+        for ip in socket.gethostbyname_ex(hostname)[2]:
+            if ip and not ip.startswith("127.") and not ip.startswith("169.254."):
+                addresses.add(ip)
+    except Exception:
+        pass
+
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.connect(("8.8.8.8", 80))
+        ip = sock.getsockname()[0]
+        sock.close()
+        if ip and not ip.startswith("127.") and not ip.startswith("169.254."):
+            addresses.add(ip)
+    except Exception:
+        pass
+
+    return sorted(addresses)
+
+
+def detect_os_metadata() -> dict:
+    meta = {
+        "os_name": "",
+        "os_version": "",
+        "os_build": "",
+        "os_release": "",
+        "os_family": "",
+    }
+    try:
+        import winreg
+        key = winreg.OpenKey(
+            winreg.HKEY_LOCAL_MACHINE,
+            r"SOFTWARE\Microsoft\Windows NT\CurrentVersion"
+        )
+        values = {}
+        for name in [
+            "ProductName",
+            "DisplayVersion",
+            "ReleaseId",
+            "CurrentBuildNumber",
+            "CurrentVersion",
+            "EditionID",
+            "InstallationType",
+        ]:
+            try:
+                values[name], _ = winreg.QueryValueEx(key, name)
+            except OSError:
+                pass
+        winreg.CloseKey(key)
+
+        product_name = str(values.get("ProductName", "")).strip()
+        build = str(values.get("CurrentBuildNumber", "")).strip()
+        release = str(values.get("DisplayVersion") or values.get("ReleaseId") or "").strip()
+        installation_type = str(values.get("InstallationType", "")).lower()
+
+        try:
+            build_number = int(build)
+        except ValueError:
+            build_number = 0
+
+        if "server" in product_name.lower() or "server" in installation_type:
+            os_family = "windows_server"
+        elif "windows" in product_name.lower():
+            os_family = "windows_client"
+        else:
+            os_family = ""
+
+        if os_family == "windows_client" and build_number >= 22000 and "windows 11" not in product_name.lower():
+            product_name = "Windows 11"
+
+        meta.update({
+            "os_name": product_name,
+            "os_version": str(values.get("CurrentVersion", "")).strip(),
+            "os_build": build,
+            "os_release": release,
+            "os_family": os_family,
+        })
+    except Exception as e:
+        print(f"[Agent] OS detect warning: {e}")
+    return meta
 
 
 # ── เพิ่มตรงนี้ ก่อน run_scan ──────────────────────────────────
@@ -45,7 +132,7 @@ def detect_role() -> str:
 def load_config() -> dict:
     if not os.path.exists(CONFIG_PATH):
         default = {
-            "backend_url":      "http://BACKEND_IP:8000",
+            "backend_url":      "http://BACKEND_IP:8001",
             "agent_token":      "ใส่ token ที่ได้จาก POST /agent/register",
             "poll_interval":    10,
             "request_timeout":  300,
@@ -87,8 +174,19 @@ def main():
     sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8", errors="replace")
 
     cfg     = load_config()
+    os_meta = detect_os_metadata()
     URL     = cfg["backend_url"].rstrip("/")
-    HDR     = {"X-Agent-Token": cfg["agent_token"]}
+    HDR     = {
+        "X-Agent-Token": cfg["agent_token"],
+        "X-Agent-Hostname": socket.gethostname(),
+        "X-Agent-Version": AGENT_VERSION,
+        "X-Agent-IP-Addresses": ",".join(get_ipv4_addresses()),
+        "X-Agent-OS-Name": os_meta.get("os_name", ""),
+        "X-Agent-OS-Version": os_meta.get("os_version", ""),
+        "X-Agent-OS-Build": os_meta.get("os_build", ""),
+        "X-Agent-OS-Release": os_meta.get("os_release", ""),
+        "X-Agent-OS-Family": os_meta.get("os_family", ""),
+    }
     POLL    = int(cfg.get("poll_interval", 10))
     DATA    = cfg["data_path"]
     TIMEOUT = int(cfg.get("request_timeout", 300))
@@ -100,9 +198,13 @@ def main():
 
     while True:
         try:
+            poll_headers = {
+                **HDR,
+                "X-Agent-IP-Addresses": ",".join(get_ipv4_addresses()),
+            }
             resp = requests.get(
                 f"{URL}/agent/jobs/pending",
-                headers=HDR,
+                headers=poll_headers,
                 timeout=TIMEOUT,
             )
 
@@ -139,7 +241,7 @@ def main():
 
                 requests.post(
                     f"{URL}/agent/jobs/{jid}/result",
-                    headers=HDR,
+                    headers=poll_headers,
                     json=payload,
                     timeout=TIMEOUT,
                 )

@@ -4,6 +4,7 @@ ScanAgentSetup.py
 agent.exe, nssm.exe และ data/ ถูก bundle ไว้ใน setup.exe แล้ว
 """
 import ctypes
+import argparse
 import json
 import os
 import shutil
@@ -11,9 +12,9 @@ import socket
 import subprocess
 import sys
 import urllib.request
+import urllib.parse
 
 # ── config (เปลี่ยนตรงนี้ก่อน build) ────────────────────────────
-BACKEND_URL  = "http://192.168.105.11:8000"
 AGENT_DIR    = r"C:\MicrosoftScanEngine"
 SERVICE_NAME = "MicrosoftScanAgent"
 # ─────────────────────────────────────────────────────────────────
@@ -27,9 +28,15 @@ def is_admin() -> bool:
 
 
 def elevate():
-    script = sys.executable if getattr(sys, "frozen", False) else __file__
+    args = " ".join(f'"{arg}"' for arg in sys.argv[1:])
+    if getattr(sys, "frozen", False):
+        target = sys.executable
+        params = args
+    else:
+        target = sys.executable
+        params = f'"{__file__}" {args}'.strip()
     ctypes.windll.shell32.ShellExecuteW(
-        None, "runas", sys.executable, f'"{script}"', None, 1
+        None, "runas", target, params, None, 1
     )
     sys.exit(0)
 
@@ -47,9 +54,20 @@ def get_bundled(path: str) -> str:
     return os.path.join(base, path)
 
 
-def register_agent() -> tuple[str, str]:
+def parse_args():
+    parser = argparse.ArgumentParser(description="Install MicrosoftScanAgent")
+    parser.add_argument("--backend-url", required=True, help="Backend URL, e.g. http://SERVER:8001")
+    parser.add_argument("--install-token", required=True, help="Shared install token from backend")
+    return parser.parse_args()
+
+
+def register_agent(backend_url: str, install_token: str) -> tuple[str, str]:
     hostname = socket.gethostname()
-    url = f"{BACKEND_URL}/agent/register?hostname={hostname}"
+    query = urllib.parse.urlencode({
+        "hostname": hostname,
+        "install_token": install_token,
+    })
+    url = f"{backend_url.rstrip('/')}/agent/register?{query}"
     req = urllib.request.Request(url, method="POST")
     with urllib.request.urlopen(req, timeout=30) as r:
         data = json.loads(r.read())
@@ -77,6 +95,9 @@ def install_service(nssm: str, exe: str):
 
 
 def main():
+    args = parse_args()
+    backend_url = args.backend_url.rstrip("/")
+
     # ── 0. ตรวจสิทธิ์ ──────────────────────────────────────────
     if not is_admin():
         log("[Setup] ขอสิทธิ์ Administrator...")
@@ -95,7 +116,7 @@ def main():
     # ── 2. Register ────────────────────────────────────────────
     log("[2/5] ลงทะเบียนกับ backend...")
     try:
-        agent_id, token = register_agent()
+        agent_id, token = register_agent(backend_url, args.install_token)
         log(f"      agent_id = {agent_id}")
     except Exception as e:
         log(f"[ERROR] ลงทะเบียนไม่ได้: {e}")
@@ -105,7 +126,7 @@ def main():
     # ── 3. สร้าง config ────────────────────────────────────────
     log("[3/5] สร้าง agent_config.json...")
     config = {
-        "backend_url":   BACKEND_URL,
+        "backend_url":   backend_url,
         "agent_token":   token,
         "poll_interval": 10,
         "data_path":     os.path.join(AGENT_DIR, "data"),

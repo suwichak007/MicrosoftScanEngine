@@ -73,7 +73,7 @@ function Home() {
   }, []);
 
   useEffect(() => {
-    if (scanMode !== 'agent') return;
+    if (scanMode !== 'agent' && scanMode !== 'agent-subnet') return;
     const fetchAgents = async () => {
       setLoadingAgents(true);
       setAgentError('');
@@ -97,6 +97,14 @@ function Home() {
     };
     fetchAgents();
   }, [scanMode]);
+
+  useEffect(() => {
+    setVersion((prev) => {
+      if (scanMode === 'agent' || scanMode === 'agent-subnet') return 'auto';
+      if (prev === 'auto' && baselines.length > 0) return baselines[0].version_id;
+      return prev;
+    });
+  }, [scanMode, baselines]);
 
   const handleConnect = async () => {
     if (!ip || !scanUsername || !password) {
@@ -149,7 +157,14 @@ function Home() {
     const agentInfo = agents.find((a) => a.agent_id === selectedAgent);
     navigate('/result', {
       state: {
-        scanParams: { host: agentInfo.hostname, version, _mode: 'agent', target_name: `${agentInfo.agent_id} (${version})` },
+        scanParams: {
+          agent_id: agentInfo.agent_id,
+          host: agentInfo.hostname,
+          version,
+          role,
+          _mode: 'agent',
+          target_name: `${agentInfo.agent_id} (${version === 'auto' ? 'Auto detect baseline' : version})`,
+        },
       },
     });
   };
@@ -166,6 +181,23 @@ function Home() {
           subnet, username: scanUsername, password, version, role,
           use_ssl: false, skip_ca_check: true, max_parallel: maxParallel,
           _mode: 'subnet',
+          target_name: `${subnet} (${version === 'auto' ? 'Auto detect baseline' : version})`,
+        },
+      },
+    });
+  };
+
+  const handleStartAgentSubnetScan = () => {
+    if (!subnet)  { setErrorMsg('กรุณากรอก Subnet'); return; }
+    if (!version) { setErrorMsg('กรุณาเลือก Baseline Version'); return; }
+    setErrorMsg('');
+    navigate('/result', {
+      state: {
+        scanParams: {
+          subnet,
+          version,
+          role,
+          _mode: 'agent-subnet',
           target_name: `${subnet} (${version})`,
         },
       },
@@ -178,10 +210,16 @@ function Home() {
   };
 
   const selectedAgentInfo = agents.find((a) => a.agent_id === selectedAgent);
+  const baselineOptions = (scanMode === 'agent' || scanMode === 'agent-subnet')
+    ? [{ version_id: 'auto', display_name: 'Auto detect baseline', filename: 'auto' }, ...baselines]
+    : baselines;
+  const versionLabel = version === 'auto' ? 'Auto detect baseline' : version;
   const canScan = scanMode === 'remote'
     ? connStatus === 'success' && !loadingBaselines && !baselineError
     : scanMode === 'subnet'
     ? !!subnet && !!scanUsername && !!password && !loadingBaselines && !baselineError
+    : scanMode === 'agent-subnet'
+    ? !!subnet && !loadingBaselines && !baselineError
     : !!selectedAgent && !loadingAgents && !agentError && !loadingBaselines && !baselineError;
 
   return (
@@ -212,10 +250,16 @@ function Home() {
               Guide
             </button>
             {localStorage.getItem('role') === 'admin' && (
-              <button className="sideLink" onClick={() => navigate('/admin/users')}>
-                <span className="sideLinkDot" />
-                Users
-              </button>
+              <>
+                <button className="sideLink" onClick={() => navigate('/admin/agents')}>
+                  <span className="sideLinkDot" />
+                  Agents
+                </button>
+                <button className="sideLink" onClick={() => navigate('/admin/users')}>
+                  <span className="sideLinkDot" />
+                  Users
+                </button>
+              </>
             )}
           </nav>
         </div>
@@ -309,7 +353,7 @@ function Home() {
                   value={version}
                   onChange={(e) => { setVersion(e.target.value); setConnStatus('idle'); setConnMessage(''); }}
                 >
-                  {baselines.map((b) => (
+                  {baselineOptions.map((b) => (
                     <option key={b.filename} value={b.version_id}>{b.display_name}</option>
                   ))}
                 </select>
@@ -348,6 +392,12 @@ function Home() {
               onClick={() => { setScanMode('subnet'); setErrorMsg(''); }}
             >
               Subnet Scan
+            </button>
+            <button
+              className={`tab ${scanMode === 'agent-subnet' ? 'active' : ''}`}
+              onClick={() => { setScanMode('agent-subnet'); setErrorMsg(''); }}
+            >
+              Agent Subnet
             </button>
           </div>
 
@@ -420,12 +470,51 @@ function Home() {
                           <span className={`badge ${online ? 'on' : 'off'}`}>{online ? 'Online' : 'Offline'}</span>
                         </div>
                         {a.hostname && <span className="agentHostname">{a.hostname}</span>}
+                        {(a.os_name || a.os_release || a.os_build) && (
+                          <span className="agentSeen">
+                            {[a.os_name, a.os_release, a.os_build && `build ${a.os_build}`].filter(Boolean).join(' · ')}
+                          </span>
+                        )}
+                        {a.detected_baseline && (
+                          <span className="agentSeen">Auto baseline {a.detected_baseline}</span>
+                        )}
                         {a.last_seen && (
                           <span className="agentSeen">Last seen {new Date(a.last_seen).toLocaleString('th-TH')}</span>
                         )}
                       </button>
                     );
                   })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {scanMode === 'agent-subnet' && (
+            <div className="sectionBody animIn">
+              <div className="fieldRow">
+                <div className="field">
+                  <label className="fieldLabel">Subnet (CIDR)</label>
+                  <input className="inp" type="text" placeholder="192.168.1.0/24"
+                    value={subnet} onChange={(e) => setSubnet(e.target.value)} />
+                </div>
+                {baselines.find(b => b.version_id === version)?.os_family === 'windows_server' && (
+                  <div className="field">
+                    <label className="fieldLabel">Target Role</label>
+                    <div className="selectWrap">
+                      <select className="sel" value={role} onChange={(e) => setRole(e.target.value)}>
+                        <option value="Member Server">Member Server</option>
+                        <option value="Domain Controller">Domain Controller</option>
+                      </select>
+                      <svg className="selArrow" width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.5">
+                        <path d="M2 4l4 4 4-4" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                    </div>
+                  </div>
+                )}
+              </div>
+              {!loadingAgents && !agentError && (
+                <div className="hint">
+                  จะสแกนเฉพาะ agents ที่ heartbeat แล้วมี IP อยู่ใน subnet นี้
                 </div>
               )}
             </div>
@@ -478,9 +567,10 @@ function Home() {
         <div className="launchRow">
           {version && (
             <div className="scanSummary">
-              <span className="summaryItem">{version}</span>
+              <span className="summaryItem">{versionLabel}</span>
               {scanMode === 'remote' && ip && <><span className="summaryDivider">·</span><span className="summaryItem">{ip}</span></>}
               {scanMode === 'agent' && selectedAgentInfo && <><span className="summaryDivider">·</span><span className="summaryItem">{selectedAgentInfo.agent_id}</span></>}
+              {scanMode === 'agent-subnet' && subnet && <><span className="summaryDivider">·</span><span className="summaryItem">{subnet}</span></>}
             </div>
           )}
           <button
@@ -488,6 +578,7 @@ function Home() {
             onClick={
               scanMode === 'remote' ? handleStartRemoteScan
               : scanMode === 'subnet' ? handleStartSubnetScan
+              : scanMode === 'agent-subnet' ? handleStartAgentSubnetScan
               : handleStartAgentScan
             }
             disabled={!canScan}

@@ -360,6 +360,7 @@ export default function AdminUsers() {
                 { label: 'Home',    path: '/home' },
                 { label: 'History', path: '/history' },
                 { label: 'Guide',   path: '/guide' },
+                { label: 'Agents',  path: '/admin/agents' },
                 { label: 'Users',   path: '/admin/users', active: true },
               ].map((item) => (
                 <button

@@ -149,9 +149,14 @@ function History() {
               <span className="sideLinkDot" />Guide
             </button>
             {localStorage.getItem('role') === 'admin' && (
-              <button className="sideLink" onClick={() => navigate('/admin/users')}>
-                <span className="sideLinkDot" />Users
-              </button>
+              <>
+                <button className="sideLink" onClick={() => navigate('/admin/agents')}>
+                  <span className="sideLinkDot" />Agents
+                </button>
+                <button className="sideLink" onClick={() => navigate('/admin/users')}>
+                  <span className="sideLinkDot" />Users
+                </button>
+              </>
             )}
           </nav>
         </div>
@@ -242,9 +247,12 @@ function History() {
                       <td>
                         <div className="historyActions">
                           {h.scan_type === 'subnet' ? (
-                            <button className="viewBtn" onClick={() => loadChildren(h.id)}>
-                              {expandedSubnet === h.id ? '▲ ซ่อน' : '▼ รายเครื่อง'}
-                            </button>
+                            <>
+                              <button className="viewBtn" onClick={() => navigate(`/scan/${h.id}/subnet`)}>View</button>
+                              <button className="viewBtn" onClick={() => loadChildren(h.id)}>
+                                {expandedSubnet === h.id ? '▲ ซ่อน' : '▼ รายเครื่อง'}
+                              </button>
+                            </>
                           ) : (
                             <button className="viewBtn" onClick={() => handleView(h.id)}>View</button>
                           )}

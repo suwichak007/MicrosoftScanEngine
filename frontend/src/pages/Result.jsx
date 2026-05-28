@@ -226,6 +226,18 @@ function Layout({ children, navigate }) {
               <span className="sideLinkDot" />
               Guide
             </button>
+            {localStorage.getItem('role') === 'admin' && (
+              <>
+                <button className="sideLink" onClick={() => navigate('/admin/agents')}>
+                  <span className="sideLinkDot" />
+                  Agents
+                </button>
+                <button className="sideLink" onClick={() => navigate('/admin/users')}>
+                  <span className="sideLinkDot" />
+                  Users
+                </button>
+              </>
+            )}
           </nav>
         </div>
 
@@ -285,6 +297,8 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
     hasFetched.current = true;
     const endpoint = scanParams._mode === 'agent'
       ? `http://${apiHost}:8000/api/scan/agent`
+      : scanParams._mode === 'agent-subnet'
+      ? `http://${apiHost}:8000/api/scan/agent-subnet`
       : scanParams._mode === 'subnet'
       ? `http://${apiHost}:8000/api/scan/subnet`
       : `http://${apiHost}:8000/api/scan/remote`;
@@ -294,7 +308,9 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify(
         scanParams._mode === 'agent'
-          ? { host: scanParams.host, version: scanParams.version }
+          ? { agent_id: scanParams.agent_id, version: scanParams.version, role: scanParams.role }
+          : scanParams._mode === 'agent-subnet'
+          ? { subnet: scanParams.subnet, version: scanParams.version, role: scanParams.role }
           : scanParams._mode === 'subnet'
           ? {
               subnet:        scanParams.subnet,
@@ -368,17 +384,21 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
 
               const r = data.result;
 
-              if (scanParams._mode === 'subnet') {
-                onScanComplete({
+              if (scanParams._mode === 'subnet' || scanParams._mode === 'agent-subnet') {
+                const subnetResult = {
                   isSubnet:    true,
                   subnet:      r.subnet,
                   total:       r.total,
+                  discovered_hosts: r.discovered_hosts,
                   success_count: r.success_count,
                   failed_count:  r.failed_count,
                   results:     r.results || [],
                   version:     scanParams.version,
                   targetName:  scanParams.target_name,
-                });
+                  scan_id:     r.scan_id,
+                };
+                sessionStorage.setItem(SESSION_KEY, JSON.stringify(subnetResult));
+                onScanComplete(subnetResult);
                 return;
               }
 
@@ -497,6 +517,13 @@ export default function Result() {
   }, [phase]);
 
   useEffect(() => {
+    if (!routeScanId || !location.pathname.toLowerCase().endsWith('/report')) return;
+    if (location.state?.fromHistory) return;
+    setScanData(null);
+    setPhase('loading-history');
+  }, [routeScanId, location.pathname, location.state]);
+
+  useEffect(() => {
     if (phase !== 'loading-history' || !routeScanId) return;
 
     fetch(`http://${window.location.hostname}:8000/api/scan/history/${routeScanId}`, {
@@ -512,15 +539,36 @@ export default function Result() {
         return res.json();
       })
       .then((data) => {
+        const details = data.details || {};
+        const subnetResults = Array.isArray(details.results) ? details.results : [];
+        if (data.scan_type === 'subnet') {
+          setScanData({
+            isSubnet: true,
+            subnet: details.subnet || data.hostname || data.target_name,
+            total: subnetResults.length,
+            discovered_hosts: details.discovered_hosts,
+            success_count: subnetResults.filter((r) => r.status === 'done').length,
+            failed_count: subnetResults.filter((r) => r.status === 'error').length,
+            results: subnetResults,
+            targetName: data.target_name,
+            hostname: data.hostname || '',
+            version: data.version || '',
+            scan_id: data.id,
+          });
+          setPhase('done');
+          return;
+        }
+
         setScanData({
           score:      data.score,
-          details:    data.details,
+          details,
           findings:   data.findings || [],
           summary:    data.summary || null,
           targetName: data.target_name,
           hostname:   data.hostname || '',
           version:    data.version || '',
           scan_id:    data.id,
+          parent_scan_id: data.parent_scan_id,
         });
         setPhase('done');
       })
@@ -604,7 +652,10 @@ export default function Result() {
             setScanData(data);
             setPhase('done');
             if (data.scan_id) {
-              navigate(`/scan/${data.scan_id}/report`, { replace: true, state: { fromHistory: data } });
+              navigate(
+                data.isSubnet ? `/scan/${data.scan_id}/subnet` : `/scan/${data.scan_id}/report`,
+                { replace: true, state: { fromHistory: data } },
+              );
             }
           }}
           onError={(msg)         => { setErrorMsg(msg);  setPhase('error'); }}

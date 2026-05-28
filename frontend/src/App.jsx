@@ -4,9 +4,11 @@ import Login from './pages/Login';
 import Home from './pages/Home';
 import Register from './pages/Register';
 import Result from './pages/Result';
+import SubnetResult from './pages/SubnetResult';
 import History from './pages/History';
 import Summary from './pages/Summary';
 import AdminUsers from './pages/Adminusers';
+import AgentManagement from './pages/AgentManagement';
 import ChangePassword from './pages/ChangePassword';  // ← ชื่อ import ต้องตรงกับชื่อไฟล์ (PascalCase)
 import { ProtectedRoute } from './auth';
 
@@ -39,11 +41,14 @@ function App() {
         <Route path="/Summary"   element={protectedPage(<Summary />)} />
 
         <Route path="/admin/users" element={protectedPage(<AdminUsers />, 'admin')} />
+        <Route path="/admin/agents" element={protectedPage(<AgentManagement />, 'admin')} />
 
         {/* Requirement route aliases */}
         <Route path="/scan/new"          element={protectedPage(<Home />)} />
         <Route path="/scan/:id/progress" element={protectedPage(<Result />)} />
         <Route path="/scan/:id/report"   element={protectedPage(<Result />)} />
+        <Route path="/scan/:id/subnet"   element={protectedPage(<SubnetResult />)} />
+
 
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>
