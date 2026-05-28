@@ -13,6 +13,7 @@ jobs:
 
       - name: Run Deploy Script
         env:
+          AGENT_INSTALL_TOKEN: ${{ secrets.AGENT_INSTALL_TOKEN }}
           WINRM_USER: ${{ secrets.WINRM_USER }}
           WINRM_PASS: ${{ secrets.WINRM_PASS }}
           GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}

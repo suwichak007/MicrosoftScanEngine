@@ -70,6 +70,11 @@ foreach ($envName in @(
 )) {
   if ($EnvMap.ContainsKey($envName)) {
     $backendRunArgs += @("-e", "$envName=$($EnvMap[$envName])")
+  } else {
+    $envValue = [System.Environment]::GetEnvironmentVariable($envName, "Process")
+    if ($null -ne $envValue -and $envValue -ne "") {
+      $backendRunArgs += @("-e", "$envName=$envValue")
+    }
   }
 }
 $backendRunArgs += @(
