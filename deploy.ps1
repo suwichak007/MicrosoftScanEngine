@@ -53,6 +53,10 @@ $backendRunArgs = @(
 )
 $backendRunArgs += $DockerEnvArgs
 $backendRunArgs += @(
+  "-e", "AGENT_INSTALL_TOKEN=$env:AGENT_INSTALL_TOKEN",
+  "-e", "SECRET_KEY=$env:SECRET_KEY",
+  "-e", "AUTH_PROVIDER=$env:AUTH_PROVIDER",
+  "-e", "ACCESS_TOKEN_EXPIRE_MINUTES=$env:ACCESS_TOKEN_EXPIRE_MINUTES",
   "-e", "WINRM_USER=$env:WINRM_USER",
   "-e", "WINRM_PASS=$env:WINRM_PASS",
   "-e", "GROQ_API_KEY=$env:GROQ_API_KEY",

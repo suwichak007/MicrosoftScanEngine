@@ -28,4 +28,4 @@ winrm set winrm/config/client/auth '@{Basic="true"}'
 Set-Item WSMan:\localhost\Client\TrustedHosts -Value '*' -Force
 
 Write-Host "Starting Uvicorn..."
-& "C:\Program Files\Python312\python.exe" -m uvicorn main:app --app-dir $PSScriptRoot --host 0.0.0.0 --port 8000
+python -m uvicorn main:app --app-dir $PSScriptRoot --host 0.0.0.0 --port 8000 --no-access-log
