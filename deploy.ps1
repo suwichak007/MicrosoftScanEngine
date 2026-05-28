@@ -17,13 +17,19 @@ git log -1 --oneline
 $RootDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $EnvPath = Join-Path $RootDir ".env"
 $DockerEnvArgs = @()
+$EnvMap = @{}
 if (Test-Path $EnvPath) {
   $DockerEnvArgs = @("--env-file", $EnvPath)
   Get-Content $EnvPath | ForEach-Object {
     $line = $_.Trim()
     if ($line -and -not $line.StartsWith("#") -and $line.Contains("=")) {
       $name, $value = $line.Split("=", 2)
-      [System.Environment]::SetEnvironmentVariable($name.Trim(), $value.Trim(), "Process")
+      $envName = $name.Trim()
+      $envValue = $value.Trim()
+      [System.Environment]::SetEnvironmentVariable($envName, $envValue, "Process")
+      if ($envValue -ne "") {
+        $EnvMap[$envName] = $envValue
+      }
     }
   }
 }
@@ -62,9 +68,8 @@ foreach ($envName in @(
   "GROQ_API_KEY",
   "GROQ_MODEL"
 )) {
-  $envValue = [System.Environment]::GetEnvironmentVariable($envName, "Process")
-  if ($null -ne $envValue -and $envValue -ne "") {
-    $backendRunArgs += @("-e", "$envName=$envValue")
+  if ($EnvMap.ContainsKey($envName)) {
+    $backendRunArgs += @("-e", "$envName=$($EnvMap[$envName])")
   }
 }
 $backendRunArgs += @(
