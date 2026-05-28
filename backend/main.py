@@ -98,6 +98,19 @@ def _ensure_agent_inventory_columns():
         if "attempts" not in agent_job_columns:
             conn.execute(text("ALTER TABLE agent_jobs ADD COLUMN attempts INTEGER DEFAULT 0"))
 
+        scan_result_columns = {
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(scan_results)")).fetchall()
+        }
+        if "version" not in scan_result_columns:
+            conn.execute(text("ALTER TABLE scan_results ADD COLUMN version VARCHAR"))
+        if "hostname" not in scan_result_columns:
+            conn.execute(text("ALTER TABLE scan_results ADD COLUMN hostname VARCHAR"))
+        if "scan_type" not in scan_result_columns:
+            conn.execute(text("ALTER TABLE scan_results ADD COLUMN scan_type VARCHAR DEFAULT 'single'"))
+        if "parent_scan_id" not in scan_result_columns:
+            conn.execute(text("ALTER TABLE scan_results ADD COLUMN parent_scan_id INTEGER"))
+
 _ensure_agent_inventory_columns()
 
 app = FastAPI()

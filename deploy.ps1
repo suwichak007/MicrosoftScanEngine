@@ -52,15 +52,22 @@ $backendRunArgs = @(
   "-p", "8000:8000"
 )
 $backendRunArgs += $DockerEnvArgs
+foreach ($envName in @(
+  "AGENT_INSTALL_TOKEN",
+  "SECRET_KEY",
+  "AUTH_PROVIDER",
+  "ACCESS_TOKEN_EXPIRE_MINUTES",
+  "WINRM_USER",
+  "WINRM_PASS",
+  "GROQ_API_KEY",
+  "GROQ_MODEL"
+)) {
+  $envValue = [System.Environment]::GetEnvironmentVariable($envName, "Process")
+  if ($null -ne $envValue -and $envValue -ne "") {
+    $backendRunArgs += @("-e", "$envName=$envValue")
+  }
+}
 $backendRunArgs += @(
-  "-e", "AGENT_INSTALL_TOKEN=$env:AGENT_INSTALL_TOKEN",
-  "-e", "SECRET_KEY=$env:SECRET_KEY",
-  "-e", "AUTH_PROVIDER=$env:AUTH_PROVIDER",
-  "-e", "ACCESS_TOKEN_EXPIRE_MINUTES=$env:ACCESS_TOKEN_EXPIRE_MINUTES",
-  "-e", "WINRM_USER=$env:WINRM_USER",
-  "-e", "WINRM_PASS=$env:WINRM_PASS",
-  "-e", "GROQ_API_KEY=$env:GROQ_API_KEY",
-  "-e", "GROQ_MODEL=$env:GROQ_MODEL",
   "--restart", "always",
   "scan-api"
 )
