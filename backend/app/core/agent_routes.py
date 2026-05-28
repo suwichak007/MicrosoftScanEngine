@@ -12,7 +12,27 @@ from app.models.agent import AgentToken
 from app.models.agent_job import AgentJob
 
 router = APIRouter(prefix="/agent", tags=["agent"])
-AGENT_INSTALL_TOKEN = os.environ.get("AGENT_INSTALL_TOKEN", "change-me")
+
+
+def _load_agent_install_token() -> str:
+    token = os.environ.get("AGENT_INSTALL_TOKEN", "")
+    if token and token != "change-me":
+        return token
+
+    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env"))
+    if os.path.exists(env_path):
+        with open(env_path, "r", encoding="utf-8-sig") as env_file:
+            for raw_line in env_file:
+                line = raw_line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                key, value = line.split("=", 1)
+                if key.strip() == "AGENT_INSTALL_TOKEN":
+                    return value.strip().strip('"').strip("'")
+    return "change-me"
+
+
+AGENT_INSTALL_TOKEN = _load_agent_install_token()
 AGENT_JOB_RUNNING_TIMEOUT_SECONDS = int(os.environ.get("AGENT_JOB_RUNNING_TIMEOUT_SECONDS", "900"))
 AGENT_JOB_MAX_ATTEMPTS = int(os.environ.get("AGENT_JOB_MAX_ATTEMPTS", "2"))
 

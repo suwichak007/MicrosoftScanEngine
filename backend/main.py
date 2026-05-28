@@ -22,8 +22,18 @@ except ImportError:
     load_dotenv = None
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+ENV_PATH = os.path.join(ROOT_DIR, ".env")
 if load_dotenv:
-    load_dotenv(os.path.join(ROOT_DIR, ".env"))
+    load_dotenv(ENV_PATH)
+
+if os.path.exists(ENV_PATH):
+    with open(ENV_PATH, "r", encoding="utf-8-sig") as env_file:
+        for raw_line in env_file:
+            line = raw_line.strip()
+            if not line or line.startswith("#") or "=" not in line:
+                continue
+            key, value = line.split("=", 1)
+            os.environ.setdefault(key.strip(), value.strip().strip('"').strip("'"))
 
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
