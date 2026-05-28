@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import './Result.css';
 import { authHeaders, clearAuth } from '../auth';
+import { apiUrl } from '../config/api';
 
 // -----------------------------------------------------------------------
 // Severity classification
@@ -283,7 +284,6 @@ function Topbar() {
 // ScanProgress
 // -----------------------------------------------------------------------
 function ScanProgress({ scanParams, onScanComplete, onError }) {
-  const apiHost    = window.location.hostname;
   const navigate   = useNavigate();
   const hasFetched = useRef(false);
 
@@ -296,12 +296,12 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
     if (hasFetched.current) return;
     hasFetched.current = true;
     const endpoint = scanParams._mode === 'agent'
-      ? `http://${apiHost}:8000/api/scan/agent`
+      ? apiUrl('/api/scan/agent')
       : scanParams._mode === 'agent-subnet'
-      ? `http://${apiHost}:8000/api/scan/agent-subnet`
+      ? apiUrl('/api/scan/agent-subnet')
       : scanParams._mode === 'subnet'
-      ? `http://${apiHost}:8000/api/scan/subnet`
-      : `http://${apiHost}:8000/api/scan/remote`;
+      ? apiUrl('/api/scan/subnet')
+      : apiUrl('/api/scan/remote');
 
     fetch(endpoint, {
       method:  'POST',
@@ -337,7 +337,7 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
       .then(({ job_id }) => {
         pollRef.current = setInterval(async () => {
           try {
-            const res = await fetch(`http://${apiHost}:8000/api/scan/status/${job_id}`, {
+            const res = await fetch(apiUrl(`/api/scan/status/${job_id}`), {
               headers: authHeaders(),
             });
 
@@ -526,7 +526,7 @@ export default function Result() {
   useEffect(() => {
     if (phase !== 'loading-history' || !routeScanId) return;
 
-    fetch(`http://${window.location.hostname}:8000/api/scan/history/${routeScanId}`, {
+    fetch(apiUrl(`/api/scan/history/${routeScanId}`), {
       headers: authHeaders(),
     })
       .then((res) => {

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Login.css';
+import { apiUrl } from '../config/api';
 
 function Login() {
   const [username, setUsername] = useState('');
@@ -14,9 +15,8 @@ function Login() {
     const formData = new FormData();
     formData.append('username', username);
     formData.append('password', password);
-    const apiUrl = `http://${window.location.hostname}:8000/login`;
     try {
-      const response = await fetch(apiUrl, { method: 'POST', body: formData });
+      const response = await fetch(apiUrl('/login'), { method: 'POST', body: formData });
       if (response.ok) {
         const data = await response.json();
         localStorage.setItem('token', data.access_token);

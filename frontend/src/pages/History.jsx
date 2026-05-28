@@ -2,8 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './History.css';
 import { clearAuth } from '../auth';
-
-const API_BASE = `http://${window.location.hostname}:8000`;
+import { apiUrl } from '../config/api';
 
 function History() {
   const navigate = useNavigate();
@@ -27,7 +26,7 @@ function History() {
     setLoading(true);
     setErrorMsg('');
     try {
-      const res = await fetch(`${API_BASE}/api/scan/history?limit=50`, { headers: authHeader() });
+      const res = await fetch(apiUrl('/api/scan/history?limit=50'), { headers: authHeader() });
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
       if (res.ok && Array.isArray(data)) {
@@ -48,7 +47,7 @@ function History() {
       return;
     }
     try {
-      const res = await fetch(`${API_BASE}/api/scan/history/${scanId}/children`, {
+      const res = await fetch(apiUrl(`/api/scan/history/${scanId}/children`), {
         headers: authHeader(),  // ← แก้จาก authHeaders() เป็น authHeader()
       });
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
@@ -62,7 +61,7 @@ function History() {
 
   const handleView = async (id) => {
     try {
-      const res = await fetch(`${API_BASE}/api/scan/history/${id}`, { headers: authHeader() });
+      const res = await fetch(apiUrl(`/api/scan/history/${id}`), { headers: authHeader() });
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
       if (res.ok) {
@@ -92,7 +91,7 @@ function History() {
     if (!window.confirm('ต้องการลบประวัตินี้?')) return;
     setDeleting(id);
     try {
-      const res = await fetch(`${API_BASE}/api/scan/history/${id}`, {
+      const res = await fetch(apiUrl(`/api/scan/history/${id}`), {
         method: 'DELETE',
         headers: authHeader(),
       });

@@ -1,17 +1,15 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts';
+import { apiUrl } from '../config/api';
 
 function Dashboard() {
     const [stats, setStats] = useState(null);
     const [scanning, setScanning] = useState(false);
-    const hostname = window.location.hostname;
-    const apiUrl = `http://${hostname}:8000/api/dashboard/stats`;
-    const apiUrl2 = `http://${hostname}:8000/api/scan/run`;
 
     // ฟังก์ชันดึงข้อมูลจาก Backend
     const fetchStats = useCallback(async () => {
         try {
-            const res = await fetch(apiUrl);
+            const res = await fetch(apiUrl('/api/dashboard/stats'));
             
             if (!res.ok) {
                 throw new Error("Cannot connect to server");
@@ -48,7 +46,7 @@ function Dashboard() {
     const handleStartScan = async () => {
         setScanning(true);
         try {
-            const response = await fetch(apiUrl2, { method: 'POST' });
+            const response = await fetch(apiUrl('/api/scan/run'), { method: 'POST' });
             if (response.ok) {
                 await fetchStats(); 
             } else {

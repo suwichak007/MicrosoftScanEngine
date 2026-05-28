@@ -3,6 +3,7 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import ExportButton from './ExportButton';
 import './Summary.css';
 import { authHeaders, clearAuth } from '../auth';
+import { apiUrl } from '../config/api';
 
 // ─── Severity helpers ─────────────────────────────────────────────────────────
 const CRITICAL_KEYWORDS = ['remote desktop','lsa protection','credential','ntlm','kerberos','bitlocker'];
@@ -220,7 +221,6 @@ function LlmProgressBar({ phase, tokenCount, tokensPerSec, elapsed, message }) {
 export default function Summary() {
   const navigate = useNavigate();
   const location = useLocation();
-  const apiHost  = window.location.hostname;
 
   const scanData = location.state?.scanData
     || (() => {
@@ -326,7 +326,7 @@ export default function Summary() {
 
     (async () => {
       try {
-        const res = await fetch(`http://${apiHost}:8000/api/summary/stream`, {
+        const res = await fetch(apiUrl('/api/summary/stream'), {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),
           body,

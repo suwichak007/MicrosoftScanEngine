@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { authHeaders, clearAuth } from '../auth';
+import { apiUrl } from '../config/api';
 import './ChangePassword.css';
 
 export default function ChangePassword() {
@@ -47,7 +48,7 @@ export default function ChangePassword() {
     setLoading(true);
     try {
       const res = await fetch(
-        `http://${window.location.hostname}:8000/api/user/change-password`,
+        apiUrl('/api/user/change-password'),
         {
           method: 'POST',
           headers: authHeaders({ 'Content-Type': 'application/json' }),

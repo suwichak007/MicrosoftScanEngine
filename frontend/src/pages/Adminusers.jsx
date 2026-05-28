@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clearAuth } from '../auth';
-
-const API_BASE = `http://${window.location.hostname}:8000`;
+import { API_BASE, apiUrl } from '../config/api';
 
 // ─── Inline styles (ใช้ style เดียวกับ History.jsx) ──────────────────────────
 const S = {
@@ -245,7 +244,7 @@ export default function AdminUsers() {
     setLoading(true);
     setErrorMsg('');
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users`, { headers: authHeader() });
+      const res = await fetch(apiUrl('/api/admin/users'), { headers: authHeader() });
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       if (res.status === 403) { setErrorMsg('ต้องการสิทธิ์ Admin'); setLoading(false); return; }
       const data = await res.json();
@@ -265,7 +264,7 @@ export default function AdminUsers() {
     const newRole = user.role === 'admin' ? 'viewer' : 'admin';
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${user.id}/role`, {
+      const res = await fetch(apiUrl(`/api/admin/users/${user.id}/role`), {
         method:  'PATCH',
         headers: authHeader(),
         body:    JSON.stringify({ role: newRole }),
@@ -288,7 +287,7 @@ export default function AdminUsers() {
     if (!resetModal) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${resetModal.id}/reset-password`, {
+      const res = await fetch(apiUrl(`/api/admin/users/${resetModal.id}/reset-password`), {
         method:  'POST',
         headers: authHeader(),
         body:    JSON.stringify({ new_password: newPassword }),
@@ -311,7 +310,7 @@ export default function AdminUsers() {
     if (!deleteModal) return;
     setSaving(true);
     try {
-      const res = await fetch(`${API_BASE}/api/admin/users/${deleteModal.id}`, {
+      const res = await fetch(apiUrl(`/api/admin/users/${deleteModal.id}`), {
         method:  'DELETE',
         headers: authHeader(),
       });

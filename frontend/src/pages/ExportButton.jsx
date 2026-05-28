@@ -16,8 +16,7 @@
  */
 
 import React, { useState, useRef, useEffect } from 'react';
-
-const API_BASE = `http://${window.location.hostname}:8000`;
+import { apiUrl } from '../config/api';
 
 // ─── Inline styles (ไม่ต้องพึ่ง CSS ไฟล์แยก) ────────────────────────────────
 const S = {
@@ -162,7 +161,7 @@ export default function ExportButton({ scanId, label = 'Export', variant = 'full
     try {
       const token = localStorage.getItem('token') || '';
       const res   = await fetch(
-        `${API_BASE}/api/scan/history/${scanId}/export/${format}`,
+        apiUrl(`/api/scan/history/${scanId}/export/${format}`),
         { headers: { Authorization: `Bearer ${token}` } }
       );
 

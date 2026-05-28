@@ -2,9 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Home.css';
 import { authHeaders, clearAuth } from '../auth';
-
-const API_BASE = `http://${window.location.hostname}:8000`;
-const API_SCAN = `http://${window.location.hostname}:8000`;
+import { apiUrl } from '../config/api';
 
 function Home() {
   const navigate = useNavigate();
@@ -52,7 +50,7 @@ function Home() {
       setLoadingBaselines(true);
       setBaselineError('');
       try {
-        const res = await fetch(`${API_BASE}/api/scan/versions`, {
+        const res = await fetch(apiUrl('/api/scan/versions'), {
           headers: authHeaders(),
         });
         if (res.status === 401) { clearAuth(); navigate('/login'); return; }
@@ -78,7 +76,7 @@ function Home() {
       setLoadingAgents(true);
       setAgentError('');
       try {
-        const res = await fetch(`${API_SCAN}/api/agents`, {
+        const res = await fetch(apiUrl('/api/agents'), {
           headers: authHeaders(),
         });
         if (res.status === 401) { clearAuth(); navigate('/login'); return; }
@@ -115,7 +113,7 @@ function Home() {
     setConnStatus('loading');
     setConnMessage('');
     try {
-      const res = await fetch(`${API_BASE}/api/scan/test-connection`, {
+      const res = await fetch(apiUrl('/api/scan/test-connection'), {
         method: 'POST',
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ host: ip, username: scanUsername, password, use_ssl: false, skip_ca_check: true }),

@@ -1,9 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clearAuth } from '../auth';
+import { API_BASE, apiUrl } from '../config/api';
 import './AgentManagement.css';
 
-const API_BASE = `http://${window.location.hostname}:8000`;
 const INSTALL_TOKEN_PLACEHOLDER = '<INSTALL_TOKEN>';
 
 function Sidebar({ navigate }) {
@@ -85,7 +85,7 @@ export default function AgentManagement() {
     setLoading(true);
     setErrorMsg('');
     try {
-      const res = await fetch(`${API_BASE}/api/agents`, { headers: authHeader() });
+      const res = await fetch(apiUrl('/api/agents'), { headers: authHeader() });
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
       if (!res.ok) {
