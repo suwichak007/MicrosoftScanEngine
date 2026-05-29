@@ -56,7 +56,7 @@ def get_bundled(path: str) -> str:
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Install MicrosoftScanAgent")
-    parser.add_argument("--backend-url", required=True, help="Backend URL, e.g. http://SERVER:8001")
+    parser.add_argument("--backend-url", required=True, help="Backend URL, e.g. http://SERVER:8000")
     parser.add_argument("--install-token", required=True, help="Shared install token from backend")
     return parser.parse_args()
 
@@ -130,6 +130,8 @@ def main():
         "agent_token":   token,
         "poll_interval": 10,
         "data_path":     os.path.join(AGENT_DIR, "data"),
+        "package_path":  os.path.join(AGENT_DIR, "packages"),
+        "scanner_auto_update": True,
     }
     with open(os.path.join(AGENT_DIR, "agent_config.json"), "w", encoding="utf-8") as f:
         json.dump(config, f, indent=2, ensure_ascii=False)

@@ -1,8 +1,13 @@
 import datetime
+import hashlib
+import io
 import os
 import secrets
+import zipfile
+from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Header, Depends
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.core.job_store import _jobs
@@ -35,6 +40,36 @@ def _load_agent_install_token() -> str:
 AGENT_INSTALL_TOKEN = _load_agent_install_token()
 AGENT_JOB_RUNNING_TIMEOUT_SECONDS = int(os.environ.get("AGENT_JOB_RUNNING_TIMEOUT_SECONDS", "900"))
 AGENT_JOB_MAX_ATTEMPTS = int(os.environ.get("AGENT_JOB_MAX_ATTEMPTS", "2"))
+ROOT_DIR = Path(__file__).resolve().parents[3]
+SCANNER_SOURCE_DIR = Path(__file__).resolve().parent / "scan" / "scanner"
+BASELINES_SOURCE_DIR = Path(os.environ.get("BASELINES_DIR", ROOT_DIR / "baselines" / "generated"))
+
+
+def _iter_package_files():
+    for path in SCANNER_SOURCE_DIR.rglob("*"):
+        if path.is_file() and "__pycache__" not in path.parts and path.suffix in {".py", ".json", ".yaml", ".yml"}:
+            yield path, Path("scanner") / path.relative_to(SCANNER_SOURCE_DIR)
+
+    if BASELINES_SOURCE_DIR.is_dir():
+        for path in BASELINES_SOURCE_DIR.rglob("*"):
+            if path.is_file() and path.suffix.lower() in {".json", ".yaml", ".yml"}:
+                yield path, Path("baselines") / "generated" / path.relative_to(BASELINES_SOURCE_DIR)
+
+
+def _build_scanner_package() -> tuple[bytes, str, str]:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        file_count = 0
+        for src, arcname in _iter_package_files():
+            zf.write(src, arcname.as_posix())
+            file_count += 1
+        if file_count == 0:
+            raise HTTPException(status_code=500, detail="Scanner package has no files")
+
+    data = buffer.getvalue()
+    sha256 = hashlib.sha256(data).hexdigest()
+    version = os.environ.get("SCANNER_PACKAGE_VERSION") or sha256[:12]
+    return data, version, sha256
 
 
 def _sync_memory_job(row: AgentJob, message: str | None = None):
@@ -100,6 +135,37 @@ def get_agent_id(
         row.os_family = x_agent_os_family
     db.commit()
     return row.agent_id
+
+
+@router.get("/scanner-package/latest")
+def scanner_package_latest(agent_id: str = Depends(get_agent_id)):
+    data, version, sha256 = _build_scanner_package()
+    return {
+        "version": version,
+        "sha256": sha256,
+        "size": len(data),
+        "download_url": f"/agent/scanner-package/download?version={version}",
+    }
+
+
+@router.get("/scanner-package/download")
+def scanner_package_download(
+    version: str = "",
+    agent_id: str = Depends(get_agent_id),
+):
+    data, current_version, sha256 = _build_scanner_package()
+    if version and version != current_version:
+        raise HTTPException(status_code=404, detail="Scanner package version not found")
+    return StreamingResponse(
+        io.BytesIO(data),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename=scanner-{current_version}.zip",
+            "Content-Length": str(len(data)),
+            "X-Scanner-Package-Version": current_version,
+            "X-Scanner-Package-SHA256": sha256,
+        },
+    )
 
 
 # ── Agent: ดึง job ที่รอ ────────────────────────────────────────────

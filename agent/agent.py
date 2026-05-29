@@ -5,6 +5,12 @@ import sys
 import time
 import io
 import socket
+import hashlib
+import shutil
+import zipfile
+from pathlib import Path
+from urllib.parse import urljoin
+
 import requests
 
 if getattr(sys, "frozen", False):
@@ -17,6 +23,7 @@ else:
 sys.path.insert(0, INTERNAL)
 
 CONFIG_PATH = os.path.join(BASE_DIR, "agent_config.json")
+ACTIVE_SCANNER_ROOT = ""
 
 VALID_ROLES = {"Member Server", "Domain Controller"}
 AGENT_VERSION = "1.0.0"
@@ -132,11 +139,13 @@ def detect_role() -> str:
 def load_config() -> dict:
     if not os.path.exists(CONFIG_PATH):
         default = {
-            "backend_url":      "http://BACKEND_IP:8001",
+            "backend_url":      "http://BACKEND_IP:8000",
             "agent_token":      "ใส่ token ที่ได้จาก POST /agent/register",
             "poll_interval":    10,
             "request_timeout":  300,
             "data_path":        os.path.join(BASE_DIR, "data"),
+            "package_path":     os.path.join(BASE_DIR, "packages"),
+            "scanner_auto_update": True,
         }
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
             json.dump(default, f, indent=2, ensure_ascii=False)
@@ -146,6 +155,110 @@ def load_config() -> dict:
 
     with open(CONFIG_PATH, encoding="utf-8-sig") as f:
         return json.load(f)
+
+
+def _hash_file(path: str) -> str:
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(1024 * 1024), b""):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def _safe_extract(zip_path: str, dest_dir: str):
+    dest = Path(dest_dir).resolve()
+    with zipfile.ZipFile(zip_path) as zf:
+        for member in zf.infolist():
+            target = (dest / member.filename).resolve()
+            if target != dest and dest not in target.parents:
+                raise ValueError(f"Unsafe package path: {member.filename}")
+        zf.extractall(dest)
+
+
+def _activate_scanner_root(root: str):
+    global ACTIVE_SCANNER_ROOT
+    if not root:
+        return
+    root = os.path.abspath(root)
+    if ACTIVE_SCANNER_ROOT == root:
+        return
+
+    for name in list(sys.modules):
+        if name == "scanner" or name.startswith("scanner."):
+            del sys.modules[name]
+
+    if root in sys.path:
+        sys.path.remove(root)
+    sys.path.insert(0, root)
+    os.environ["BASELINES_DIR"] = os.path.join(root, "baselines", "generated")
+    ACTIVE_SCANNER_ROOT = root
+    print(f"[Agent] scanner package active -> {root}")
+
+
+def ensure_scanner_package(cfg: dict, headers: dict, timeout: int):
+    if not cfg.get("scanner_auto_update", True):
+        return
+
+    url = cfg["backend_url"].rstrip("/")
+    package_base = cfg.get("package_path") or os.path.join(BASE_DIR, "packages")
+    os.makedirs(package_base, exist_ok=True)
+
+    latest = requests.get(
+        f"{url}/agent/scanner-package/latest",
+        headers=headers,
+        timeout=timeout,
+    )
+    latest.raise_for_status()
+    info = latest.json()
+    version = str(info.get("version", "")).strip()
+    sha256 = str(info.get("sha256", "")).strip().lower()
+    download_url = str(info.get("download_url", "")).strip()
+    if not version or not sha256 or not download_url:
+        raise RuntimeError("Invalid scanner package manifest from backend")
+
+    target_dir = os.path.join(package_base, version)
+    manifest_path = os.path.join(target_dir, "package_manifest.json")
+    if os.path.exists(manifest_path):
+        try:
+            with open(manifest_path, encoding="utf-8") as f:
+                local = json.load(f)
+            if local.get("sha256", "").lower() == sha256:
+                _activate_scanner_root(target_dir)
+                return
+        except Exception:
+            pass
+
+    tmp_zip = os.path.join(package_base, f"{version}.download")
+    package_url = download_url if download_url.lower().startswith(("http://", "https://")) else urljoin(f"{url}/", download_url.lstrip("/"))
+    print(f"[Agent] downloading scanner package {version}...")
+    with requests.get(package_url, headers=headers, stream=True, timeout=timeout) as resp:
+        resp.raise_for_status()
+        with open(tmp_zip, "wb") as f:
+            for chunk in resp.iter_content(chunk_size=1024 * 1024):
+                if chunk:
+                    f.write(chunk)
+
+    actual_hash = _hash_file(tmp_zip).lower()
+    if actual_hash != sha256:
+        try:
+            os.remove(tmp_zip)
+        except OSError:
+            pass
+        raise RuntimeError(f"Scanner package checksum mismatch: expected {sha256}, got {actual_hash}")
+
+    staging_dir = os.path.join(package_base, f".{version}.staging")
+    if os.path.isdir(staging_dir):
+        shutil.rmtree(staging_dir)
+    os.makedirs(staging_dir, exist_ok=True)
+    _safe_extract(tmp_zip, staging_dir)
+    os.remove(tmp_zip)
+
+    if os.path.isdir(target_dir):
+        shutil.rmtree(target_dir)
+    shutil.move(staging_dir, target_dir)
+    with open(manifest_path, "w", encoding="utf-8") as f:
+        json.dump(info, f, indent=2)
+    _activate_scanner_root(target_dir)
 
 
 def run_scan(job: dict, data_path: str):
@@ -214,6 +327,11 @@ def main():
                 continue
 
             jobs = resp.json().get("jobs", [])
+            if jobs:
+                try:
+                    ensure_scanner_package(cfg, poll_headers, TIMEOUT)
+                except Exception as e:
+                    print(f"[Agent] scanner package update warning: {e}")
 
             for job in jobs:
                 jid  = job["job_id"]

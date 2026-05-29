@@ -219,9 +219,23 @@ def _slug(value: str) -> str:
 # ---------------------------------------------------------------------------
 
 # default path (override ได้ด้วย BASELINES_DIR env)
-_DEFAULT_BASELINES_DIR = str(
-    Path(__file__).resolve().parents[4] / "baselines" / "generated"
-)
+def _find_default_baselines_dir() -> str:
+    if getattr(sys, "frozen", False):
+        candidates = [Path(sys._MEIPASS)]
+    else:
+        here = Path(__file__).resolve()
+        candidates = list(here.parents)
+
+    for base in candidates:
+        path = base / "baselines" / "generated"
+        if path.is_dir():
+            return str(path)
+
+    fallback_base = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[4]
+    return str(fallback_base / "baselines" / "generated")
+
+
+_DEFAULT_BASELINES_DIR = _find_default_baselines_dir()
 
 # cache: baseline_id → list[check]
 _checks_cache: dict[str, list[dict]] = {}
@@ -229,12 +243,8 @@ _baselines_dir: str = ""
 
 
 def _get_baselines_dir() -> str:
-    # ถ้ารันใน PyInstaller exe
-    if getattr(sys, "frozen", False):
-        base = Path(sys._MEIPASS)
-    else:
-        base = Path(__file__).resolve().parents[4]
-    return os.environ.get("BASELINES_DIR", str(base / "baselines" / "generated"))
+    return os.environ.get("BASELINES_DIR", _find_default_baselines_dir())
+
 
 @lru_cache(maxsize=16)
 def _load_json(filepath: str) -> dict:

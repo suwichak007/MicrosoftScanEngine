@@ -48,6 +48,8 @@ $config = @{{
     agent_token   = $token
     poll_interval = 10
     data_path     = "$AgentDir\\data"
+    package_path  = "$AgentDir\\packages"
+    scanner_auto_update = $true
 }} | ConvertTo-Json
 $config | Out-File "$AgentDir\\agent_config.json" -Encoding UTF8
 

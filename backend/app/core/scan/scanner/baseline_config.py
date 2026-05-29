@@ -15,12 +15,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import sys
 from dataclasses import dataclass, field
 from functools import lru_cache
 from pathlib import Path
 from typing import Optional
-
-import openpyxl
 
 # ---------------------------------------------------------------------------
 # Constants (ใช้ใน auto_detect_baseline สำหรับ generate script เท่านั้น)
@@ -118,6 +117,7 @@ def _first_match(candidates: list[str], headers: list[str]) -> Optional[str]:
 
 def auto_detect_baseline(filepath: str) -> BaselineConfig:
     """อ่าน Excel → BaselineConfig  (ใช้เฉพาะ generate_baseline_json.py)"""
+    import openpyxl
     filename   = os.path.basename(filepath)
     version_id = _derive_version_id(filename)
     os_family  = _detect_os_family(filename)
@@ -219,9 +219,23 @@ def _slug(value: str) -> str:
 # ---------------------------------------------------------------------------
 
 # default path (override ได้ด้วย BASELINES_DIR env)
-_DEFAULT_BASELINES_DIR = str(
-    Path(__file__).resolve().parents[4] / "baselines" / "generated"
-)
+def _find_default_baselines_dir() -> str:
+    if getattr(sys, "frozen", False):
+        candidates = [Path(sys._MEIPASS)]
+    else:
+        here = Path(__file__).resolve()
+        candidates = list(here.parents)
+
+    for base in candidates:
+        path = base / "baselines" / "generated"
+        if path.is_dir():
+            return str(path)
+
+    fallback_base = Path(sys._MEIPASS) if getattr(sys, "frozen", False) else Path(__file__).resolve().parents[4]
+    return str(fallback_base / "baselines" / "generated")
+
+
+_DEFAULT_BASELINES_DIR = _find_default_baselines_dir()
 
 # cache: baseline_id → list[check]
 _checks_cache: dict[str, list[dict]] = {}
@@ -229,7 +243,7 @@ _baselines_dir: str = ""
 
 
 def _get_baselines_dir() -> str:
-    return os.environ.get("BASELINES_DIR", _DEFAULT_BASELINES_DIR)
+    return os.environ.get("BASELINES_DIR", _find_default_baselines_dir())
 
 
 @lru_cache(maxsize=16)
