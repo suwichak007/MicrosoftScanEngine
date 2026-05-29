@@ -34,6 +34,7 @@ Write-Host ""
 Write-Host "[1/5] สร้าง folder $AgentDir"
 New-Item -ItemType Directory -Force -Path $AgentDir | Out-Null
 New-Item -ItemType Directory -Force -Path "$AgentDir\\data" | Out-Null
+New-Item -ItemType Directory -Force -Path "$AgentDir\\packages" | Out-Null
 
 Write-Host "[2/5] ลงทะเบียนกับ backend..."
 $hostname = $env:COMPUTERNAME
@@ -57,6 +58,16 @@ Write-Host "[4/5] ดาวน์โหลดไฟล์..."
 
 Write-Host "      - MicrosoftScanAgent.exe (อาจใช้เวลาสักครู่...)"
 $wc = New-Object System.Net.WebClient
+if (Get-Service MicrosoftScanAgent -ErrorAction SilentlyContinue) {{
+    Write-Host "      - stopping existing service"
+    Stop-Service MicrosoftScanAgent -Force -ErrorAction SilentlyContinue
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Service MicrosoftScanAgent -ErrorAction SilentlyContinue).Status -ne 'Stopped' -and (Get-Date) -lt $deadline) {{
+        Start-Sleep -Seconds 1
+    }}
+    sc.exe delete MicrosoftScanAgent | Out-Null
+    Start-Sleep -Seconds 2
+}}
 $wc.DownloadFile("$BackendUrl/install/agent.exe", "$AgentDir\\MicrosoftScanAgent.exe")
 
 Write-Host "      - nssm.exe"

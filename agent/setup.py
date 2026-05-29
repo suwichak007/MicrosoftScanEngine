@@ -11,6 +11,7 @@ import shutil
 import socket
 import subprocess
 import sys
+import time
 import urllib.request
 import urllib.parse
 
@@ -74,9 +75,40 @@ def register_agent(backend_url: str, install_token: str) -> tuple[str, str]:
     return data["agent_id"], data["token"]
 
 
-def stop_existing_service():
+def _service_state() -> str:
+    proc = subprocess.run(
+        ["sc", "query", SERVICE_NAME],
+        capture_output=True,
+        text=True,
+        errors="replace",
+    )
+    if proc.returncode != 0:
+        return "NOT_FOUND"
+    for line in proc.stdout.splitlines():
+        if "STATE" in line:
+            return line.strip()
+    return "UNKNOWN"
+
+
+def stop_existing_service(timeout: int = 30):
+    state = _service_state()
+    if state == "NOT_FOUND":
+        return
+
+    log("      stopping existing service...")
     subprocess.run(["sc", "stop", SERVICE_NAME], capture_output=True)
+
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        state = _service_state()
+        if state == "NOT_FOUND" or "STOPPED" in state:
+            break
+        time.sleep(1)
+    else:
+        raise RuntimeError(f"Service {SERVICE_NAME} did not stop within {timeout}s")
+
     subprocess.run(["sc", "delete", SERVICE_NAME], capture_output=True)
+    time.sleep(2)
 
 
 def install_service(nssm: str, exe: str):
@@ -112,6 +144,7 @@ def main():
     log("[1/5] สร้างโฟลเดอร์...")
     os.makedirs(AGENT_DIR, exist_ok=True)
     os.makedirs(os.path.join(AGENT_DIR, "data"), exist_ok=True)
+    os.makedirs(os.path.join(AGENT_DIR, "packages"), exist_ok=True)
 
     # ── 2. Register ────────────────────────────────────────────
     log("[2/5] ลงทะเบียนกับ backend...")
@@ -138,6 +171,7 @@ def main():
 
     # ── 4. copy ไฟล์จาก bundle ────────────────────────────────
     log("[4/5] ติดตั้งไฟล์...")
+    stop_existing_service()
 
     # copy exe และ nssm
     for filename in ["MicrosoftScanAgent.exe", "nssm.exe"]:
@@ -160,7 +194,6 @@ def main():
     log("[5/5] ติดตั้ง Windows Service...")
     nssm = os.path.join(AGENT_DIR, "nssm.exe")
     exe  = os.path.join(AGENT_DIR, "MicrosoftScanAgent.exe")
-    stop_existing_service()
     install_service(nssm, exe)
 
     print()
