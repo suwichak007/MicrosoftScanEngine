@@ -243,7 +243,7 @@ _baselines_dir: str = ""
 
 
 def _get_baselines_dir() -> str:
-    return os.environ.get("BASELINES_DIR", _find_default_baselines_dir())
+    return os.environ.get("BASELINES_DIR", "").strip() or _find_default_baselines_dir()
 
 
 @lru_cache(maxsize=16)
@@ -254,6 +254,11 @@ def _load_json(filepath: str) -> dict:
 
 def load_checks(version_id: str, role: str = "Member Server") -> list[dict]:
     baselines_dir = _get_baselines_dir()
+    if not os.path.isdir(baselines_dir):
+        raise FileNotFoundError(
+            f"ไม่พบ baseline directory: {baselines_dir}. "
+            "กรุณาให้ agent download scanner package ใหม่ หรือเช็ค backend scanner package"
+        )
 
     # ลอง slug ตรงๆ ก่อน
     slug = _slug(version_id)
