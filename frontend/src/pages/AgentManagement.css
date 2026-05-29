@@ -18,6 +18,86 @@
   margin-bottom: 22px;
 }
 
+.baselineAdminCard {
+  margin-bottom: 22px;
+}
+
+.baselineUploadPanel {
+  padding: 16px;
+}
+
+.baselineUploadControls {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.baselineFilePicker {
+  background: var(--cream-dark);
+  border: 1px dashed rgba(200,129,58,0.45);
+  border-radius: 6px;
+  color: var(--ink-mid);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 12px;
+  max-width: 360px;
+  min-height: 36px;
+  padding: 9px 12px;
+}
+
+.baselineFilePicker input {
+  display: none;
+}
+
+.baselineFilePicker span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.baselineUploadMsg {
+  color: var(--ink-mid);
+  font-size: 12px;
+  margin-bottom: 12px;
+}
+
+.baselineList {
+  display: grid;
+  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.baselineItem {
+  align-items: center;
+  background: var(--cream-dark);
+  border: 1px solid var(--cream-mid);
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 11px 12px;
+}
+
+.baselineMeta {
+  color: var(--ink-lt);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  gap: 3px;
+  text-align: right;
+}
+
+.baselineEmpty {
+  color: var(--ink-faint);
+  font-size: 12px;
+  padding: 16px 0;
+}
+
 .agentStat {
   background: var(--paper);
   border: 1px solid var(--cream-mid);
@@ -269,6 +349,12 @@
 }
 
 .agentRefreshBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.agentPrimaryBtn:disabled,
+.agentSecondaryBtn:disabled {
   cursor: not-allowed;
   opacity: 0.55;
 }

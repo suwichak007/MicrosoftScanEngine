@@ -10,15 +10,30 @@ Endpoints:
   DELETE /api/admin/users/{user_id}    — ลบ user
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+import os
+import re
+import shutil
+import sys
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
 from app.core.security import get_current_user, get_password_hash
+from app.core.scan.scanner.baseline_config import list_available_versions, _load_json
 from app.models.user import User
 
+ROOT_DIR = Path(__file__).resolve().parents[3]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+from tools.convert_baselines import convert_workbook, write_definition
+
 router = APIRouter(prefix="/api/admin", tags=["admin"])
+BASELINE_UPLOAD_DIR = ROOT_DIR / "baselines" / "uploads"
+BASELINE_OUTPUT_DIR = Path(os.environ.get("BASELINES_DIR", ROOT_DIR / "baselines" / "generated"))
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +69,11 @@ class PasswordReset(BaseModel):
     new_password: str
 
 
+def _safe_filename(name: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9._ -]+", "_", Path(name).name).strip(" .")
+    return cleaned or "baseline.xlsx"
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -74,6 +94,62 @@ def list_users(
         }
         for u in users
     ]
+
+
+@router.get("/baselines")
+def list_baselines(admin: User = Depends(require_admin)):
+    return list_available_versions(str(BASELINE_OUTPUT_DIR))
+
+
+@router.post("/baselines/upload")
+async def upload_baseline(
+    file: UploadFile = File(...),
+    admin: User = Depends(require_admin),
+):
+    filename = _safe_filename(file.filename or "")
+    if not filename.lower().endswith(".xlsx"):
+        raise HTTPException(status_code=400, detail="รองรับเฉพาะไฟล์ .xlsx เท่านั้น")
+
+    BASELINE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
+    BASELINE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+    temp_dir = BASELINE_UPLOAD_DIR / ".uploading"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+    temp_path = temp_dir / filename
+    saved_path = BASELINE_UPLOAD_DIR / filename
+
+    try:
+        with temp_path.open("wb") as f:
+            while chunk := await file.read(1024 * 1024):
+                f.write(chunk)
+
+        definition = convert_workbook(temp_path)
+        check_count = len(definition.get("checks", []))
+        if check_count == 0:
+            raise HTTPException(status_code=400, detail="ไฟล์นี้แปลงได้ 0 checks จึงไม่บันทึก baseline")
+
+        json_path = write_definition(definition, BASELINE_OUTPUT_DIR, "json")
+        yaml_path = write_definition(definition, BASELINE_OUTPUT_DIR, "yaml")
+        shutil.move(str(temp_path), str(saved_path))
+        _load_json.cache_clear()
+
+        return {
+            "ok": True,
+            "baseline_id": definition.get("baseline_id", ""),
+            "baseline_name": definition.get("baseline_name", ""),
+            "os_family": definition.get("os_family", ""),
+            "source_file": filename,
+            "check_count": check_count,
+            "generated_files": [json_path.name, yaml_path.name],
+        }
+    except HTTPException:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise
+    except Exception as e:
+        if temp_path.exists():
+            temp_path.unlink()
+        raise HTTPException(status_code=400, detail=f"แปลง baseline ไม่สำเร็จ: {e}")
 
 
 @router.patch("/users/{user_id}/role")

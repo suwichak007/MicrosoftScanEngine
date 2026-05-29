@@ -75,9 +75,17 @@ export default function AgentManagement() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
   const [copied, setCopied] = useState('');
+  const [baselines, setBaselines] = useState([]);
+  const [loadingBaselines, setLoadingBaselines] = useState(true);
+  const [baselineFile, setBaselineFile] = useState(null);
+  const [uploadingBaseline, setUploadingBaseline] = useState(false);
+  const [baselineMsg, setBaselineMsg] = useState('');
 
   const authHeader = () => ({
     'Content-Type': 'application/json',
+    Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
+  });
+  const authOnlyHeader = () => ({
     Authorization: `Bearer ${localStorage.getItem('token') || ''}`,
   });
 
@@ -101,6 +109,63 @@ export default function AgentManagement() {
   }, [navigate]);
 
   useEffect(() => { fetchAgents(); }, [fetchAgents]);
+
+  const fetchBaselines = useCallback(async () => {
+    setLoadingBaselines(true);
+    try {
+      const res = await fetch(apiUrl('/api/admin/baselines'), { headers: authOnlyHeader() });
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.detail || 'โหลด baseline ไม่สำเร็จ');
+        return;
+      }
+      setBaselines(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setErrorMsg(`โหลด baseline ไม่สำเร็จ: ${err.message}`);
+    } finally {
+      setLoadingBaselines(false);
+    }
+  }, [navigate]);
+
+  useEffect(() => { fetchBaselines(); }, [fetchBaselines]);
+
+  const uploadBaseline = async () => {
+    if (!baselineFile) {
+      setBaselineMsg('กรุณาเลือกไฟล์ .xlsx ก่อน');
+      return;
+    }
+    if (!baselineFile.name.toLowerCase().endsWith('.xlsx')) {
+      setBaselineMsg('รองรับเฉพาะไฟล์ .xlsx เท่านั้น');
+      return;
+    }
+
+    setUploadingBaseline(true);
+    setBaselineMsg('');
+    setErrorMsg('');
+    const form = new FormData();
+    form.append('file', baselineFile);
+    try {
+      const res = await fetch(apiUrl('/api/admin/baselines/upload'), {
+        method: 'POST',
+        headers: authOnlyHeader(),
+        body: form,
+      });
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
+      const data = await res.json();
+      if (!res.ok) {
+        setBaselineMsg(data.detail || 'อัปโหลด baseline ไม่สำเร็จ');
+        return;
+      }
+      setBaselineMsg(`อัปโหลดสำเร็จ: ${data.baseline_name} (${data.check_count} checks)`);
+      setBaselineFile(null);
+      await fetchBaselines();
+    } catch (err) {
+      setBaselineMsg(`อัปโหลด baseline ไม่สำเร็จ: ${err.message}`);
+    } finally {
+      setUploadingBaseline(false);
+    }
+  };
 
   const stats = useMemo(() => {
     const online = agents.filter((a) => a.online).length;
@@ -191,6 +256,51 @@ export default function AgentManagement() {
             <span className="agentStatLabel">Offline</span>
           </div>
         </div>
+
+        <section className="agentCard baselineAdminCard">
+          <div className="agentCardHead">
+            <h2>Baseline Library</h2>
+            <span className="muted">{loadingBaselines ? 'Loading...' : `${baselines.length} baselines`}</span>
+          </div>
+          <div className="baselineUploadPanel">
+            <div className="baselineUploadControls">
+              <label className="baselineFilePicker">
+                <input
+                  type="file"
+                  accept=".xlsx"
+                  onChange={(e) => {
+                    setBaselineFile(e.target.files?.[0] || null);
+                    setBaselineMsg('');
+                  }}
+                />
+                <span>{baselineFile ? baselineFile.name : 'Choose Excel baseline'}</span>
+              </label>
+              <button className="agentPrimaryBtn" onClick={uploadBaseline} disabled={uploadingBaseline}>
+                {uploadingBaseline ? 'Uploading...' : 'Upload baseline'}
+              </button>
+              <button className="agentSecondaryBtn" onClick={fetchBaselines} disabled={loadingBaselines}>
+                Refresh
+              </button>
+            </div>
+            {baselineMsg && <div className="baselineUploadMsg">{baselineMsg}</div>}
+            <div className="baselineList">
+              {loadingBaselines && <div className="baselineEmpty">กำลังโหลด baseline...</div>}
+              {!loadingBaselines && baselines.length === 0 && <div className="baselineEmpty">ยังไม่มี baseline</div>}
+              {!loadingBaselines && baselines.map((b) => (
+                <div className="baselineItem" key={`${b.filename}-${b.version_id}`}>
+                  <div className="agentStack">
+                    <span className="agentStrong">{b.display_name || b.version_id}</span>
+                    <span className="muted">{b.filename}</span>
+                  </div>
+                  <div className="baselineMeta">
+                    <span>{b.os_family || 'unknown'}</span>
+                    <span>{b.check_count || 0} checks</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
 
         <section className="agentCard">
           <div className="agentCardHead">
