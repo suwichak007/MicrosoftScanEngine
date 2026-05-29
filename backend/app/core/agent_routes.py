@@ -42,29 +42,64 @@ AGENT_JOB_RUNNING_TIMEOUT_SECONDS = int(os.environ.get("AGENT_JOB_RUNNING_TIMEOU
 AGENT_JOB_MAX_ATTEMPTS = int(os.environ.get("AGENT_JOB_MAX_ATTEMPTS", "2"))
 ROOT_DIR = Path(__file__).resolve().parents[3]
 SCANNER_SOURCE_DIR = Path(__file__).resolve().parent / "scan" / "scanner"
-BASELINES_SOURCE_DIR = Path(os.environ.get("BASELINES_DIR", ROOT_DIR / "baselines" / "generated"))
+
+
+def _baseline_source_dirs() -> list[Path]:
+    configured = os.environ.get("BASELINES_DIR", "").strip()
+    candidates = []
+    if configured:
+        candidates.append(Path(configured))
+    candidates.extend([
+        ROOT_DIR / "baselines" / "generated",
+        ROOT_DIR / "backend" / "baselines" / "generated",
+        ROOT_DIR / "agent" / "baselines" / "generated",
+    ])
+
+    seen = set()
+    existing = []
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if resolved.is_dir():
+            existing.append(resolved)
+    return existing
 
 
 def _iter_package_files():
+    emitted = set()
     for path in SCANNER_SOURCE_DIR.rglob("*"):
         if path.is_file() and "__pycache__" not in path.parts and path.suffix in {".py", ".json", ".yaml", ".yml"}:
-            yield path, Path("scanner") / path.relative_to(SCANNER_SOURCE_DIR)
+            arcname = Path("scanner") / path.relative_to(SCANNER_SOURCE_DIR)
+            emitted.add(arcname.as_posix())
+            yield path, arcname
 
-    if BASELINES_SOURCE_DIR.is_dir():
-        for path in BASELINES_SOURCE_DIR.rglob("*"):
+    for baseline_dir in _baseline_source_dirs():
+        for path in baseline_dir.rglob("*"):
             if path.is_file() and path.suffix.lower() in {".json", ".yaml", ".yml"}:
-                yield path, Path("baselines") / "generated" / path.relative_to(BASELINES_SOURCE_DIR)
+                arcname = Path("baselines") / "generated" / path.relative_to(baseline_dir)
+                key = arcname.as_posix()
+                if key in emitted:
+                    continue
+                emitted.add(key)
+                yield path, arcname
 
 
 def _build_scanner_package() -> tuple[bytes, str, str]:
     buffer = io.BytesIO()
     with zipfile.ZipFile(buffer, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         file_count = 0
+        baseline_count = 0
         for src, arcname in _iter_package_files():
             zf.write(src, arcname.as_posix())
             file_count += 1
+            if arcname.parts[:2] == ("baselines", "generated") and arcname.suffix.lower() == ".json":
+                baseline_count += 1
         if file_count == 0:
             raise HTTPException(status_code=500, detail="Scanner package has no files")
+        if baseline_count == 0:
+            raise HTTPException(status_code=500, detail="Scanner package has no baseline JSON files")
 
     data = buffer.getvalue()
     sha256 = hashlib.sha256(data).hexdigest()
