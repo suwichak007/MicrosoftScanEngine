@@ -63,6 +63,7 @@ foreach ($envName in @(
   "SECRET_KEY",
   "AUTH_PROVIDER",
   "ACCESS_TOKEN_EXPIRE_MINUTES",
+  "BASELINES_DIR",
   "WINRM_USER",
   "WINRM_PASS",
   "GROQ_API_KEY",
@@ -77,6 +78,11 @@ foreach ($envName in @(
     }
   }
 }
+$backendRunArgs += @(
+  "-e", "BASELINES_DIR=C:\MicrosoftScanEngine\baselines\generated",
+  "-v", "C:\MicrosoftScanEngine\baselines:C:\MicrosoftScanEngine\baselines",
+  "-v", "C:\MicrosoftScanEngine\tools:C:\MicrosoftScanEngine\backend\tools"
+)
 $backendRunArgs += @(
   "--restart", "always",
   "scan-api"

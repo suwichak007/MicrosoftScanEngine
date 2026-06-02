@@ -46,6 +46,7 @@ from app.core.database import SessionLocal, Base, engine
 from app.models.user import User
 from app.models.scan import ScanResult
 from app.models.agent_job import AgentJob
+from app.models.scan_schedule import ScanSchedule
 from app.schemas.user import UserCreate, UserResponse
 from app.schemas.scan import ScanResultResponse
 from app.core.security import get_password_hash, verify_password, create_access_token
@@ -66,7 +67,7 @@ from app.core.agent_routes import router as agent_router, enqueue
 from app.models.agent import AgentToken
 from app.core.job_store import _jobs
 from app.core.export_routes import router as export_router
-from app.core.admin_routes import router as admin_router
+from app.core.admin_routes import compute_next_run, router as admin_router
 from app.core.baseline_metadata import enrich_scan_details, summarize_findings
 
 Base.metadata.create_all(bind=engine)
@@ -97,6 +98,34 @@ def _ensure_agent_inventory_columns():
         }
         if "attempts" not in agent_job_columns:
             conn.execute(text("ALTER TABLE agent_jobs ADD COLUMN attempts INTEGER DEFAULT 0"))
+
+        schedule_columns = {
+            row[1]
+            for row in conn.execute(text("PRAGMA table_info(scan_schedules)")).fetchall()
+        }
+        if schedule_columns:
+            expected_schedule_columns = {
+                "name": "VARCHAR",
+                "scan_type": "VARCHAR",
+                "agent_id": "VARCHAR",
+                "subnet": "VARCHAR",
+                "version": "VARCHAR",
+                "role": "VARCHAR",
+                "frequency": "VARCHAR",
+                "time": "VARCHAR",
+                "day_of_week": "INTEGER",
+                "enabled": "BOOLEAN DEFAULT 1",
+                "user_id": "INTEGER",
+                "last_run": "DATETIME",
+                "next_run": "DATETIME",
+                "last_job_id": "VARCHAR",
+                "last_error": "VARCHAR",
+                "created_at": "DATETIME",
+                "updated_at": "DATETIME",
+            }
+            for col, ddl in expected_schedule_columns.items():
+                if col not in schedule_columns:
+                    conn.execute(text(f"ALTER TABLE scan_schedules ADD COLUMN {col} {ddl}"))
 
         scan_result_columns = {
             row[1]
@@ -151,6 +180,7 @@ async def startup_event():
         print(f"[startup] Available JSON baselines detected: {versions}")
     except Exception as e:
         print(f"[startup] Warning during baseline detection: {str(e)}")
+    asyncio.create_task(_schedule_loop())
 
 
 # ---------------------------------------------------------------------------
@@ -550,6 +580,192 @@ def _agent_health(agent: AgentToken, baseline_info: dict, now: datetime.datetime
         "health_status": status,
         "health_message": message,
     }
+
+
+def _dispatch_scheduled_agent_scan(db: Session, schedule: ScanSchedule) -> str:
+    db_agent = db.query(AgentToken).filter(AgentToken.agent_id == schedule.agent_id).first()
+    if not db_agent:
+        raise ValueError(f"agent not found: {schedule.agent_id}")
+
+    if (schedule.version or "auto").lower() == "auto":
+        baseline_info = _resolve_agent_baseline(db_agent)
+        if baseline_info.get("error"):
+            raise ValueError(baseline_info["error"])
+        resolved_version = baseline_info["version"]
+    else:
+        resolved_version = schedule.version or "auto"
+        baseline_info = {
+            **_agent_os_payload(db_agent),
+            "version": resolved_version,
+            "match_type": "manual",
+            "warning": "",
+            "error": "",
+        }
+
+    baseline_path = os.path.join(ROOT_DIR, "baselines", "generated", f"{resolved_version}.json")
+    job_id, job = _new_job()
+    job.status = "running"
+    job.message = f"Scheduled scan: {schedule.name}"
+    job.user_id = schedule.user_id
+    job.role = schedule.role or "Member Server"
+    job.target_agent_id = schedule.agent_id
+    job.baseline_match_type = baseline_info.get("match_type", "")
+    job.baseline_warning = baseline_info.get("warning", "")
+    enqueue(schedule.agent_id, job_id, resolved_version, baseline_path)
+    return job_id
+
+
+def _prepare_scheduled_agent_subnet_scan(db: Session, schedule: ScanSchedule) -> tuple[str, int, AgentSubnetScanRequest, list[dict], list[dict]]:
+    try:
+        network = ipaddress.ip_network(schedule.subnet or "", strict=False)
+    except ValueError:
+        raise ValueError(f"invalid subnet: {schedule.subnet}")
+
+    now = datetime.datetime.now()
+    matched = []
+    for a in db.query(AgentToken).all():
+        if not _agent_matches_subnet(a, network):
+            continue
+        if (schedule.version or "auto").lower() == "auto":
+            baseline_info = _resolve_agent_baseline(a)
+        else:
+            baseline_info = {
+                **_agent_os_payload(a),
+                "version": schedule.version,
+                "match_type": "manual",
+                "warning": "",
+                "error": "",
+            }
+        matched.append({
+            "agent_id": a.agent_id,
+            "hostname": a.hostname or a.agent_id,
+            "ip_addresses": a.ip_addresses or [],
+            "last_seen": a.last_seen,
+            "online": ((now - a.last_seen).total_seconds() < 300) if a.last_seen else False,
+            "baseline_info": baseline_info,
+        })
+
+    req = AgentSubnetScanRequest(
+        subnet=schedule.subnet or "",
+        version=schedule.version or "auto",
+        role=schedule.role or "Member Server",
+    )
+    parent = ScanResult(
+        target_name=f"{req.subnet} ({req.version})",
+        score=0,
+        details={},
+        scan_date=now,
+        version=req.version,
+        hostname=req.subnet,
+        user_id=schedule.user_id,
+        scan_type="subnet",
+    )
+    db.add(parent)
+    db.commit()
+    db.refresh(parent)
+
+    unresolved_results = [
+        {
+            "host": agent["hostname"],
+            "hostname": agent["hostname"],
+            "agent_id": agent["agent_id"],
+            "ip_addresses": agent["ip_addresses"],
+            "score": 0,
+            "status": "error",
+            "phase": "baseline_resolve",
+            "method": "agent",
+            "version": "",
+            "baseline_match_type": "unresolved",
+            "error": agent["baseline_info"].get("error") or "No suitable baseline",
+        }
+        for agent in matched
+        if agent["baseline_info"].get("error")
+    ]
+    offline_results = [
+        {
+            "host": agent["hostname"],
+            "hostname": agent["hostname"],
+            "agent_id": agent["agent_id"],
+            "ip_addresses": agent["ip_addresses"],
+            "score": 0,
+            "status": "error",
+            "phase": "agent_offline",
+            "method": "agent",
+            "version": agent["baseline_info"].get("version", ""),
+            "baseline_match_type": agent["baseline_info"].get("match_type", ""),
+            "error": "Agent offline or heartbeat older than 5 minutes",
+        }
+        for agent in matched
+        if not agent["online"] and not agent["baseline_info"].get("error")
+    ]
+    online_agents = [
+        a for a in matched
+        if a["online"] and not a["baseline_info"].get("error")
+    ]
+
+    job_id, job = _new_job()
+    job.message = f"Scheduled agent subnet scan: {schedule.name}"
+    asyncio.create_task(
+        _run_agent_subnet_scan_job(
+            parent_job=job,
+            parent_scan_id=parent.id,
+            req=req,
+            user_id=schedule.user_id,
+            online_agents=online_agents,
+            offline_results=unresolved_results + offline_results,
+        )
+    )
+    return job_id, parent.id, req, online_agents, unresolved_results + offline_results
+
+
+def _run_due_schedules_once():
+    db = SessionLocal()
+    try:
+        now = datetime.datetime.now()
+        due = (
+            db.query(ScanSchedule)
+            .filter(
+                ScanSchedule.enabled == True,
+                ScanSchedule.next_run != None,
+                ScanSchedule.next_run <= now,
+            )
+            .all()
+        )
+        for schedule in due:
+            schedule.last_run = now
+            try:
+                if schedule.scan_type == "agent":
+                    job_id = _dispatch_scheduled_agent_scan(db, schedule)
+                elif schedule.scan_type == "agent-subnet":
+                    job_id, _parent_id, _req, _online, _offline = _prepare_scheduled_agent_subnet_scan(db, schedule)
+                else:
+                    raise ValueError(f"unsupported scan_type: {schedule.scan_type}")
+                schedule.last_job_id = job_id
+                schedule.last_error = ""
+            except Exception as e:
+                schedule.last_error = str(e)
+                print(f"[scheduler] schedule {schedule.id} failed: {e}")
+            schedule.next_run = compute_next_run(
+                schedule.frequency or "daily",
+                schedule.time,
+                schedule.day_of_week,
+                now + datetime.timedelta(seconds=1),
+            )
+            schedule.updated_at = now
+        if due:
+            db.commit()
+    finally:
+        db.close()
+
+
+async def _schedule_loop():
+    await asyncio.sleep(3)
+    while True:
+        try:
+            _run_due_schedules_once()
+        except Exception as e:
+            print(f"[scheduler] loop error: {e}")
+        await asyncio.sleep(int(os.environ.get("SCAN_SCHEDULER_INTERVAL_SECONDS", "30")))
 
 
 async def _run_subnet_scan_job(job, hosts, req, user_id):

@@ -1,3 +1,4 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clearAuth } from '../auth';
@@ -80,6 +81,24 @@ export default function AgentManagement() {
   const [baselineFile, setBaselineFile] = useState(null);
   const [uploadingBaseline, setUploadingBaseline] = useState(false);
   const [baselineMsg, setBaselineMsg] = useState('');
+  const [baselineAnalysis, setBaselineAnalysis] = useState(null);
+  const [selectedColumns, setSelectedColumns] = useState({});
+  const [schedules, setSchedules] = useState([]);
+  const [loadingSchedules, setLoadingSchedules] = useState(true);
+  const [scheduleMsg, setScheduleMsg] = useState('');
+  const [editingScheduleId, setEditingScheduleId] = useState(null);
+  const [scheduleForm, setScheduleForm] = useState({
+    name: '',
+    scan_type: 'agent',
+    agent_id: '',
+    subnet: '',
+    version: 'auto',
+    role: 'Member Server',
+    frequency: 'daily',
+    time: '09:00',
+    day_of_week: 0,
+    enabled: true,
+  });
 
   const authHeader = () => ({
     'Content-Type': 'application/json',
@@ -96,6 +115,16 @@ export default function AgentManagement() {
       const res = await fetch(apiUrl('/api/agents'), { headers: authHeader() });
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
+      if (res.ok) {
+        const initial = {};
+        (data.sheets || []).forEach((sheet) => {
+          initial[sheet.sheet] = sheet.selected_target_columns || [];
+        });
+        setSelectedColumns(initial);
+        setBaselineAnalysis(data);
+        setBaselineMsg(`Analyze complete: ${data.baseline_name}`);
+        return;
+      }
       if (!res.ok) {
         setErrorMsg(data.detail || 'ไม่สามารถโหลด agent ได้');
         return;
@@ -130,6 +159,26 @@ export default function AgentManagement() {
 
   useEffect(() => { fetchBaselines(); }, [fetchBaselines]);
 
+  const fetchSchedules = useCallback(async () => {
+    setLoadingSchedules(true);
+    try {
+      const res = await fetch(apiUrl('/api/admin/schedules'), { headers: authOnlyHeader() });
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
+      const data = await res.json();
+      if (!res.ok) {
+        setScheduleMsg(data.detail || 'Load schedules failed');
+        return;
+      }
+      setSchedules(Array.isArray(data) ? data : []);
+    } catch (err) {
+      setScheduleMsg(`Load schedules failed: ${err.message}`);
+    } finally {
+      setLoadingSchedules(false);
+    }
+  }, [navigate]);
+
+  useEffect(() => { fetchSchedules(); }, [fetchSchedules]);
+
   const uploadBaseline = async () => {
     if (!baselineFile) {
       setBaselineMsg('กรุณาเลือกไฟล์ .xlsx ก่อน');
@@ -143,10 +192,12 @@ export default function AgentManagement() {
     setUploadingBaseline(true);
     setBaselineMsg('');
     setErrorMsg('');
+    setBaselineAnalysis(null);
+    setSelectedColumns({});
     const form = new FormData();
     form.append('file', baselineFile);
     try {
-      const res = await fetch(apiUrl('/api/admin/baselines/upload'), {
+      const res = await fetch(apiUrl('/api/admin/baselines/analyze'), {
         method: 'POST',
         headers: authOnlyHeader(),
         body: form,
@@ -164,6 +215,122 @@ export default function AgentManagement() {
       setBaselineMsg(`อัปโหลด baseline ไม่สำเร็จ: ${err.message}`);
     } finally {
       setUploadingBaseline(false);
+    }
+  };
+
+  const toggleBaselineColumn = (sheetName, columnName) => {
+    setSelectedColumns((prev) => {
+      const current = new Set(prev[sheetName] || []);
+      if (current.has(columnName)) current.delete(columnName);
+      else current.add(columnName);
+      return { ...prev, [sheetName]: Array.from(current) };
+    });
+  };
+
+  const confirmBaselineUpload = async () => {
+    if (!baselineAnalysis?.upload_id) return;
+    setUploadingBaseline(true);
+    setBaselineMsg('');
+    try {
+      const res = await fetch(apiUrl('/api/admin/baselines/upload/confirm'), {
+        method: 'POST',
+        headers: authHeader(),
+        body: JSON.stringify({
+          upload_id: baselineAnalysis.upload_id,
+          target_columns: selectedColumns,
+        }),
+      });
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
+      const data = await res.json();
+      if (!res.ok) {
+        setBaselineMsg(data.detail || 'Upload baseline failed');
+        return;
+      }
+      setBaselineMsg(`Upload complete: ${data.baseline_name} (${data.check_count} checks)`);
+      setBaselineFile(null);
+      setBaselineAnalysis(null);
+      setSelectedColumns({});
+      await fetchBaselines();
+    } catch (err) {
+      setBaselineMsg(`Upload baseline failed: ${err.message}`);
+    } finally {
+      setUploadingBaseline(false);
+    }
+  };
+
+  const resetScheduleForm = () => {
+    setEditingScheduleId(null);
+    setScheduleForm({
+      name: '',
+      scan_type: 'agent',
+      agent_id: '',
+      subnet: '',
+      version: 'auto',
+      role: 'Member Server',
+      frequency: 'daily',
+      time: '09:00',
+      day_of_week: 0,
+      enabled: true,
+    });
+  };
+
+  const saveSchedule = async () => {
+    setScheduleMsg('');
+    try {
+      const url = editingScheduleId
+        ? apiUrl(`/api/admin/schedules/${editingScheduleId}`)
+        : apiUrl('/api/admin/schedules');
+      const res = await fetch(url, {
+        method: editingScheduleId ? 'PUT' : 'POST',
+        headers: authHeader(),
+        body: JSON.stringify(scheduleForm),
+      });
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
+      const data = await res.json();
+      if (!res.ok) {
+        setScheduleMsg(data.detail || 'Save schedule failed');
+        return;
+      }
+      setScheduleMsg(`Schedule saved: ${data.name}`);
+      resetScheduleForm();
+      await fetchSchedules();
+    } catch (err) {
+      setScheduleMsg(`Save schedule failed: ${err.message}`);
+    }
+  };
+
+  const editSchedule = (schedule) => {
+    setEditingScheduleId(schedule.id);
+    setScheduleForm({
+      name: schedule.name || '',
+      scan_type: schedule.scan_type || 'agent',
+      agent_id: schedule.agent_id || '',
+      subnet: schedule.subnet || '',
+      version: schedule.version || 'auto',
+      role: schedule.role || 'Member Server',
+      frequency: schedule.frequency || 'daily',
+      time: schedule.time || '09:00',
+      day_of_week: schedule.day_of_week ?? 0,
+      enabled: !!schedule.enabled,
+    });
+  };
+
+  const deleteSchedule = async (scheduleId) => {
+    setScheduleMsg('');
+    try {
+      const res = await fetch(apiUrl(`/api/admin/schedules/${scheduleId}`), {
+        method: 'DELETE',
+        headers: authOnlyHeader(),
+      });
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
+      const data = await res.json();
+      if (!res.ok) {
+        setScheduleMsg(data.detail || 'Delete schedule failed');
+        return;
+      }
+      await fetchSchedules();
+    } catch (err) {
+      setScheduleMsg(`Delete schedule failed: ${err.message}`);
     }
   };
 
@@ -257,6 +424,144 @@ export default function AgentManagement() {
           </div>
         </div>
 
+        <section className="agentCard scheduleAdminCard">
+          <div className="agentCardHead">
+            <h2>Scan Scheduling</h2>
+            <span className="muted">{loadingSchedules ? 'Loading...' : `${schedules.length} schedules`}</span>
+          </div>
+          <div className="schedulePanel">
+            <div className="scheduleForm">
+              <input
+                className="scheduleInput"
+                value={scheduleForm.name}
+                onChange={(e) => setScheduleForm((prev) => ({ ...prev, name: e.target.value }))}
+                placeholder="Schedule name"
+              />
+              <select
+                className="scheduleInput"
+                value={scheduleForm.scan_type}
+                onChange={(e) => setScheduleForm((prev) => ({ ...prev, scan_type: e.target.value }))}
+              >
+                <option value="agent">Agent</option>
+                <option value="agent-subnet">Agent subnet</option>
+              </select>
+              {scheduleForm.scan_type === 'agent' ? (
+                <select
+                  className="scheduleInput"
+                  value={scheduleForm.agent_id}
+                  onChange={(e) => setScheduleForm((prev) => ({ ...prev, agent_id: e.target.value }))}
+                >
+                  <option value="">Choose agent</option>
+                  {agents.map((agent) => (
+                    <option key={agent.agent_id} value={agent.agent_id}>
+                      {agent.hostname || agent.agent_id}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="scheduleInput"
+                  value={scheduleForm.subnet}
+                  onChange={(e) => setScheduleForm((prev) => ({ ...prev, subnet: e.target.value }))}
+                  placeholder="192.168.1.0/24"
+                />
+              )}
+              <select
+                className="scheduleInput"
+                value={scheduleForm.version}
+                onChange={(e) => setScheduleForm((prev) => ({ ...prev, version: e.target.value }))}
+              >
+                <option value="auto">Auto baseline</option>
+                {baselines.map((b) => (
+                  <option key={`${b.filename}-${b.version_id}`} value={b.version_id}>
+                    {b.display_name || b.version_id}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="scheduleInput"
+                value={scheduleForm.role}
+                onChange={(e) => setScheduleForm((prev) => ({ ...prev, role: e.target.value }))}
+              >
+                <option value="Member Server">Member Server</option>
+                <option value="Domain Controller">Domain Controller</option>
+              </select>
+              <select
+                className="scheduleInput"
+                value={scheduleForm.frequency}
+                onChange={(e) => setScheduleForm((prev) => ({
+                  ...prev,
+                  frequency: e.target.value,
+                  time: e.target.value === 'hourly' ? '0' : '09:00',
+                }))}
+              >
+                <option value="hourly">Hourly</option>
+                <option value="daily">Daily</option>
+                <option value="weekly">Weekly</option>
+              </select>
+              {scheduleForm.frequency === 'weekly' && (
+                <select
+                  className="scheduleInput"
+                  value={scheduleForm.day_of_week}
+                  onChange={(e) => setScheduleForm((prev) => ({ ...prev, day_of_week: Number(e.target.value) }))}
+                >
+                  <option value={0}>Monday</option>
+                  <option value={1}>Tuesday</option>
+                  <option value={2}>Wednesday</option>
+                  <option value={3}>Thursday</option>
+                  <option value={4}>Friday</option>
+                  <option value={5}>Saturday</option>
+                  <option value={6}>Sunday</option>
+                </select>
+              )}
+              <input
+                className="scheduleInput"
+                value={scheduleForm.time}
+                onChange={(e) => setScheduleForm((prev) => ({ ...prev, time: e.target.value }))}
+                placeholder={scheduleForm.frequency === 'hourly' ? 'Minute 0-59' : 'HH:MM'}
+              />
+              <label className="scheduleToggle">
+                <input
+                  type="checkbox"
+                  checked={scheduleForm.enabled}
+                  onChange={(e) => setScheduleForm((prev) => ({ ...prev, enabled: e.target.checked }))}
+                />
+                Enabled
+              </label>
+              <button className="agentPrimaryBtn" onClick={saveSchedule}>
+                {editingScheduleId ? 'Update schedule' : 'Create schedule'}
+              </button>
+              {editingScheduleId && (
+                <button className="agentSecondaryBtn" onClick={resetScheduleForm}>Cancel</button>
+              )}
+            </div>
+            {scheduleMsg && <div className="baselineUploadMsg">{scheduleMsg}</div>}
+            <div className="scheduleList">
+              {loadingSchedules && <div className="baselineEmpty">Loading schedules...</div>}
+              {!loadingSchedules && schedules.length === 0 && <div className="baselineEmpty">No schedules yet</div>}
+              {!loadingSchedules && schedules.map((schedule) => (
+                <div className="scheduleItem" key={schedule.id}>
+                  <div className="agentStack">
+                    <span className="agentStrong">{schedule.name}</span>
+                    <span className="muted">
+                      {schedule.scan_type === 'agent' ? schedule.agent_id : schedule.subnet} · {schedule.frequency} · {schedule.version}
+                    </span>
+                    <span className="muted">Next run {formatDate(schedule.next_run)}</span>
+                    {schedule.last_error && <span className="agentBaselineError">{schedule.last_error}</span>}
+                  </div>
+                  <div className="agentActions">
+                    <span className={`agentStatus ${schedule.enabled ? 'online' : 'offline'}`}>
+                      {schedule.enabled ? 'Enabled' : 'Disabled'}
+                    </span>
+                    <button className="agentSecondaryBtn" onClick={() => editSchedule(schedule)}>Edit</button>
+                    <button className="agentSecondaryBtn" onClick={() => deleteSchedule(schedule.id)}>Delete</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <section className="agentCard baselineAdminCard">
           <div className="agentCardHead">
             <h2>Baseline Library</h2>
@@ -276,13 +581,58 @@ export default function AgentManagement() {
                 <span>{baselineFile ? baselineFile.name : 'Choose Excel baseline'}</span>
               </label>
               <button className="agentPrimaryBtn" onClick={uploadBaseline} disabled={uploadingBaseline}>
-                {uploadingBaseline ? 'Uploading...' : 'Upload baseline'}
+                {uploadingBaseline ? 'Analyzing...' : 'Analyze baseline'}
               </button>
               <button className="agentSecondaryBtn" onClick={fetchBaselines} disabled={loadingBaselines}>
                 Refresh
               </button>
             </div>
             {baselineMsg && <div className="baselineUploadMsg">{baselineMsg}</div>}
+            {baselineAnalysis && (
+              <div className="baselineColumnMapper">
+                <div className="agentCardHead compactHead">
+                  <h2>Column Mapping</h2>
+                  <span className="muted">{baselineAnalysis.sheets?.length || 0} sheets</span>
+                </div>
+                {(baselineAnalysis.sheets || []).map((sheet) => (
+                  <div className="baselineSheetMap" key={sheet.sheet}>
+                    <div className="agentStack">
+                      <span className="agentStrong">{sheet.sheet}</span>
+                      <span className="muted">{sheet.sheet_type}</span>
+                    </div>
+                    <div className="baselineColumnChips">
+                      {(sheet.columns || []).map((column) => {
+                        const checked = (selectedColumns[sheet.sheet] || []).includes(column);
+                        return (
+                          <label className={`baselineColumnChip ${checked ? 'selected' : ''}`} key={column}>
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleBaselineColumn(sheet.sheet, column)}
+                            />
+                            {column}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+                <div className="baselineMapperActions">
+                  <button className="agentPrimaryBtn" onClick={confirmBaselineUpload} disabled={uploadingBaseline}>
+                    {uploadingBaseline ? 'Saving...' : 'Confirm upload'}
+                  </button>
+                  <button
+                    className="agentSecondaryBtn"
+                    onClick={() => {
+                      setBaselineAnalysis(null);
+                      setSelectedColumns({});
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="baselineList">
               {loadingBaselines && <div className="baselineEmpty">กำลังโหลด baseline...</div>}
               {!loadingBaselines && baselines.length === 0 && <div className="baselineEmpty">ยังไม่มี baseline</div>}

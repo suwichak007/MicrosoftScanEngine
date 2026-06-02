@@ -221,10 +221,37 @@ def _remediation(category: str, policy_path: str, check_name: str,
 # Core converter
 # ---------------------------------------------------------------------------
 
-def convert_workbook(path: Path) -> dict[str, Any]:
+def analyze_workbook(path: Path) -> dict[str, Any]:
+    cfg = auto_detect_baseline(str(path))
+    sheets = pd.read_excel(path, sheet_name=None, nrows=1)
+    result = {
+        "baseline_id": _slug(cfg.version_id),
+        "baseline_name": cfg.display_name,
+        "os_family": cfg.os_family,
+        "filename": path.name,
+        "sheets": [],
+    }
+    for sheet_name, df in sheets.items():
+        sheet_cfg = cfg.sheets.get(sheet_name)
+        if sheet_cfg is None or sheet_cfg.sheet_type == "skip":
+            continue
+        columns = [str(c).strip() for c in df.columns if str(c).strip()]
+        detected = [c for c in sheet_cfg.target_columns if c in columns]
+        result["sheets"].append({
+            "sheet": sheet_name,
+            "sheet_type": sheet_cfg.sheet_type,
+            "columns": columns,
+            "detected_target_columns": detected,
+            "selected_target_columns": detected,
+        })
+    return result
+
+
+def convert_workbook(path: Path, target_column_overrides: dict[str, list[str]] | None = None) -> dict[str, Any]:
     cfg    = auto_detect_baseline(str(path))
     sheets = pd.read_excel(path, sheet_name=None)
     os_pfx = _os_prefix(cfg.version_id)
+    overrides = target_column_overrides or {}
 
     # key = (sheet_type, check_name, policy_path, expected_value)
     # value = check dict  — ใช้สำหรับ deduplication
@@ -237,7 +264,12 @@ def convert_workbook(path: Path) -> dict[str, Any]:
             continue
 
         # แก้จาก v1: ใช้ col in df.columns ตรงๆ ไม่ผ่าน resolve_target_col
-        target_columns = [c for c in sheet_cfg.target_columns if c in df.columns]
+        requested_columns = overrides.get(sheet_name) or overrides.get(sheet_cfg.sheet_type)
+        target_columns = (
+            [c for c in requested_columns if c in df.columns]
+            if requested_columns
+            else [c for c in sheet_cfg.target_columns if c in df.columns]
+        )
         if not target_columns:
             continue
 

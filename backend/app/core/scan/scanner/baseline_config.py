@@ -137,8 +137,6 @@ def auto_detect_baseline(filepath: str) -> BaselineConfig:
         headers = [str(h).strip() if h is not None else "" for h in rows[0]]
 
         target_cols = [c for c in TARGET_COLUMN_PRIORITY if c in headers]
-        if not target_cols:
-            continue
 
         if sheet_type == "applocker_dc":
             sheets[sheet_name] = SheetConfig(

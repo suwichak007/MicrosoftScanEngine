@@ -22,6 +22,58 @@
   margin-bottom: 22px;
 }
 
+.scheduleAdminCard {
+  margin-bottom: 22px;
+}
+
+.schedulePanel {
+  padding: 16px;
+}
+
+.scheduleForm {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  margin-bottom: 14px;
+}
+
+.scheduleInput {
+  background: var(--cream-dark);
+  border: 1px solid var(--cream-mid);
+  border-radius: 6px;
+  color: var(--ink-mid);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  min-height: 36px;
+  padding: 8px 10px;
+}
+
+.scheduleToggle {
+  align-items: center;
+  color: var(--ink-mid);
+  display: inline-flex;
+  font-size: 12px;
+  gap: 7px;
+  min-height: 36px;
+}
+
+.scheduleList {
+  display: grid;
+  gap: 8px;
+}
+
+.scheduleItem {
+  align-items: center;
+  background: var(--cream-dark);
+  border: 1px solid var(--cream-mid);
+  border-radius: 8px;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  min-width: 0;
+  padding: 11px 12px;
+}
+
 .baselineUploadPanel {
   padding: 16px;
 }
@@ -61,6 +113,62 @@
   color: var(--ink-mid);
   font-size: 12px;
   margin-bottom: 12px;
+}
+
+.baselineColumnMapper {
+  border: 1px solid var(--cream-mid);
+  border-radius: 8px;
+  margin-bottom: 14px;
+  overflow: hidden;
+}
+
+.compactHead {
+  padding: 10px 12px;
+}
+
+.baselineSheetMap {
+  border-top: 1px solid var(--cream-mid);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: 180px 1fr;
+  padding: 12px;
+}
+
+.baselineColumnChips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.baselineColumnChip {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--cream-mid);
+  border-radius: 6px;
+  color: var(--ink-mid);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 11px;
+  gap: 5px;
+  max-width: 260px;
+  padding: 6px 8px;
+}
+
+.baselineColumnChip.selected {
+  background: var(--amber-pale);
+  border-color: rgba(200,129,58,0.45);
+  color: var(--amber);
+}
+
+.baselineColumnChip input {
+  margin: 0;
+}
+
+.baselineMapperActions {
+  border-top: 1px solid var(--cream-mid);
+  display: flex;
+  gap: 8px;
+  padding: 12px;
 }
 
 .baselineList {
@@ -382,6 +490,16 @@
   }
 
   .agentCardHead {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .baselineSheetMap,
+  .scheduleItem {
+    grid-template-columns: 1fr;
+  }
+
+  .scheduleItem {
     align-items: flex-start;
     flex-direction: column;
   }

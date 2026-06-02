@@ -28,6 +28,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir openpyxl bcrypt==4.0.1
 
 COPY backend .
+COPY tools tools
 
 # Copy generated baselines from stage 1
 COPY --from=baseline-builder /build/baselines/generated baselines/generated

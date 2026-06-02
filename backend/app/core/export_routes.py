@@ -18,6 +18,9 @@ import datetime
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
+from openpyxl import Workbook
+from openpyxl.styles import Alignment, Font, PatternFill
+from openpyxl.utils import get_column_letter
 
 from app.core.database import SessionLocal
 from app.core.security import get_current_user
@@ -493,6 +496,90 @@ def _build_csv(scan: ScanResult) -> bytes:
     return ("\ufeff" + output.getvalue()).encode("utf-8")
 
 
+def _build_xlsx(scan: ScanResult) -> bytes:
+    wb = Workbook()
+    ws_summary = wb.active
+    ws_summary.title = "Summary"
+    ws_results = wb.create_sheet("Results")
+
+    scan_date = scan.scan_date.strftime("%d/%m/%Y %H:%M") if scan.scan_date else ""
+    parsed = _parse_details(scan.details)
+    all_items = parsed["fail"] + parsed["manual"] + parsed["pass"]
+
+    title_fill = PatternFill("solid", fgColor="1A1A2E")
+    header_fill = PatternFill("solid", fgColor="E8D9C8")
+    pass_fill = PatternFill("solid", fgColor="DDEEDC")
+    fail_fill = PatternFill("solid", fgColor="F8D8D4")
+    manual_fill = PatternFill("solid", fgColor="FCE8C2")
+    white_font = Font(color="FFFFFF", bold=True)
+    header_font = Font(color="1F2937", bold=True)
+
+    ws_summary["A1"] = "Security Baseline Scan Report"
+    ws_summary["A1"].fill = title_fill
+    ws_summary["A1"].font = white_font
+    ws_summary.merge_cells("A1:B1")
+    summary_rows = [
+        ("Target", scan.target_name or ""),
+        ("Hostname", scan.hostname or ""),
+        ("Version", scan.version or ""),
+        ("Score", f"{scan.score or 0}%"),
+        ("Date", scan_date),
+        ("Total Checks", len(scan.details or {})),
+        ("Pass", len(parsed["pass"])),
+        ("Fail", len(parsed["fail"])),
+        ("Manual", len(parsed["manual"])),
+    ]
+    for idx, (label, value) in enumerate(summary_rows, start=3):
+        ws_summary.cell(row=idx, column=1, value=label).font = header_font
+        ws_summary.cell(row=idx, column=2, value=value)
+    ws_summary.column_dimensions["A"].width = 22
+    ws_summary.column_dimensions["B"].width = 60
+
+    headers = [
+        "Policy Key",
+        "Policy Name",
+        "Section",
+        "Severity",
+        "Status",
+        "Current Value",
+        "Required Value",
+        "Raw Result",
+    ]
+    ws_results.append(headers)
+    for cell in ws_results[1]:
+        cell.fill = header_fill
+        cell.font = header_font
+        cell.alignment = Alignment(horizontal="center")
+
+    for item in all_items:
+        status = "Fail" if item in parsed["fail"] else "Manual" if item in parsed["manual"] else "Pass"
+        ws_results.append([
+            item["key"],
+            item["name"],
+            item["section"],
+            item["severity"],
+            status,
+            item["actual"],
+            item["target"],
+            item["status"],
+        ])
+        fill = pass_fill if status == "Pass" else manual_fill if status == "Manual" else fail_fill
+        for cell in ws_results[ws_results.max_row]:
+            cell.fill = fill
+            cell.alignment = Alignment(vertical="top", wrap_text=True)
+
+    ws_results.freeze_panes = "A2"
+    ws_results.auto_filter.ref = ws_results.dimensions
+    widths = [42, 58, 26, 14, 12, 28, 28, 70]
+    for idx, width in enumerate(widths, start=1):
+        ws_results.column_dimensions[get_column_letter(idx)].width = width
+
+    output = io.BytesIO()
+    wb.save(output)
+    output.seek(0)
+    return output.read()
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -537,5 +624,26 @@ async def export_csv(
     return StreamingResponse(
         io.BytesIO(csv_bytes),
         media_type="text/csv; charset=utf-8",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
+@router.get("/{scan_id}/export/xlsx")
+async def export_xlsx(
+    scan_id:      int,
+    db:           Session = Depends(get_db),
+    current_user: User    = Depends(get_current_user),
+):
+    scan = _get_scan_or_404(scan_id, current_user, db)
+
+    try:
+        xlsx_bytes = _build_xlsx(scan)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Cannot create XLSX: {e}")
+
+    filename = f"scan-report-{scan_id}-{datetime.date.today()}.xlsx"
+    return StreamingResponse(
+        io.BytesIO(xlsx_bytes),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )

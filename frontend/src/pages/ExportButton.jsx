@@ -131,7 +131,7 @@ const IconSpinner = () => (
 // ─── Main Component ───────────────────────────────────────────────────────────
 export default function ExportButton({ scanId, label = 'Export', variant = 'full' }) {
   const [open,        setOpen]        = useState(false);
-  const [loading,     setLoading]     = useState(null); // 'pdf' | 'csv' | null
+  const [loading,     setLoading]     = useState(null); // 'pdf' | 'csv' | 'xlsx' | null
   const [hover,       setHover]       = useState(false);
   const [hoverItem,   setHoverItem]   = useState(null);
   const [errorMsg,    setErrorMsg]    = useState('');
@@ -174,7 +174,7 @@ export default function ExportButton({ scanId, label = 'Export', variant = 'full
       const blob     = await res.blob();
       const url      = URL.createObjectURL(blob);
       const a        = document.createElement('a');
-      const ext      = format === 'pdf' ? 'pdf' : 'csv';
+      const ext      = format === 'pdf' ? 'pdf' : format === 'xlsx' ? 'xlsx' : 'csv';
       a.href         = url;
       a.download     = `scan-report-${scanId}-${new Date().toISOString().slice(0, 10)}.${ext}`;
       document.body.appendChild(a);
@@ -253,6 +253,22 @@ export default function ExportButton({ scanId, label = 'Export', variant = 'full
             >
               <IconCSV />
               Export as CSV
+            </button>
+
+            <div style={S.dropDivider} />
+
+            {/* Excel */}
+            <button
+              style={{
+                ...S.dropItem,
+                ...(hoverItem === 'xlsx' ? S.dropItemHover : {}),
+              }}
+              onMouseEnter={() => setHoverItem('xlsx')}
+              onMouseLeave={() => setHoverItem(null)}
+              onClick={() => handleExport('xlsx')}
+            >
+              <IconCSV />
+              Export as Excel
             </button>
           </div>
         )}
