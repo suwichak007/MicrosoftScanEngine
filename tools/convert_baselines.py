@@ -24,6 +24,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.core.scan.scanner.baseline_config import auto_detect_baseline
+from app.core.severity_mapping import classify_severity, default_mapping_payload
 
 # ---------------------------------------------------------------------------
 # Category / Severity mapping
@@ -142,22 +143,20 @@ def _category(sheet_name: str, sheet_type: str, policy_path: str, check_name: st
     return "Security Options"
 
 
-def _severity(category: str, policy_path: str, check_name: str, registry_path: str) -> str:
-    haystack = f"{category} {policy_path} {check_name} {registry_path}".lower()
-    if any(k in haystack for k in CRITICAL_KW):
-        return "Critical"
-    if category in {"User Rights Assignment", "Credential Protection"}:
-        return "Critical"
-    if any(k in haystack for k in HIGH_KW):
-        return "High"
-    if category in {"Account Policies","Audit Policies","Security Options",
-                     "Windows Firewall","Remote Access","TLS/Cipher Suites"}:
-        return "High"
-    if any(k in haystack for k in MEDIUM_KW):
-        return "Medium"
-    if category in {"Windows Defender","Services & Features"}:
-        return "Medium"
-    return "Low"
+def _severity(
+    category: str,
+    policy_path: str,
+    check_name: str,
+    registry_path: str,
+    severity_mapping: dict[str, Any] | None = None,
+) -> str:
+    return classify_severity(
+        category=category,
+        policy_path=policy_path,
+        check_name=check_name,
+        registry_path=registry_path,
+        mapping=severity_mapping or default_mapping_payload(),
+    )
 
 
 def _remediation(category: str, policy_path: str, check_name: str,
@@ -247,7 +246,11 @@ def analyze_workbook(path: Path) -> dict[str, Any]:
     return result
 
 
-def convert_workbook(path: Path, target_column_overrides: dict[str, list[str]] | None = None) -> dict[str, Any]:
+def convert_workbook(
+    path: Path,
+    target_column_overrides: dict[str, list[str]] | None = None,
+    severity_mapping: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     cfg    = auto_detect_baseline(str(path))
     sheets = pd.read_excel(path, sheet_name=None)
     os_pfx = _os_prefix(cfg.version_id)
@@ -293,7 +296,7 @@ def convert_workbook(path: Path, target_column_overrides: dict[str, list[str]] |
                     continue
 
                 cat = _category(sheet_name, stype, policy_path, check_name)
-                sev = _severity(cat, policy_path, check_name, registry_path)
+                sev = _severity(cat, policy_path, check_name, registry_path, severity_mapping)
 
                 role = _col_to_role(target_col)
                 # deduplication key

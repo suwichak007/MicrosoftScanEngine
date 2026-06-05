@@ -360,6 +360,41 @@ def _build_registry_prefetch_keys(checks: list[dict]) -> list[tuple[str, str, st
     return registry_keys
 
 
+def _scan_counts_from_details(details: dict | None) -> dict:
+    counts = {
+        "items_scanned": 0,
+        "pass_count": 0,
+        "fail_count": 0,
+        "manual_count": 0,
+        "critical_count": 0,
+        "high_count": 0,
+    }
+    if not isinstance(details, dict):
+        return counts
+    for value in details.values():
+        if not isinstance(value, dict):
+            status = str(value)
+            severity = ""
+        else:
+            status = str(value.get("status", ""))
+            severity = str(value.get("severity", "")).lower()
+        if not status:
+            continue
+        counts["items_scanned"] += 1
+        status_lower = status.lower()
+        if status_lower.startswith("pass"):
+            counts["pass_count"] += 1
+        elif status_lower.startswith("fail"):
+            counts["fail_count"] += 1
+            if severity == "critical":
+                counts["critical_count"] += 1
+            if severity == "high":
+                counts["high_count"] += 1
+        elif "manual" in status_lower:
+            counts["manual_count"] += 1
+    return counts
+
+
 def _subnet_summary_from_details(details):
     if not isinstance(details, dict):
         return None
@@ -367,10 +402,61 @@ def _subnet_summary_from_details(details):
     if not isinstance(results, list):
         return None
     success_count = sum(1 for r in results if isinstance(r, dict) and r.get("status") == "done")
+    failed_count = sum(1 for r in results if isinstance(r, dict) and r.get("status") == "error")
     return {
         "items_scanned": success_count,
         "pass_count": success_count,
-        "fail_count": 0,
+        "fail_count": failed_count,
+        "host_count": len(results),
+        "failed_host_count": failed_count,
+        "critical_count": 0,
+        "high_count": 0,
+    }
+
+
+def _subnet_summary_from_children(parent: ScanResult, db: Session, current_user: User) -> dict:
+    query = db.query(ScanResult).filter(ScanResult.parent_scan_id == parent.id)
+    if current_user.role != "admin":
+        query = query.filter(ScanResult.user_id == current_user.id)
+    children = query.all()
+    if not children:
+        return _subnet_summary_from_details(parent.details) or {
+            "items_scanned": 0,
+            "pass_count": 0,
+            "fail_count": 0,
+            "host_count": 0,
+            "failed_host_count": 0,
+            "critical_count": 0,
+            "high_count": 0,
+            "score": parent.score or 0,
+        }
+
+    host_count = len(children)
+    failed_host_count = 0
+    pass_count = fail_count = critical_count = high_count = 0
+    score_total = 0
+    scored = 0
+    for child in children:
+        counts = _scan_counts_from_details(child.details)
+        pass_count += counts["pass_count"]
+        fail_count += counts["fail_count"]
+        critical_count += counts["critical_count"]
+        high_count += counts["high_count"]
+        if counts["fail_count"] > 0 or (child.score or 0) < 100:
+            failed_host_count += 1
+        if child.score is not None:
+            score_total += int(child.score or 0)
+            scored += 1
+
+    return {
+        "items_scanned": host_count,
+        "pass_count": pass_count,
+        "fail_count": fail_count,
+        "host_count": host_count,
+        "failed_host_count": failed_host_count,
+        "critical_count": critical_count,
+        "high_count": high_count,
+        "score": int(score_total / scored) if scored else (parent.score or 0),
     }
 
 
@@ -582,6 +668,29 @@ def _agent_health(agent: AgentToken, baseline_info: dict, now: datetime.datetime
     }
 
 
+def _resolve_schedule_role(agent: AgentToken | None, version: str, configured_role: str | None) -> str:
+    role = (configured_role or "auto").strip()
+    if role and role.lower() != "auto":
+        return role
+
+    label = " ".join([
+        getattr(agent, "hostname", "") or "",
+        getattr(agent, "os_name", "") or "",
+        getattr(agent, "os_family", "") or "",
+    ]).lower()
+    if "domain controller" in label or re.match(r"(^|[-_.])dc\d*($|[-_.])", label):
+        return "Domain Controller"
+
+    try:
+        dc_checks = load_checks(version, role="Domain Controller")
+        member_checks = load_checks(version, role="Member Server")
+        if dc_checks and not member_checks:
+            return "Domain Controller"
+    except Exception:
+        pass
+    return "Member Server"
+
+
 def _dispatch_scheduled_agent_scan(db: Session, schedule: ScanSchedule) -> str:
     db_agent = db.query(AgentToken).filter(AgentToken.agent_id == schedule.agent_id).first()
     if not db_agent:
@@ -607,7 +716,7 @@ def _dispatch_scheduled_agent_scan(db: Session, schedule: ScanSchedule) -> str:
     job.status = "running"
     job.message = f"Scheduled scan: {schedule.name}"
     job.user_id = schedule.user_id
-    job.role = schedule.role or "Member Server"
+    job.role = _resolve_schedule_role(db_agent, resolved_version, "auto")
     job.target_agent_id = schedule.agent_id
     job.baseline_match_type = baseline_info.get("match_type", "")
     job.baseline_warning = baseline_info.get("warning", "")
@@ -648,7 +757,7 @@ def _prepare_scheduled_agent_subnet_scan(db: Session, schedule: ScanSchedule) ->
     req = AgentSubnetScanRequest(
         subnet=schedule.subnet or "",
         version=schedule.version or "auto",
-        role=schedule.role or "Member Server",
+        role="auto",
     )
     parent = ScanResult(
         target_name=f"{req.subnet} ({req.version})",
@@ -1038,8 +1147,13 @@ async def get_subnet_children(
     if current_user.role != "admin":
         query = query.filter(ScanResult.user_id == current_user.id)
     children = query.order_by(ScanResult.scan_date).all()
-    return [
-        {
+    rows = []
+    for c in children:
+        role = "Domain Controller" if "Domain Controller" in (c.target_name or "") else "Member Server"
+        details = c.details or {}
+        findings = enrich_scan_details(details, version=c.version or "", role=role)
+        counts = _scan_counts_from_details(details)
+        rows.append({
             "id":          c.id,
             "scan_id":     c.id,
             "target_name": c.target_name,
@@ -1051,13 +1165,15 @@ async def get_subnet_children(
             "status":      "done",
             "phase":       "",
             "error":       "",
-            "pass_count":  sum(1 for v in (c.details or {}).values()
-                              if isinstance(v, dict) and v.get("status") == "Pass"),
-            "fail_count":  sum(1 for v in (c.details or {}).values()
-                              if isinstance(v, dict) and str(v.get("status","")).startswith("Fail")),
-        }
-        for c in children
-    ]
+            "items_scanned": counts["items_scanned"],
+            "pass_count":  counts["pass_count"],
+            "fail_count":  counts["fail_count"],
+            "critical_count": counts["critical_count"],
+            "high_count": counts["high_count"],
+            "details":     details,
+            "findings":    findings,
+        })
+    return rows
 
 @app.post("/api/scan/subnet")
 async def run_subnet_scan(
@@ -1544,20 +1660,23 @@ async def get_scan_history(
     scans = query.order_by(ScanResult.scan_date.desc()).limit(limit).all()
     rows = []
     for s in scans:
-        subnet_summary = _subnet_summary_from_details(s.details) if getattr(s, "scan_type", "single") == "subnet" else None
+        subnet_summary = _subnet_summary_from_children(s, db, current_user) if getattr(s, "scan_type", "single") == "subnet" else None
+        single_counts = _scan_counts_from_details(s.details)
         rows.append({
             "id":            s.id,
             "target_name":   s.target_name,
-            "score":         s.score,
+            "score":         subnet_summary.get("score", s.score) if subnet_summary else s.score,
             "scan_date":     s.scan_date.isoformat(),
             "version":       s.version or "",
             "hostname":      s.hostname or "",
             "scan_type":     getattr(s, "scan_type", "single"),
-            "items_scanned": subnet_summary["items_scanned"] if subnet_summary else len(s.details) if s.details else 0,
-            "pass_count":    subnet_summary["pass_count"] if subnet_summary else sum(1 for v in (s.details or {}).values()
-                                if isinstance(v, dict) and v.get("status") == "Pass"),
-            "fail_count":    subnet_summary["fail_count"] if subnet_summary else sum(1 for v in (s.details or {}).values()
-                                if isinstance(v, dict) and str(v.get("status","")).startswith("Fail")),
+            "items_scanned": subnet_summary["items_scanned"] if subnet_summary else single_counts["items_scanned"],
+            "pass_count":    subnet_summary["pass_count"] if subnet_summary else single_counts["pass_count"],
+            "fail_count":    subnet_summary["fail_count"] if subnet_summary else single_counts["fail_count"],
+            "host_count":    subnet_summary.get("host_count", 1) if subnet_summary else 1,
+            "failed_host_count": subnet_summary.get("failed_host_count", 0) if subnet_summary else (1 if single_counts["fail_count"] else 0),
+            "critical_count": subnet_summary.get("critical_count", single_counts["critical_count"]) if subnet_summary else single_counts["critical_count"],
+            "high_count": subnet_summary.get("high_count", single_counts["high_count"]) if subnet_summary else single_counts["high_count"],
         })
     return rows
 
@@ -1577,23 +1696,119 @@ async def get_scan_detail(
     role = "Domain Controller" if "Domain Controller" in (scan.target_name or "") else "Member Server"
     if getattr(scan, "scan_type", "single") == "subnet":
         findings = []
-        summary = None
+        summary = _subnet_summary_from_children(scan, db, current_user)
     else:
         findings = enrich_scan_details(scan.details, version=scan.version or "", role=role)
         summary = summarize_findings(findings)
+    count_summary = summary if getattr(scan, "scan_type", "single") == "subnet" else _scan_counts_from_details(scan.details)
     return {
         "id":            scan.id,
         "target_name":   scan.target_name,
-        "score":         scan.score,
+        "score":         count_summary.get("score", scan.score) if isinstance(count_summary, dict) else scan.score,
         "scan_date":     scan.scan_date.isoformat(),
         "version":       scan.version or "",
         "hostname":      scan.hostname or "",
         "scan_type":     getattr(scan, "scan_type", "single"),
         "parent_scan_id": scan.parent_scan_id,
-        "items_scanned": len(scan.details) if scan.details else 0,
+        "items_scanned": count_summary.get("items_scanned", len(scan.details) if scan.details else 0) if isinstance(count_summary, dict) else len(scan.details) if scan.details else 0,
+        "pass_count":    count_summary.get("pass_count", 0) if isinstance(count_summary, dict) else 0,
+        "fail_count":    count_summary.get("fail_count", 0) if isinstance(count_summary, dict) else 0,
+        "host_count":    count_summary.get("host_count", 1) if isinstance(count_summary, dict) else 1,
+        "failed_host_count": count_summary.get("failed_host_count", 0) if isinstance(count_summary, dict) else 0,
+        "critical_count": count_summary.get("critical_count", 0) if isinstance(count_summary, dict) else 0,
+        "high_count":    count_summary.get("high_count", 0) if isinstance(count_summary, dict) else 0,
         "details":       scan.details,
         "findings":      findings,
         "summary":       summary,
+    }
+
+
+def _failed_finding_map(scan: ScanResult) -> dict[str, dict]:
+    role = "Domain Controller" if "Domain Controller" in (scan.target_name or "") else "Member Server"
+    details = scan.details or {}
+    findings = enrich_scan_details(details, version=scan.version or "", role=role)
+    rows = {}
+    for item in findings:
+        status = str(item.get("status", "")).lower()
+        if not status.startswith("fail"):
+            continue
+        key = item.get("check_id") or item.get("source_key") or item.get("check_name")
+        if not key:
+            continue
+        rows[str(key)] = item
+    return rows
+
+
+def _severity_category_delta(current_items: dict[str, dict], base_items: dict[str, dict]) -> dict:
+    def counts(items):
+        severity = {}
+        category = {}
+        for item in items.values():
+            sev = str(item.get("severity") or "Low").title()
+            cat = str(item.get("category") or "General")
+            severity[sev] = severity.get(sev, 0) + 1
+            category[cat] = category.get(cat, 0) + 1
+        return severity, category
+
+    current_sev, current_cat = counts(current_items)
+    base_sev, base_cat = counts(base_items)
+    severities = sorted(set(current_sev) | set(base_sev))
+    categories = sorted(set(current_cat) | set(base_cat))
+    return {
+        "severity": {k: current_sev.get(k, 0) - base_sev.get(k, 0) for k in severities},
+        "category": {k: current_cat.get(k, 0) - base_cat.get(k, 0) for k in categories},
+    }
+
+
+@app.get("/api/scan/history/{scan_id}/compare/{base_scan_id}")
+async def compare_scan_results(
+    scan_id: int,
+    base_scan_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    query = db.query(ScanResult).filter(ScanResult.id.in_([scan_id, base_scan_id]))
+    if current_user.role != "admin":
+        query = query.filter(ScanResult.user_id == current_user.id)
+    scans = {scan.id: scan for scan in query.all()}
+    current = scans.get(scan_id)
+    base = scans.get(base_scan_id)
+    if not current or not base:
+        raise HTTPException(status_code=404, detail="scan not found")
+    if getattr(current, "scan_type", "single") != "single" or getattr(base, "scan_type", "single") != "single":
+        raise HTTPException(status_code=400, detail="comparison supports single-machine scans only")
+
+    current_host = (current.hostname or current.target_name or "").lower()
+    base_host = (base.hostname or base.target_name or "").lower()
+    if current_host and base_host and current_host != base_host:
+        raise HTTPException(status_code=400, detail="scans must belong to the same host")
+
+    current_failed = _failed_finding_map(current)
+    base_failed = _failed_finding_map(base)
+    current_keys = set(current_failed)
+    base_keys = set(base_failed)
+    fixed_keys = sorted(base_keys - current_keys)
+    new_keys = sorted(current_keys - base_keys)
+    still_keys = sorted(current_keys & base_keys)
+
+    return {
+        "current_scan_id": current.id,
+        "base_scan_id": base.id,
+        "hostname": current.hostname or base.hostname or "",
+        "version": current.version or "",
+        "base_version": base.version or "",
+        "score": current.score,
+        "base_score": base.score,
+        "score_delta": (current.score or 0) - (base.score or 0),
+        "fixed": [base_failed[k] for k in fixed_keys],
+        "newly_failed": [current_failed[k] for k in new_keys],
+        "still_failing": [current_failed[k] for k in still_keys],
+        "counts": {
+            "fixed": len(fixed_keys),
+            "newly_failed": len(new_keys),
+            "still_failing": len(still_keys),
+        },
+        "delta": _severity_category_delta(current_failed, base_failed),
     }
 
 
@@ -1695,7 +1910,15 @@ async def _run_agent_subnet_scan_job(parent_job, parent_scan_id, req, user_id, o
         child_job.status = "running"
         child_job.message = "Waiting for agent to pick up job..."
         child_job.user_id = user_id
-        child_job.role = req.role
+        child_job.role = _resolve_schedule_role(
+            type("AgentLike", (), {
+                "hostname": agent.get("hostname", ""),
+                "os_name": agent.get("baseline_info", {}).get("os_name", ""),
+                "os_family": agent.get("baseline_info", {}).get("os_family", ""),
+            })(),
+            resolved_version,
+            req.role,
+        )
         child_job.parent_scan_id = parent_scan_id
         child_job.target_agent_id = agent["agent_id"]
         child_job.baseline_match_type = agent["baseline_info"].get("match_type", "")

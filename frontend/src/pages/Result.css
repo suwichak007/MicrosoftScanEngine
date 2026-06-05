@@ -256,6 +256,139 @@ body {
 .countBadge.pass { background: #eef7ee; color: var(--green); border: 1px solid #b8ddb8; }
 .countBadge.fail { background: var(--sev-critical-bg); color: var(--red); border: 1px solid var(--sev-critical-bd); }
 
+.subnetOverviewGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.subnetMetricCard {
+  background: var(--paper);
+  border: 1px solid var(--cream-mid);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 16px 18px;
+}
+
+.subnetMetricValue {
+  color: var(--ink);
+  font-family: 'DM Mono', monospace;
+  font-size: 24px;
+  font-weight: 500;
+}
+
+.subnetMetricLabel {
+  color: var(--ink-lt);
+  font-size: 12px;
+}
+
+.subnetInsightGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 18px;
+  margin-bottom: 24px;
+}
+
+.subnetInsightCard {
+  min-width: 0;
+}
+
+.subnetInsightHead {
+  align-items: center;
+  background: var(--cream-dark);
+  border-bottom: 1px solid var(--cream-mid);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+}
+
+.subnetInsightHead h2 {
+  color: var(--ink);
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.subnetInsightHead span {
+  color: var(--ink-lt);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+}
+
+.subnetInsightList {
+  display: grid;
+}
+
+.subnetInsightRow,
+.subnetPolicyRow {
+  align-items: center;
+  border-bottom: 1px solid var(--cream-mid);
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+  padding: 12px 16px;
+}
+
+.subnetInsightRow {
+  grid-template-columns: minmax(0, 1fr) auto auto;
+}
+
+.subnetPolicyRow {
+  grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.subnetInsightRow:last-child,
+.subnetPolicyRow:last-child {
+  border-bottom: none;
+}
+
+.subnetInsightScore {
+  align-items: flex-end;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.subnetInsightScore span {
+  font-family: 'DM Mono', monospace;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.subnetInsightScore strong {
+  color: var(--red);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.smallBtn {
+  font-size: 12px;
+  padding: 4px 12px;
+}
+
+.connBtn {
+  background: var(--amber-pale);
+  border: 1px solid rgba(200,129,58,0.35);
+  border-radius: 7px;
+  color: var(--amber);
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  transition: all 0.15s;
+  white-space: nowrap;
+}
+
+.connBtn:hover {
+  background: var(--amber);
+  color: #fff;
+}
+
 .severityCount {
   display: flex;
   align-items: center;
@@ -779,3 +912,19 @@ body {
 }
 
 .animIn { animation: fadeUp 0.18s ease; }
+
+@media (max-width: 980px) {
+  .subnetOverviewGrid,
+  .subnetInsightGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .subnetInsightRow {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .subnetInsightRow .connBtn {
+    grid-column: 1 / -1;
+    width: fit-content;
+  }
+}

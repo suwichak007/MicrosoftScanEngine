@@ -14,6 +14,7 @@ Endpoints:
 import csv
 import io
 import datetime
+import re
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
@@ -103,31 +104,58 @@ def _parse_details(details: dict) -> dict:
 
     for key, value in (details or {}).items():
         val_str = str(value)
+        is_dict = isinstance(value, dict)
         section_match = key[1:key.index("]")] if key.startswith("[") and "]" in key else "General"
         name = key[key.index("]") + 1:].strip() if key.startswith("[") and "]" in key else key
 
+        if is_dict:
+            section_match = value.get("category") or value.get("section") or section_match
+            name = value.get("check_name") or value.get("name") or name
+
         entry = {
-            "key":      key,
+            "key":      value.get("check_id") or key if is_dict else key,
             "name":     name,
             "section":  section_match,
-            "severity": _classify_severity(key),
-            "status":   val_str,
+            "severity": (
+                str(value.get("severity") or "").title()
+                if is_dict and value.get("severity")
+                else _classify_severity(f"{section_match} {name} {key}")
+            ),
+            "status":   value.get("status", "") if is_dict else val_str,
             "target":   "",
             "actual":   "",
+            "raw":      val_str,
         }
 
-        # parse target / actual
-        import re
-        tgt = re.search(r"Target:\s*([^,)]+?)(?:\s*,|\s*\)|$)", val_str)
-        act = re.search(r"Actual:\s*(.+?)(?:\s*\)\s*$|\s*$)", val_str)
-        if tgt:
-            entry["target"] = tgt.group(1).strip()
-        if act:
-            entry["actual"] = act.group(1).strip().rstrip(")")
+        if is_dict:
+            entry["target"] = (
+                value.get("expected_value")
+                or value.get("target")
+                or value.get("required_value")
+                or ""
+            )
+            entry["actual"] = (
+                value.get("current_value")
+                or value.get("actual")
+                or value.get("actual_value")
+                or ""
+            )
+            entry["raw"] = value.get("raw_result") or val_str
+            if not entry["actual"] and str(entry["status"]).strip().lower().startswith("pass") and entry["target"]:
+                entry["actual"] = entry["target"]
+        else:
+            tgt = re.search(r"Target:\s*([^,)]+?)(?:\s*,|\s*\)|$)", val_str)
+            act = re.search(r"Actual:\s*(.+?)(?:\s*\)\s*$|\s*$)", val_str)
+            if tgt:
+                entry["target"] = tgt.group(1).strip()
+            if act:
+                entry["actual"] = act.group(1).strip().rstrip(")")
 
-        if val_str == "Pass":
+        status_text = str(entry["status"] or "").strip()
+        status_lower = status_text.lower()
+        if status_lower.startswith("pass"):
             pass_list.append(entry)
-        elif "Manual" in val_str or "Not Found" in val_str:
+        elif "manual" in status_lower or "not found" in status_lower:
             manual_list.append(entry)
         else:
             fail_list.append(entry)
@@ -489,7 +517,7 @@ def _build_csv(scan: ScanResult) -> bytes:
             else "Pass",
             item["actual"],
             item["target"],
-            item["status"],
+            item["raw"],
         ])
 
     # UTF-8 BOM ทำให้ Excel เปิดได้ถูกต้อง
@@ -561,7 +589,7 @@ def _build_xlsx(scan: ScanResult) -> bytes:
             status,
             item["actual"],
             item["target"],
-            item["status"],
+            item["raw"],
         ])
         fill = pass_fill if status == "Pass" else manual_fill if status == "Manual" else fail_fill
         for cell in ws_results[ws_results.max_row]:
@@ -647,3 +675,4 @@ async def export_xlsx(
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+

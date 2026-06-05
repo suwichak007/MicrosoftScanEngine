@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Home.css';
 import { authHeaders, clearAuth } from '../auth';
 import { apiUrl } from '../config/api';
+import ProfileMenu from './ProfileMenu';
 
 function Home() {
   const navigate = useNavigate();
@@ -28,23 +29,6 @@ function Home() {
   const [subnet, setSubnet] = useState('192.168.1.0/24');      // ← เพิ่มตรงนี้
   const [maxParallel, setMaxParallel] = useState(5);            // ← เพิ่มตรงนี้
   
-
-  // ── Avatar dropdown ──────────────────────────────────────────────────
-  const [showUserMenu, setShowUserMenu] = useState(false);
-  const userMenuRef = useRef(null);
-  const loggedInUser = localStorage.getItem('username') || 'User';  // ← ชื่อต่างจาก state
-  const avatarChar = loggedInUser.charAt(0).toUpperCase();
-
-  useEffect(() => {
-    function handleClickOutside(e) {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
-        setShowUserMenu(false);
-      }
-    }
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
-
   useEffect(() => {
     const fetchBaselines = async () => {
       setLoadingBaselines(true);
@@ -287,35 +271,7 @@ function Home() {
               <span className="notifDot" />
             </button>
 
-            {/* ── Avatar dropdown ── */}
-            <div className="avatarWrap" ref={userMenuRef}>
-              <button
-                className="avatar"
-                onClick={() => setShowUserMenu(!showUserMenu)}
-              >
-                {avatarChar}
-              </button>
-
-              {showUserMenu && (
-                <div className="userMenu">
-                  <div className="userMenuName">{loggedInUser}</div>
-                  <div className="userMenuRole">{localStorage.getItem('role') || 'viewer'}</div>
-                  <div className="userMenuDivider" />
-                  <button
-                    className="userMenuItem"
-                    onClick={() => { setShowUserMenu(false); navigate('/change-password'); }}
-                  >
-                    🔑 Change Password
-                  </button>
-                  <button
-                    className="userMenuItem userMenuItemDanger"
-                    onClick={() => { clearAuth(); navigate('/login'); }}
-                  >
-                    ↩ Log out
-                  </button>
-                </div>
-              )}
-            </div>
+            <ProfileMenu />
           </div>
         </header>
 

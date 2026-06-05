@@ -4,6 +4,7 @@ import ExportButton from './ExportButton';
 import './Summary.css';
 import { authHeaders, clearAuth } from '../auth';
 import { apiUrl } from '../config/api';
+import ProfileMenu from './ProfileMenu';
 
 // ─── Severity helpers ─────────────────────────────────────────────────────────
 const CRITICAL_KEYWORDS = ['remote desktop','lsa protection','credential','ntlm','kerberos','bitlocker'];
@@ -113,7 +114,7 @@ function Topbar() {
           </svg>
           <span className="notifDot" />
         </button>
-        <div className="avatar">จ</div>
+        <ProfileMenu />
       </div>
     </header>
   );
@@ -218,15 +219,169 @@ function LlmProgressBar({ phase, tokenCount, tokensPerSec, elapsed, message }) {
 }
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
+const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
+
+function normalizeStatus(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (text.startsWith('pass')) return 'pass';
+  if (text.startsWith('fail')) return 'fail';
+  if (text.includes('manual')) return 'manual';
+  return 'unknown';
+}
+
+function normalizeSeverity(value, fallbackKey = '') {
+  const severity = String(value || '').trim().toLowerCase();
+  if (['critical', 'high', 'medium', 'low'].includes(severity)) return severity;
+  return getSeverity(fallbackKey);
+}
+
+function parseTargetActual(rawValue) {
+  const raw = String(rawValue || '');
+  const target = (raw.match(/Target:\s*([^,)]+?)(?:\s*,|\s*\)|$)/) || [])[1]?.trim() || '';
+  const actual = (raw.match(/Actual:\s*(.+?)(?:\s*\)\s*$|\s*$)/) || [])[1]?.trim().replace(/\)\s*$/, '') || '';
+  return { target, actual };
+}
+
+function normalizeReportItems(scanData) {
+  if (Array.isArray(scanData?.findings) && scanData.findings.length > 0) {
+    return scanData.findings.map((item, index) => {
+      const name = item.check_name || item.source_key || item.check_id || `Check ${index + 1}`;
+      const section = item.category || 'General';
+      return {
+        key: item.source_key || item.check_id || `${section}-${name}-${index}`,
+        name,
+        section,
+        severity: normalizeSeverity(item.severity, `${section} ${name} ${item.source_key || ''}`),
+        status: normalizeStatus(item.status),
+        target: item.expected_value || '',
+        actual: item.current_value || '',
+        remediation: item.remediation || '',
+        policyPath: item.policy_path || item.registry_path || '',
+      };
+    });
+  }
+
+  return Object.entries(scanData?.details || {}).map(([key, value]) => {
+    const sectionMatch = key.match(/^\[([^\]]+)\]/);
+    const section = sectionMatch ? sectionMatch[1] : 'General';
+    const name = key.replace(/^\[[^\]]+\]\s*/, '');
+    const { target, actual } = parseTargetActual(value);
+    return {
+      key,
+      name,
+      section,
+      severity: normalizeSeverity('', key),
+      status: normalizeStatus(value),
+      target,
+      actual,
+      remediation: '',
+      policyPath: '',
+    };
+  });
+}
+
+function buildRecommendations(failItems, counts, categoryBreakdown) {
+  const recommendations = [];
+  const haystack = failItems
+    .map((item) => `${item.section} ${item.name} ${item.key}`.toLowerCase())
+    .join(' ');
+
+  if (counts.critical + counts.high > 0) {
+    recommendations.push({
+      title: 'แก้รายการความเสี่ยงสูงก่อน',
+      detail: `เริ่มจาก ${counts.critical + counts.high} รายการ Critical/High ก่อน แล้วค่อยไล่เก็บรายการทั่วไป`,
+    });
+  }
+  if (/account|password|lockout/.test(haystack)) {
+    recommendations.push({
+      title: 'ทบทวน Account Policy',
+      detail: 'พบรายการเกี่ยวกับ password, lockout หรือ account control ที่ยังไม่ตรง baseline',
+    });
+  }
+  if (/audit/.test(haystack)) {
+    recommendations.push({
+      title: 'ตรวจ Audit Policy',
+      detail: 'ช่องว่างด้าน audit อาจทำให้ตรวจสอบเหตุการณ์ย้อนหลังได้ไม่ครบ ควรเทียบค่ากับ baseline',
+    });
+  }
+  if (/rdp|remote desktop|ntlm|smb|network/.test(haystack)) {
+    recommendations.push({
+      title: 'ลดความเสี่ยงด้าน Network Exposure',
+      detail: 'ควรจัดลำดับ RDP, SMB, NTLM และ network access control เป็นกลุ่มที่ต้องตรวจเพิ่ม',
+    });
+  }
+  if (/defender|firewall/.test(haystack)) {
+    recommendations.push({
+      title: 'ปรับ Endpoint Protection ให้แข็งแรงขึ้น',
+      detail: 'พบรายการ Defender หรือ Firewall ที่ควรทบทวนเพื่อเพิ่มระดับการป้องกันของเครื่อง',
+    });
+  }
+  if (recommendations.length === 0 && failItems.length > 0) {
+    recommendations.push({
+      title: 'เริ่มจากหมวดที่ตกมากที่สุด',
+      detail: `เริ่มแก้จาก ${categoryBreakdown[0]?.section || 'หมวดหลักที่มีปัญหา'} ก่อน เพื่อลดปัญหาซ้ำ ๆ ในกลุ่มเดียวกัน`,
+    });
+  }
+  if (failItems.length === 0) {
+    recommendations.push({
+      title: 'รักษาสถานะปัจจุบัน',
+      detail: 'ไม่พบรายการที่ fail ใน report นี้ ควร monitor ต่อและสแกนซ้ำหลังมีการเปลี่ยน baseline',
+    });
+  }
+  return recommendations.slice(0, 5);
+}
+
+function buildReportSummary(scanData) {
+  const items = normalizeReportItems(scanData);
+  const failItems = items
+    .filter((item) => item.status === 'fail')
+    .sort((a, b) => (SEVERITY_ORDER[a.severity] - SEVERITY_ORDER[b.severity]) || a.section.localeCompare(b.section));
+  const severityCounts = { critical: 0, high: 0, medium: 0, low: 0 };
+  failItems.forEach((item) => { severityCounts[item.severity] += 1; });
+
+  const categoryMap = new Map();
+  failItems.forEach((item) => {
+    const current = categoryMap.get(item.section) || { section: item.section, count: 0, critical: 0, high: 0 };
+    current.count += 1;
+    if (item.severity === 'critical') current.critical += 1;
+    if (item.severity === 'high') current.high += 1;
+    categoryMap.set(item.section, current);
+  });
+  const categoryBreakdown = Array.from(categoryMap.values())
+    .sort((a, b) => (b.count - a.count) || (b.critical - a.critical) || a.section.localeCompare(b.section))
+    .slice(0, 8);
+
+  return {
+    items,
+    failItems,
+    passCount: items.filter((item) => item.status === 'pass').length,
+    manualCount: items.filter((item) => item.status === 'manual').length,
+    failCount: failItems.length,
+    totalCount: items.length,
+    severityCounts,
+    categoryBreakdown,
+    topCategory: categoryBreakdown[0]?.section || 'None',
+    topControls: failItems.slice(0, 10),
+    recommendations: buildRecommendations(failItems, severityCounts, categoryBreakdown),
+    context: {
+      target: scanData?.targetName || scanData?.target_name || scanData?.hostname || 'Unknown target',
+      hostname: scanData?.hostname || scanData?.targetName || '-',
+      version: scanData?.version || '-',
+      scanId: scanData?.scan_id || '-',
+      score: Number(scanData?.score || 0),
+    },
+  };
+}
+
 export default function Summary() {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const scanData = location.state?.scanData
-    || (() => {
-        const s = sessionStorage.getItem('scanResult');
-        return s ? JSON.parse(s) : null;
-      })();
+  const scanData = useMemo(() => {
+    if (location.state?.scanData) return location.state.scanData;
+    const saved = sessionStorage.getItem('scanResult');
+    return saved ? JSON.parse(saved) : null;
+  }, [location.state]);
 
   const [llmData,      setLlmData]      = useState(null);
   const [llmPhase,     setLlmPhase]     = useState('loading_model');
@@ -236,63 +391,12 @@ export default function Summary() {
   const [phaseMsg,     setPhaseMsg]     = useState('');
   const [loading,      setLoading]      = useState(false);
   const [llmError,     setLlmError]     = useState('');
-  const [exported,     setExported]     = useState(false);
+  const report = useMemo(() => buildReportSummary(scanData || {}), [scanData]);
 
-  // ─── Parse fail items ─────────────────────────────────────────────────────
-  const failItems = useMemo(() => {
-    if (Array.isArray(scanData?.findings) && scanData.findings.length > 0) {
-      return scanData.findings
-        .filter((item) => String(item.status).toLowerCase() === 'fail')
-        .map((item) => ({
-          key: item.source_key || item.check_id,
-          name: item.check_name,
-          section: item.category || 'General',
-          severity: ['critical', 'high', 'medium', 'low'].includes(String(item.severity || '').toLowerCase())
-            ? String(item.severity).toLowerCase()
-            : getSeverity(`${item.category || ''} ${item.check_name || ''}`),
-          target: item.expected_value || '',
-          actual: item.current_value || '',
-        }))
-        .sort((a, b) => {
-          const order = { critical: 0, high: 1, medium: 2, low: 3 };
-          return order[a.severity] - order[b.severity];
-        });
-    }
-    if (!scanData?.details) return [];
-    return Object.entries(scanData.details)
-      .filter(([, v]) => String(v).startsWith('Fail'))
-      .map(([key, value]) => {
-        const secMatch = key.match(/^\[([^\]]+)\]/);
-        const section  = secMatch ? secMatch[1] : 'General';
-        const name     = key.replace(/^\[[^\]]+\]\s*/, '');
-        const severity = getSeverity(key);
-        const raw      = String(value);
-        const tgt = (raw.match(/Target:\s*([^,)]+?)(?:\s*,|\s*\)|$)/) || [])[1]?.trim() || '';
-        const act = (raw.match(/Actual:\s*(.+?)(?:\s*\)\s*$|\s*$)/) || [])[1]?.trim().replace(/\)\s*$/, '') || '';
-        return { key, name, section, severity, target: tgt, actual: act };
-      })
-      .sort((a, b) => {
-        const order = { critical: 0, high: 1, medium: 2, low: 3 };
-        return order[a.severity] - order[b.severity];
-      });
-  }, [scanData]);
-
-  const counts = useMemo(() => {
-    const c = { critical: 0, high: 0, medium: 0, low: 0 };
-    failItems.forEach(i => c[i.severity]++);
-    return c;
-  }, [failItems]);
-
-  const passCount  = useMemo(() => {
-    if (Array.isArray(scanData?.findings) && scanData.findings.length > 0) {
-      return scanData.findings.filter(v => String(v.status).toLowerCase() === 'pass').length;
-    }
-    return Object.values(scanData?.details || {}).filter(v => String(v) === 'Pass').length;
-  }, [scanData]);
-  const totalCount = Array.isArray(scanData?.findings) && scanData.findings.length > 0
-    ? scanData.findings.length
-    : Object.keys(scanData?.details || {}).length;
-
+  const failItems = report.failItems;
+  const counts = report.severityCounts;
+  const passCount = report.passCount;
+  const totalCount = report.totalCount;
   // ─── SSE streaming ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!scanData) return;
@@ -396,7 +500,7 @@ export default function Summary() {
     })();
 
     return () => { aborted = true; controller.abort(); };
-  }, [scanData]);
+  }, [scanData, failItems, passCount, totalCount, counts, navigate]);
 
   // ─── Export ───────────────────────────────────────────────────────────────
 
@@ -418,21 +522,26 @@ export default function Summary() {
     <Layout navigate={navigate}>
       <Topbar />
 
-      {/* ── Header ── */}
       <div className="sumHeader">
-        <h1 className="sumTitle">Report</h1>
-        <ExportButton scanId={scanData?.scan_id} />
+        <div>
+          <h1 className="sumTitle">Security Summary Report</h1>
+          <p className="sumSubtitle">สรุปความเสี่ยง หมวดที่ตกบ่อย และสิ่งที่ควรแก้ก่อน</p>
+        </div>
+        <div className="sumHeaderActions">
+          <button className="sumBackBtn" onClick={() => navigate('/history')}>Compare</button>
+          <ExportButton scanId={scanData?.scan_id} />
+        </div>
       </div>
 
-      {/* ── Score Bar ── */}
       <div className="sumScoreBar">
-        <ScoreRing score={scanData.score} />
+        <ScoreRing score={report.context.score} />
         <div className="sumScoreMeta">
-          <div className="sumTarget">{scanData.targetName || scanData.hostname}</div>
-          <div className="sumVersion">{scanData.version}</div>
+          <div className="sumTarget">{report.context.target}</div>
+          <div className="sumVersion">{report.context.version}</div>
           <div className="sumBadgeRow">
-            <span className="badge pass">✔ {passCount} Pass</span>
-            <span className="badge fail">✖ {totalCount - passCount} Fail</span>
+            <span className="badge pass">{passCount} Pass</span>
+            <span className="badge fail">{report.failCount} Fail</span>
+            <span className="badge manual">{report.manualCount} Manual</span>
           </div>
           <div className="sumSevRow">
             {Object.entries(SEV_CONFIG).map(([sev, cfg]) => (
@@ -448,12 +557,120 @@ export default function Summary() {
         </div>
       </div>
 
-      {/* ── Main Card ── */}
-      <div className="sumCard">
+      <div className="sumMetricGrid">
+        <div className="sumMetricCard">
+          <span className="sumMetricLabel">รายการที่ Fail</span>
+          <strong className="sumMetricValue">{report.failCount}</strong>
+          <span className="sumMetricHint">of {totalCount || 0} total</span>
+        </div>
+        <div className="sumMetricCard critical">
+          <span className="sumMetricLabel">Critical / High</span>
+          <strong className="sumMetricValue">{counts.critical + counts.high}</strong>
+          <span className="sumMetricHint">ควรแก้ก่อน</span>
+        </div>
+        <div className="sumMetricCard">
+          <span className="sumMetricLabel">รอตรวจ Manual</span>
+          <strong className="sumMetricValue">{report.manualCount}</strong>
+          <span className="sumMetricHint">ต้องตรวจยืนยัน</span>
+        </div>
+        <div className="sumMetricCard">
+          <span className="sumMetricLabel">หมวดที่ตกมากสุด</span>
+          <strong className="sumMetricValue textValue">{report.topCategory}</strong>
+          <span className="sumMetricHint">มี fail มากที่สุด</span>
+        </div>
+      </div>
 
-        {/* LLM Progress */}
-        {loading && (
-          <div className="sumSection">
+      <section className="sumReportGrid">
+        <div className="sumPanel fixPanel">
+          <div className="sumPanelHead">
+            <h2>รายการที่ควรแก้ก่อน</h2>
+            <span>Top {report.topControls.length}</span>
+          </div>
+          <div className="fixList">
+            {report.topControls.length === 0 ? (
+              <div className="sumSoftEmpty">ไม่พบรายการที่ fail ควร monitor ต่อและสแกนซ้ำหลังมีการเปลี่ยนแปลง</div>
+            ) : report.topControls.map((item) => {
+              const sev = SEV_CONFIG[item.severity] || SEV_CONFIG.low;
+              return (
+                <div className="fixItem" key={item.key} style={{ borderLeftColor: sev.color }}>
+                  <div className="fixTop">
+                    <span className="dcSev" style={{ color: sev.color, background: sev.bg, border: `1px solid ${sev.bd}` }}>{sev.label}</span>
+                    <span className="fixSection">{item.section}</span>
+                  </div>
+                  <strong className="fixName">{item.name}</strong>
+                  <div className="fixValues">
+                    <span><b>Expected:</b> {item.target || '-'}</span>
+                    <span><b>Actual:</b> {item.actual || '-'}</span>
+                  </div>
+                  {item.policyPath && <div className="fixPath">{item.policyPath}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <aside className="sumSideStack">
+          <div className="sumPanel">
+            <div className="sumPanelHead">
+              <h2>สิ่งที่ควรทำต่อ</h2>
+            </div>
+            <div className="recommendationList">
+              {report.recommendations.map((item) => (
+                <div className="recommendationItem" key={item.title}>
+                  <strong>{item.title}</strong>
+                  <span>{item.detail}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="sumPanel">
+            <div className="sumPanelHead">
+              <h2>สรุปตามหมวด</h2>
+              <span>{report.categoryBreakdown.length} categories</span>
+            </div>
+            <div className="categoryList">
+              {report.categoryBreakdown.length === 0 ? (
+                <div className="sumSoftEmpty">ไม่พบหมวดที่มีรายการ fail</div>
+              ) : report.categoryBreakdown.map((item) => {
+                const width = `${Math.max(8, Math.round((item.count / Math.max(report.failCount, 1)) * 100))}%`;
+                return (
+                  <div className="categoryRow" key={item.section}>
+                    <div className="categoryTop">
+                      <strong>{item.section}</strong>
+                      <span>{item.count} fail</span>
+                    </div>
+                    <div className="categoryTrack"><div className="categoryFill" style={{ width }} /></div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="sumPanel">
+            <div className="sumPanelHead">
+              <h2>ข้อมูลของรายงาน</h2>
+            </div>
+            <div className="contextGrid compact">
+              <div><span>Target</span><strong>{report.context.target}</strong></div>
+              <div><span>Hostname</span><strong>{report.context.hostname}</strong></div>
+              <div><span>Baseline</span><strong>{report.context.version}</strong></div>
+              <div><span>Scan ID</span><strong>{report.context.scanId}</strong></div>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <div className="sumCard aiCard">
+        <section className="sumSection aiSection">
+          <div className="sumSectionHeader aiHeader">
+            <div>
+              <span className="aiEyebrow">AI Context</span>
+              <h2 className="sumSectionTitle">คำอธิบายเสริมจาก AI</h2>
+            </div>
+            <span className="aiStatus">{loading ? 'กำลังวิเคราะห์' : llmData ? 'พร้อมอ่าน' : 'รอผลวิเคราะห์'}</span>
+          </div>
+          {loading && (
             <LlmProgressBar
               phase={llmPhase}
               tokenCount={tokenCount}
@@ -461,82 +678,47 @@ export default function Summary() {
               elapsed={elapsed}
               message={phaseMsg}
             />
-          </div>
-        )}
-
-        {/* Error */}
-        {llmError && !loading && (
-          <div className="sumSection">
-            <div className="llmError">⚠️ {llmError}</div>
-          </div>
-        )}
-
-        {/* Section 1 — Summary */}
-        <section className="sumSection">
-          <div className="sumSectionHeader">
-            <span className="sumSectionIcon">🛡️</span>
-            <h2 className="sumSectionTitle">Summary</h2>
-          </div>
-          <div className="sumTextBox">
-            {llmData?.overview
-              ? <TypewriterText text={llmData.overview} speed={10} />
-              : <span className="sumPlaceholder">รอ LLM วิเคราะห์...</span>}
-          </div>
-        </section>
-
-        <div className="sumDivider" />
-
-        {/* Section 2 — Detected */}
-        <section className="sumSection">
-          <div className="sumSectionHeader">
-            <span className="sumSectionIcon">🔍</span>
-            <h2 className="sumSectionTitle">Detected Summary</h2>
-          </div>
-
-          {llmData?.detected && (
-            <div className="detectedGrid">
-              {llmData.detected.map((item, i) => {
-                const sev = SEV_CONFIG[item.severity] || SEV_CONFIG.low;
-                return (
-                  <div
-                    key={i}
-                    className="detectedCard"
-                    style={{ borderLeft: `3px solid ${sev.color}` }}
-                  >
-                    <div className="dcTop">
-                      <span className="dcSev" style={{ color: sev.color, background: sev.bg, border: `1px solid ${sev.bd}` }}>
-                        {sev.label}
-                      </span>
-                      <span className="dcSection">[{item.section}]</span>
-                    </div>
-                    <div className="dcName">{item.name}</div>
-                    {item.why && <div className="dcWhy">{item.why}</div>}
-                    <div className="dcVals">
-                      {item.actual && <span className="dcActual">ค่าปัจจุบัน: {item.actual}</span>}
-                      {item.target && <span className="dcTarget">ค่าที่ต้องการ: {item.target}</span>}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
           )}
-        </section>
+          {llmError && !loading && <div className="llmError">{llmError}</div>}
 
-        <div className="sumDivider" />
+          <div className="aiInsightGrid">
+            <div className="aiPrimaryNote">
+              <span className="aiNoteLabel">ภาพรวม</span>
+              <div className="aiNoteText">
+                {llmData?.overview
+                  ? <TypewriterText text={llmData.overview} speed={8} />
+                  : <span className="sumPlaceholder">กำลังรอ AI วิเคราะห์ ส่วนสรุปแบบ rule-based ด้านบนพร้อมใช้งานแล้ว</span>}
+              </div>
+            </div>
 
-        {/* Section 3 — Recommendation */}
-        <section className="sumSection">
-          <div className="sumSectionHeader">
-            <span className="sumSectionIcon">💡</span>
-            <h2 className="sumSectionTitle">Recommendation</h2>
+            <div className="aiSecondaryNotes">
+              <div className="aiNoteCard">
+                <span className="aiNoteLabel">ประเด็นที่ควรอ่านประกอบ</span>
+                {llmData?.detected?.length ? (
+                  <ul className="aiBulletList">
+                    {llmData.detected.slice(0, 4).map((item, index) => (
+                      <li key={`${item.name}-${index}`}>
+                        <strong>{item.name}</strong>
+                        <span>{item.why || `${item.section || 'General'} ถูกจัดเป็น ${item.severity || 'risk item'}`}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <span className="sumPlaceholder">AI จะสรุปเหตุผลประกอบเมื่อวิเคราะห์เสร็จ</span>
+                )}
+              </div>
+
+              <div className="aiNoteCard">
+                <span className="aiNoteLabel">คำแนะนำเสริม</span>
+                <div className="aiNoteText compactText">
+                  {llmData?.recommendation
+                    ? <TypewriterText text={llmData.recommendation} speed={6} />
+                    : <span className="sumPlaceholder">ใช้ “สิ่งที่ควรทำต่อ” ด้านบนเป็นแนวทางหลักระหว่างรอ AI</span>}
+                </div>
+              </div>
+            </div>
           </div>
-          <div className="sumTextBox">
-            {llmData?.recommendation
-              ? <TypewriterText text={llmData.recommendation} speed={8} />
-              : <span className="sumPlaceholder">รอผลการวิเคราะห์...</span>}
-          </div>
         </section>
-
       </div>
 
       {/* ── Footer ── */}
@@ -546,3 +728,4 @@ export default function Summary() {
     </Layout>
   );
 }
+

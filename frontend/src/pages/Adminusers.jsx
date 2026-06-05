@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clearAuth } from '../auth';
 import { API_BASE, apiUrl } from '../config/api';
+import ProfileMenu from './ProfileMenu';
 
 // ─── Inline styles (ใช้ style เดียวกับ History.jsx) ──────────────────────────
 const S = {
@@ -232,6 +233,7 @@ export default function AdminUsers() {
   const [saving,      setSaving]      = useState(false);
 
   const token      = () => localStorage.getItem('token') || '';
+  const currentUsername = localStorage.getItem('username') || '';
   const authHeader = () => ({
     'Content-Type':  'application/json',
     'Authorization': `Bearer ${token()}`,
@@ -239,8 +241,6 @@ export default function AdminUsers() {
 
   // ─── Fetch users ──────────────────────────────────────────────────
   const fetchUsers = useCallback(async () => {
-    console.log('token:', localStorage.getItem('token'));
-    console.log('API_BASE:', API_BASE);
     setLoading(true);
     setErrorMsg('');
     try {
@@ -333,8 +333,6 @@ export default function AdminUsers() {
   const adminCount  = users.filter((u) => u.role === 'admin').length;
   const viewerCount = users.filter((u) => u.role === 'viewer').length;
 
-  const currentUsername = localStorage.getItem('username') || '';
-
   return (
     <>
       <style>{`
@@ -389,7 +387,7 @@ export default function AdminUsers() {
               {new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
             </p>
             <div style={S.topbarActions}>
-              <div style={S.avatar}>{currentUsername.charAt(0).toUpperCase() || 'A'}</div>
+              <ProfileMenu />
             </div>
           </header>
 

@@ -190,6 +190,19 @@ body {
   line-height: 1.1;
 }
 
+.sumSubtitle {
+  color: var(--ink-lt);
+  font-size: 13px;
+  font-weight: 300;
+  margin-top: 6px;
+}
+
+.sumHeaderActions {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
 /* ── Export button ───────────────────────────────────────── */
 .exportBtn {
   display: inline-flex;
@@ -225,7 +238,7 @@ body {
   border: 1px solid var(--cream-mid);
   border-radius: 12px;
   padding: 22px 28px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
@@ -274,6 +287,7 @@ body {
 }
 .badge.pass { background: #eef7ee; color: var(--green);  border: 1px solid #b8ddb8; }
 .badge.fail { background: var(--sev-critical-bg); color: var(--red); border: 1px solid var(--sev-critical-bd); }
+.badge.manual { background: var(--sev-low-bg); color: var(--sev-low); border: 1px solid var(--sev-low-bd); }
 
 .sumSevRow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 2px; }
 
@@ -283,6 +297,368 @@ body {
   font-weight: 500;
   padding: 2px 9px;
   border-radius: 4px;
+}
+
+.sumMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.sumMetricCard {
+  background: var(--paper);
+  border: 1px solid var(--cream-mid);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-width: 0;
+  min-height: 106px;
+  padding: 16px;
+}
+
+.sumMetricCard.critical {
+  background: var(--sev-critical-bg);
+  border-color: var(--sev-critical-bd);
+}
+
+.sumMetricLabel {
+  color: var(--ink-lt);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.sumMetricValue {
+  color: var(--ink);
+  font-family: 'DM Mono', monospace;
+  font-size: 28px;
+  font-weight: 500;
+  line-height: 1;
+  margin-top: 16px;
+}
+
+.sumMetricValue.textValue {
+  display: block;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 15px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.sumMetricHint {
+  color: var(--ink-lt);
+  font-size: 12px;
+  margin-top: 10px;
+}
+
+.sumReportGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(300px, 0.75fr);
+  gap: 16px;
+  margin-bottom: 18px;
+  align-items: start;
+}
+
+.sumSideStack {
+  display: grid;
+  gap: 16px;
+}
+
+.fixPanel {
+  min-height: 100%;
+}
+
+.sumPanel {
+  background: var(--paper);
+  border: 1px solid var(--cream-mid);
+  border-radius: 12px;
+  min-width: 0;
+  padding: 18px;
+}
+
+.sumPanelHead {
+  align-items: baseline;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.sumPanelHead h2 {
+  color: var(--ink);
+  font-family: 'Playfair Display', serif;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+.sumPanelHead span {
+  color: var(--ink-lt);
+  font-size: 12px;
+}
+
+.contextGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.contextGrid.compact {
+  grid-template-columns: 1fr;
+}
+
+.contextGrid div {
+  background: var(--cream);
+  border: 1px solid var(--cream-mid);
+  border-radius: 8px;
+  min-width: 0;
+  padding: 11px 12px;
+}
+
+.contextGrid span {
+  color: var(--ink-lt);
+  display: block;
+  font-size: 11px;
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+.contextGrid strong {
+  color: var(--ink);
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  overflow-wrap: anywhere;
+}
+
+.recommendationList,
+.categoryList,
+.fixList {
+  display: grid;
+  gap: 10px;
+}
+
+.recommendationItem {
+  background: var(--cream);
+  border: 1px solid var(--cream-mid);
+  border-radius: 8px;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+}
+
+.recommendationItem strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.recommendationItem span {
+  color: var(--ink-mid);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.categoryRow {
+  display: grid;
+  gap: 7px;
+}
+
+.categoryTop {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.categoryTop strong {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.categoryTop span {
+  color: var(--ink-lt);
+  flex-shrink: 0;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+}
+
+.categoryTrack {
+  background: var(--cream-dark);
+  border-radius: 999px;
+  height: 7px;
+  overflow: hidden;
+}
+
+.categoryFill {
+  background: var(--amber);
+  border-radius: inherit;
+  height: 100%;
+}
+
+.fixItem {
+  background: var(--cream);
+  border: 1px solid var(--cream-mid);
+  border-left: 4px solid var(--amber);
+  border-radius: 8px;
+  display: grid;
+  gap: 9px;
+  padding: 14px;
+}
+
+.fixTop {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.fixSection {
+  color: var(--ink-lt);
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fixName {
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.35;
+}
+
+.fixValues {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.fixValues span,
+.fixPath {
+  background: rgba(255,255,255,0.45);
+  border-radius: 6px;
+  color: var(--ink-mid);
+  font-size: 12px;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+  padding: 6px 8px;
+}
+
+.fixPath {
+  color: var(--ink-lt);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+}
+
+.sumSoftEmpty {
+  background: var(--cream);
+  border: 1px dashed var(--cream-mid);
+  border-radius: 8px;
+  color: var(--ink-lt);
+  font-size: 13px;
+  padding: 18px;
+  text-align: center;
+}
+
+.aiCard {
+  margin-top: 18px;
+}
+
+.aiSection {
+  display: grid;
+  gap: 14px;
+}
+
+.aiHeader {
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: 0;
+}
+
+.aiEyebrow,
+.aiNoteLabel {
+  color: var(--ink-lt);
+  display: block;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  margin-bottom: 5px;
+  text-transform: uppercase;
+}
+
+.aiStatus {
+  background: var(--cream);
+  border: 1px solid var(--cream-mid);
+  border-radius: 999px;
+  color: var(--ink-lt);
+  flex-shrink: 0;
+  font-size: 11px;
+  padding: 4px 10px;
+}
+
+.aiInsightGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(280px, 0.95fr);
+  gap: 14px;
+}
+
+.aiPrimaryNote,
+.aiNoteCard {
+  background: var(--cream);
+  border: 1px solid var(--cream-mid);
+  border-radius: 10px;
+  min-width: 0;
+  padding: 16px;
+}
+
+.aiPrimaryNote {
+  min-height: 190px;
+}
+
+.aiSecondaryNotes {
+  display: grid;
+  gap: 14px;
+}
+
+.aiNoteText {
+  color: var(--ink-mid);
+  font-size: 13px;
+  line-height: 1.75;
+}
+
+.aiNoteText.compactText {
+  font-size: 12px;
+  line-height: 1.65;
+}
+
+.aiBulletList {
+  display: grid;
+  gap: 10px;
+  list-style: none;
+}
+
+.aiBulletList li {
+  border-left: 3px solid var(--amber);
+  display: grid;
+  gap: 3px;
+  padding-left: 10px;
+}
+
+.aiBulletList strong {
+  color: var(--ink);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.aiBulletList span {
+  color: var(--ink-mid);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 /* ── Main card ───────────────────────────────────────────── */
@@ -514,3 +890,61 @@ body {
   flex-shrink: 0;
 }
 @keyframes rot { to { transform: rotate(360deg); } }
+
+@media (max-width: 1100px) {
+  .sumReportGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .sumMetricGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .contextGrid.compact {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .aiInsightGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 720px) {
+  .main {
+    padding: 0 20px 36px;
+  }
+
+  .sumHeader {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .aiHeader {
+    flex-direction: column;
+  }
+
+  .sumTitle {
+    font-size: 30px;
+  }
+
+  .sumMetricGrid,
+  .contextGrid,
+  .contextGrid.compact,
+  .fixValues {
+    grid-template-columns: 1fr;
+  }
+
+  .sumScoreBar {
+    align-items: flex-start;
+    padding: 18px;
+  }
+
+  .sumPanel {
+    padding: 14px;
+  }
+
+  .categoryTop strong,
+  .fixSection {
+    white-space: normal;
+  }
+}

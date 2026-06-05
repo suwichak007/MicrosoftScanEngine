@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import './History.css';
 import { clearAuth } from '../auth';
 import { apiUrl } from '../config/api';
+import ProfileMenu from './ProfileMenu';
 
 function History() {
   const navigate = useNavigate();
@@ -13,6 +14,7 @@ function History() {
   const [deleting, setDeleting] = useState(null);
   const [expandedSubnet, setExpandedSubnet] = useState(null);
   const [subnetChildren, setSubnetChildren] = useState({});
+  const [comparison, setComparison] = useState(null);
 
   const getToken    = () => localStorage.getItem('token') || '';
   const authHeader  = () => ({
@@ -109,6 +111,32 @@ function History() {
     }
   };
 
+  const handleCompare = async (scan) => {
+    const host = (scan.hostname || scan.target_name || '').toLowerCase();
+    const currentTime = new Date(scan.scan_date).getTime();
+    const base = history
+      .filter((item) => item.id !== scan.id && item.scan_type !== 'subnet')
+      .filter((item) => (item.hostname || item.target_name || '').toLowerCase() === host)
+      .filter((item) => new Date(item.scan_date).getTime() < currentTime)
+      .sort((a, b) => new Date(b.scan_date) - new Date(a.scan_date))[0];
+    if (!base) {
+      setErrorMsg('ไม่พบ scan ก่อนหน้าของเครื่องเดียวกันสำหรับ comparison');
+      return;
+    }
+    try {
+      const res = await fetch(apiUrl(`/api/scan/history/${scan.id}/compare/${base.id}`), { headers: authHeader() });
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
+      const data = await res.json();
+      if (!res.ok) {
+        setErrorMsg(data.detail || 'Compare failed');
+        return;
+      }
+      setComparison(data);
+    } catch (err) {
+      setErrorMsg(`Compare failed: ${err.message}`);
+    }
+  };
+
   const formatDate = (isoStr) => {
     const d = new Date(isoStr);
     return (
@@ -181,7 +209,7 @@ function History() {
               </svg>
               <span className="notifDot" />
             </button>
-            <div className="avatar">จ</div>
+            <ProfileMenu />
           </div>
         </header>
 
@@ -198,6 +226,21 @@ function History() {
               <circle cx="7" cy="7" r="6" /><path d="M7 4v3M7 10h.01" strokeLinecap="round" />
             </svg>
             {errorMsg}
+          </div>
+        )}
+
+        {comparison && (
+          <div className="historyCard" style={{ marginBottom: 16, padding: 16 }}>
+            <div className="historyActions" style={{ justifyContent: 'space-between' }}>
+              <strong>Comparison: scan #{comparison.base_scan_id} → #{comparison.current_scan_id}</strong>
+              <button className="deleteBtn" onClick={() => setComparison(null)}>Close</button>
+            </div>
+            <div className="historyCompareGrid">
+              <div><span>Score delta</span><strong>{comparison.score_delta > 0 ? '+' : ''}{comparison.score_delta}%</strong></div>
+              <div><span>Fixed</span><strong>{comparison.counts?.fixed || 0}</strong></div>
+              <div><span>New fail</span><strong>{comparison.counts?.newly_failed || 0}</strong></div>
+              <div><span>Still failing</span><strong>{comparison.counts?.still_failing || 0}</strong></div>
+            </div>
           </div>
         )}
 
@@ -253,7 +296,10 @@ function History() {
                               </button>
                             </>
                           ) : (
-                            <button className="viewBtn" onClick={() => handleView(h.id)}>View</button>
+                            <>
+                              <button className="viewBtn" onClick={() => handleView(h.id)}>View</button>
+                              <button className="viewBtn" onClick={() => handleCompare(h)}>Compare</button>
+                            </>
                           )}
                           <button
                             className="deleteBtn"

@@ -1,0 +1,91 @@
+.avatarWrap {
+  position: relative;
+}
+
+.avatar.profileAvatar {
+  align-items: center;
+  background: var(--amber-pale, rgba(200, 129, 58, 0.12));
+  border: 1px solid var(--amber, #c8813a);
+  border-radius: 50%;
+  color: var(--amber, #c8813a);
+  cursor: pointer;
+  display: flex;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  height: 34px;
+  justify-content: center;
+  line-height: 1;
+  padding: 0;
+  width: 34px;
+}
+
+.avatar.profileAvatar:hover {
+  filter: brightness(0.96);
+}
+
+.avatar.profileAvatar:focus-visible {
+  outline: 2px solid rgba(200, 129, 58, 0.45);
+  outline-offset: 2px;
+}
+
+.userMenu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: var(--paper, #fff);
+  border: 1px solid var(--cream-mid, #eee7dc);
+  border-radius: 8px;
+  padding: 8px;
+  min-width: 180px;
+  box-shadow: 0 8px 24px rgba(43, 35, 24, 0.12);
+  z-index: 100;
+}
+
+.userMenuName {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink, #1a1a2e);
+  padding: 6px 10px 2px;
+}
+
+.userMenuRole {
+  font-size: 11px;
+  color: var(--ink-lt, #9ca3af);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  padding: 0 10px 8px;
+}
+
+.userMenuDivider {
+  height: 1px;
+  background: var(--cream-mid, #eee7dc);
+  margin: 4px 0;
+}
+
+.userMenuItem {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--ink-mid, #374151);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.userMenuItem:hover {
+  background: var(--cream, #f7f1e8);
+}
+
+.userMenuItemDanger {
+  color: var(--red, #dc2626);
+}
+
+.userMenuItemDanger:hover {
+  background: #fdf0ee;
+}

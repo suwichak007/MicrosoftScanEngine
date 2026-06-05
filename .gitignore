@@ -1,0 +1,75 @@
+# Local environment
+.env
+.env.*
+!.env.example
+.venv/
+venv/
+env/
+
+# Python cache/build output
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs and runtime files
+*.log
+*.err
+*.out
+runtime/
+agent.log
+agent_err.log
+backend/start_env.log
+data/scan_summary.log
+backend/data/scan_summary.log
+agent/data/scan_summary.log
+
+# Local databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Local agent config/secrets
+agent_config.json
+agent/agent_config.json
+agent/dist/agent_config.json
+
+# PyInstaller and packaged binaries
+build/
+dist/
+*.spec
+*.exe
+agent/build/
+agent/dist/
+agent/setup.spec
+MicrosoftScanAgent.exe
+nssm.exe
+agent/nssm.exe
+data/nssm.exe
+backend/data/nssm.exe
+
+# Generated/duplicated baseline outputs
+baselines/generated/
+baselines/uploads/
+backend/baselines/
+agent/baselines/
+packages/
+
+# Frontend dependencies/build
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# Local documents
+*.docx
+/*.xlsx

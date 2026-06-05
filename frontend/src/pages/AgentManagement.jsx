@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { clearAuth } from '../auth';
 import { API_BASE, apiUrl } from '../config/api';
 import './AgentManagement.css';
+import ProfileMenu from './ProfileMenu';
 
 const INSTALL_TOKEN_PLACEHOLDER = '<INSTALL_TOKEN>';
 
@@ -70,6 +71,12 @@ function healthLabel(status) {
   return labels[status] || status || '-';
 }
 
+function normalizeAgentRows(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.value)) return data.value;
+  return [];
+}
+
 export default function AgentManagement() {
   const navigate = useNavigate();
   const [agents, setAgents] = useState([]);
@@ -93,7 +100,7 @@ export default function AgentManagement() {
     agent_id: '',
     subnet: '',
     version: 'auto',
-    role: 'Member Server',
+    role: 'auto',
     frequency: 'daily',
     time: '09:00',
     day_of_week: 0,
@@ -116,13 +123,7 @@ export default function AgentManagement() {
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
       if (res.ok) {
-        const initial = {};
-        (data.sheets || []).forEach((sheet) => {
-          initial[sheet.sheet] = sheet.selected_target_columns || [];
-        });
-        setSelectedColumns(initial);
-        setBaselineAnalysis(data);
-        setBaselineMsg(`Analyze complete: ${data.baseline_name}`);
+        setAgents(normalizeAgentRows(data));
         return;
       }
       if (!res.ok) {
@@ -209,8 +210,13 @@ export default function AgentManagement() {
         return;
       }
       setBaselineMsg(`อัปโหลดสำเร็จ: ${data.baseline_name} (${data.check_count} checks)`);
-      setBaselineFile(null);
-      await fetchBaselines();
+      const initial = {};
+      (data.sheets || []).forEach((sheet) => {
+        initial[sheet.sheet] = sheet.selected_target_columns || [];
+      });
+      setSelectedColumns(initial);
+      setBaselineAnalysis(data);
+      setBaselineMsg(`Uploaded: ${data.baseline_name}. Review columns, then save baseline.`);
     } catch (err) {
       setBaselineMsg(`อัปโหลด baseline ไม่สำเร็จ: ${err.message}`);
     } finally {
@@ -258,6 +264,29 @@ export default function AgentManagement() {
     }
   };
 
+  const deleteBaseline = async (baseline) => {
+    if (!baseline?.filename) return;
+    const label = baseline.display_name || baseline.version_id || baseline.filename;
+    if (!window.confirm(`Delete baseline "${label}"?`)) return;
+    setBaselineMsg('');
+    try {
+      const res = await fetch(apiUrl(`/api/admin/baselines/${encodeURIComponent(baseline.filename)}`), {
+        method: 'DELETE',
+        headers: authOnlyHeader(),
+      });
+      if (res.status === 401) { clearAuth(); navigate('/login'); return; }
+      const data = await res.json();
+      if (!res.ok) {
+        setBaselineMsg(data.detail || 'Delete baseline failed');
+        return;
+      }
+      setBaselineMsg(`Deleted baseline: ${label}`);
+      await fetchBaselines();
+    } catch (err) {
+      setBaselineMsg(`Delete baseline failed: ${err.message}`);
+    }
+  };
+
   const resetScheduleForm = () => {
     setEditingScheduleId(null);
     setScheduleForm({
@@ -266,7 +295,7 @@ export default function AgentManagement() {
       agent_id: '',
       subnet: '',
       version: 'auto',
-      role: 'Member Server',
+      role: 'auto',
       frequency: 'daily',
       time: '09:00',
       day_of_week: 0,
@@ -307,7 +336,7 @@ export default function AgentManagement() {
       agent_id: schedule.agent_id || '',
       subnet: schedule.subnet || '',
       version: schedule.version || 'auto',
-      role: schedule.role || 'Member Server',
+      role: schedule.role || 'auto',
       frequency: schedule.frequency || 'daily',
       time: schedule.time || '09:00',
       day_of_week: schedule.day_of_week ?? 0,
@@ -370,8 +399,6 @@ export default function AgentManagement() {
     }
   };
 
-  const currentUsername = localStorage.getItem('username') || '';
-
   return (
     <div className="root">
       <Sidebar navigate={navigate} />
@@ -386,7 +413,7 @@ export default function AgentManagement() {
               {loading ? <span className="spin" /> : null}
               Refresh
             </button>
-            <div className="avatar">{currentUsername.charAt(0).toUpperCase() || 'A'}</div>
+            <ProfileMenu />
           </div>
         </header>
 
@@ -478,14 +505,10 @@ export default function AgentManagement() {
                   </option>
                 ))}
               </select>
-              <select
-                className="scheduleInput"
-                value={scheduleForm.role}
-                onChange={(e) => setScheduleForm((prev) => ({ ...prev, role: e.target.value }))}
-              >
-                <option value="Member Server">Member Server</option>
-                <option value="Domain Controller">Domain Controller</option>
-              </select>
+              <div className="scheduleAutoRole">
+                <span>Role</span>
+                <strong>Auto-detected</strong>
+              </div>
               <select
                 className="scheduleInput"
                 value={scheduleForm.frequency}
@@ -576,12 +599,14 @@ export default function AgentManagement() {
                   onChange={(e) => {
                     setBaselineFile(e.target.files?.[0] || null);
                     setBaselineMsg('');
+                    setBaselineAnalysis(null);
+                    setSelectedColumns({});
                   }}
                 />
                 <span>{baselineFile ? baselineFile.name : 'Choose Excel baseline'}</span>
               </label>
               <button className="agentPrimaryBtn" onClick={uploadBaseline} disabled={uploadingBaseline}>
-                {uploadingBaseline ? 'Analyzing...' : 'Analyze baseline'}
+                {uploadingBaseline ? 'Uploading...' : 'Upload baseline'}
               </button>
               <button className="agentSecondaryBtn" onClick={fetchBaselines} disabled={loadingBaselines}>
                 Refresh
@@ -591,7 +616,7 @@ export default function AgentManagement() {
             {baselineAnalysis && (
               <div className="baselineColumnMapper">
                 <div className="agentCardHead compactHead">
-                  <h2>Column Mapping</h2>
+                  <h2>Review Columns</h2>
                   <span className="muted">{baselineAnalysis.sheets?.length || 0} sheets</span>
                 </div>
                 {(baselineAnalysis.sheets || []).map((sheet) => (
@@ -619,7 +644,7 @@ export default function AgentManagement() {
                 ))}
                 <div className="baselineMapperActions">
                   <button className="agentPrimaryBtn" onClick={confirmBaselineUpload} disabled={uploadingBaseline}>
-                    {uploadingBaseline ? 'Saving...' : 'Confirm upload'}
+                    {uploadingBaseline ? 'Saving...' : 'Save baseline'}
                   </button>
                   <button
                     className="agentSecondaryBtn"
@@ -645,6 +670,14 @@ export default function AgentManagement() {
                   <div className="baselineMeta">
                     <span>{b.os_family || 'unknown'}</span>
                     <span>{b.check_count || 0} checks</span>
+                    {b.severity_counts && (
+                      <span>
+                        C:{b.severity_counts.Critical || 0} H:{b.severity_counts.High || 0} M:{b.severity_counts.Medium || 0}
+                      </span>
+                    )}
+                    <button className="baselineDeleteBtn" onClick={() => deleteBaseline(b)}>
+                      Delete
+                    </button>
                   </div>
                 </div>
               ))}

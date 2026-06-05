@@ -3,6 +3,7 @@ import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import './Result.css';
 import { authHeaders, clearAuth } from '../auth';
 import { apiUrl } from '../config/api';
+import ProfileMenu from './ProfileMenu';
 
 // -----------------------------------------------------------------------
 // Severity classification
@@ -274,7 +275,7 @@ function Topbar() {
           </svg>
           <span className="notifDot" />
         </button>
-        <div className="avatar">จ</div>
+        <ProfileMenu />
       </div>
     </header>
   );

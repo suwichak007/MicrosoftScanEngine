@@ -396,3 +396,31 @@ body {
   transform: translateY(-1px);
 }
 .finishBtn:active { transform: translateY(0); }
+
+.historyCompareGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  margin-top: 12px;
+}
+
+.historyCompareGrid div {
+  background: var(--cream-dark);
+  border: 1px solid var(--cream-mid);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 12px;
+}
+
+.historyCompareGrid span {
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
+.historyCompareGrid strong {
+  color: var(--ink);
+  font-family: 'DM Mono', monospace;
+  font-size: 20px;
+}
