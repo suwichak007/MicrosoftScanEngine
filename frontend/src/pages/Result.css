@@ -146,28 +146,6 @@ body {
 
 .topbarActions { display: flex; align-items: center; gap: 12px; }
 
-.notifBtn {
-  width: 34px; height: 34px;
-  border-radius: 50%;
-  background: var(--cream-dark);
-  border: 1px solid var(--cream-mid);
-  color: var(--ink-mid);
-  display: flex; align-items: center; justify-content: center;
-  cursor: pointer;
-  position: relative;
-  transition: background 0.15s;
-}
-.notifBtn:hover { background: var(--cream-mid); }
-
-.notifDot {
-  position: absolute;
-  top: 6px; right: 6px;
-  width: 6px; height: 6px;
-  border-radius: 50%;
-  background: var(--amber);
-  border: 1.5px solid var(--cream);
-}
-
 .avatar {
   width: 34px; height: 34px;
   border-radius: 50%;
@@ -258,7 +236,7 @@ body {
 
 .subnetOverviewGrid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 14px;
   margin-bottom: 18px;
 }
@@ -273,6 +251,92 @@ body {
   padding: 16px 18px;
 }
 
+.subnetMetricCard.danger {
+  background: linear-gradient(180deg, #fff8f4 0%, var(--paper) 100%);
+}
+
+.subnetMetricCard.warning {
+  background: linear-gradient(180deg, #fff9ed 0%, var(--paper) 100%);
+}
+
+.subnetMetricCard.success {
+  background: linear-gradient(180deg, #f3fbf3 0%, var(--paper) 100%);
+}
+
+.subnetMetricVisual {
+  align-items: center;
+  align-self: flex-start;
+  background: conic-gradient(var(--red) 0 65%, var(--cream-mid) 65% 100%);
+  border-radius: 50%;
+  display: flex;
+  height: 42px;
+  justify-content: center;
+  margin-bottom: 4px;
+  width: 42px;
+}
+
+.subnetMetricVisual span {
+  align-items: center;
+  background: var(--paper);
+  border-radius: 50%;
+  color: var(--red);
+  display: flex;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  height: 30px;
+  justify-content: center;
+  width: 30px;
+}
+
+.subnetMetricBar {
+  background: var(--cream-mid);
+  border-radius: 999px;
+  height: 8px;
+  margin-bottom: 4px;
+  overflow: hidden;
+  width: 100%;
+}
+
+.subnetMetricBar i {
+  background: var(--amber);
+  border-radius: inherit;
+  display: block;
+  height: 100%;
+}
+
+.subnetMetricBar.good i {
+  background: var(--green);
+}
+
+.subnetMetricFoot {
+  color: var(--ink-faint);
+  font-family: 'DM Mono', monospace;
+  font-size: 10px;
+  margin-top: 3px;
+}
+
+.subnetHostDots {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 4px;
+  max-width: 92px;
+}
+
+.subnetHostDots span {
+  border-radius: 50%;
+  height: 8px;
+  width: 8px;
+}
+
+.subnetHostDots .clean {
+  background: var(--green);
+}
+
+.subnetHostDots .dirty {
+  background: var(--red);
+}
+
 .subnetMetricValue {
   color: var(--ink);
   font-family: 'DM Mono', monospace;
@@ -283,6 +347,28 @@ body {
 .subnetMetricLabel {
   color: var(--ink-lt);
   font-size: 12px;
+}
+
+.subnetSeverityStrip {
+  align-items: center;
+  background: var(--paper);
+  border: 1px solid var(--cream-mid);
+  border-radius: 8px;
+  color: var(--ink-mid);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: -4px 0 18px;
+  padding: 10px 12px;
+}
+
+.subnetSeverityStrip span {
+  background: var(--cream-dark);
+  border: 1px solid var(--cream-mid);
+  border-radius: 999px;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  padding: 4px 9px;
 }
 
 .subnetInsightGrid {
@@ -306,6 +392,14 @@ body {
   padding: 13px 16px;
 }
 
+.subnetHeadActions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .subnetInsightHead h2 {
   color: var(--ink);
   font-size: 14px;
@@ -316,6 +410,33 @@ body {
   color: var(--ink-lt);
   font-family: 'DM Mono', monospace;
   font-size: 11px;
+}
+
+.subnetInlineBtn {
+  align-self: flex-start;
+  background: rgba(200,129,58,0.10);
+  border: 1px solid rgba(200,129,58,0.32);
+  border-radius: 6px;
+  color: var(--amber);
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  margin-top: 4px;
+  padding: 5px 9px;
+}
+
+.subnetInlineBtn.compact {
+  margin-top: 0;
+}
+
+.subnetInlineBtn:hover {
+  background: rgba(200,129,58,0.18);
+}
+
+.subnetInlineBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
 }
 
 .subnetInsightList {
@@ -364,6 +485,126 @@ body {
   font-family: 'DM Mono', monospace;
   font-size: 11px;
   font-weight: 500;
+}
+
+.subnetCategoryList {
+  display: grid;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.subnetCategoryRow {
+  display: grid;
+  gap: 6px;
+}
+
+.subnetCategoryTop {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.subnetCategoryTop strong {
+  color: var(--ink);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.subnetCategoryTop span {
+  color: var(--ink-lt);
+  flex-shrink: 0;
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+}
+
+.subnetCategoryTrack {
+  background: var(--cream-dark);
+  border-radius: 999px;
+  height: 8px;
+  overflow: hidden;
+}
+
+.subnetCategoryFill {
+  background: var(--amber);
+  border-radius: inherit;
+  height: 100%;
+}
+
+.subnetModalBackdrop {
+  align-items: center;
+  background: rgba(26, 23, 20, 0.42);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 22px;
+  position: fixed;
+  z-index: 2200;
+}
+
+.subnetModal {
+  background: var(--paper);
+  border: 1px solid var(--cream-mid);
+  border-radius: 10px;
+  box-shadow: 0 22px 54px rgba(0,0,0,0.20);
+  max-height: min(78vh, 760px);
+  max-width: 760px;
+  overflow: hidden;
+  width: min(100%, 760px);
+}
+
+.subnetModalHead {
+  align-items: flex-start;
+  background: var(--cream-dark);
+  border-bottom: 1px solid var(--cream-mid);
+  display: flex;
+  gap: 14px;
+  justify-content: space-between;
+  padding: 16px 18px;
+}
+
+.subnetModalHead h2 {
+  color: var(--ink);
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+
+.subnetModalHead p {
+  color: var(--ink-lt);
+  font-size: 12px;
+  margin: 0;
+}
+
+.subnetModalClose {
+  background: var(--paper);
+  border: 1px solid var(--cream-mid);
+  border-radius: 6px;
+  color: var(--ink-mid);
+  cursor: pointer;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.subnetModalList {
+  max-height: calc(min(78vh, 760px) - 78px);
+  overflow-y: auto;
+}
+
+.subnetModalRow {
+  align-items: center;
+  border-bottom: 1px solid var(--cream-mid);
+  display: grid;
+  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  padding: 12px 18px;
+}
+
+.subnetModalRow:last-child {
+  border-bottom: none;
 }
 
 .smallBtn {
@@ -927,4 +1168,93 @@ body {
     grid-column: 1 / -1;
     width: fit-content;
   }
+}
+
+.detailHeaderRow {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
+.settingLocationPanel {
+  background: rgba(255, 252, 247, 0.74);
+}
+
+.settingLocationHint {
+  margin-top: 4px;
+  color: var(--ink-lt);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.locationActions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.copyLocationBtn {
+  flex-shrink: 0;
+  border: 1px solid var(--cream-mid);
+  background: var(--paper);
+  color: var(--ink-mid);
+  border-radius: 7px;
+  padding: 6px 10px;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.copyLocationBtn:hover {
+  background: rgba(200,129,58,0.18);
+  border-color: rgba(200,129,58,0.55);
+}
+
+.copyLocationBtn.primary {
+  border-color: rgba(200,129,58,0.35);
+  background: rgba(200,129,58,0.10);
+  color: var(--amber);
+}
+
+.settingLocationGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.settingLocationItem {
+  border: 1px solid var(--cream-mid);
+  background: var(--paper);
+  border-radius: 8px;
+  padding: 10px 12px;
+  min-width: 0;
+}
+
+.settingLocationItem.wide {
+  grid-column: 1 / -1;
+}
+
+.settingLocationItem span {
+  display: block;
+  color: var(--ink-lt);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 5px;
+}
+
+.settingLocationItem strong {
+  display: block;
+  color: var(--ink);
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
 }

@@ -1,12 +1,13 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Home.css';
-import { authHeaders, clearAuth } from '../auth';
+import { authHeaders, clearAuth, useIsAdmin } from '../auth';
 import { apiUrl } from '../config/api';
 import ProfileMenu from './ProfileMenu';
 
 function Home() {
   const navigate = useNavigate();
+  const admin = useIsAdmin();
 
   const [baselines, setBaselines] = useState([]);
   const [version, setVersion] = useState('');
@@ -16,7 +17,7 @@ function Home() {
   const [scanMode, setScanMode] = useState('remote');
 
   const [ip, setIp] = useState('192.168.2.83');
-  const [scanUsername, setScanUsername] = useState('');   // ← เปลี่ยนชื่อจาก username
+  const [scanUsername, setScanUsername] = useState('');   // renamed from username
   const [password, setPassword] = useState('');
   const [connStatus, setConnStatus] = useState('idle');
   const [connMessage, setConnMessage] = useState('');
@@ -26,8 +27,8 @@ function Home() {
   const [loadingAgents, setLoadingAgents] = useState(false);
   const [agentError, setAgentError] = useState('');
   const [role, setRole] = useState('Member Server');
-  const [subnet, setSubnet] = useState('192.168.1.0/24');      // ← เพิ่มตรงนี้
-  const [maxParallel, setMaxParallel] = useState(5);            // ← เพิ่มตรงนี้
+  const [subnet, setSubnet] = useState('192.168.1.0/24');      // added here
+  const [maxParallel, setMaxParallel] = useState(5);            // added here
   
   useEffect(() => {
     const fetchBaselines = async () => {
@@ -43,10 +44,10 @@ function Home() {
           setBaselines(data);
           setVersion(data[0].version_id);
         } else {
-          setBaselineError(data?.detail || 'ไม่พบไฟล์ baseline ในระบบ');
+          setBaselineError(data?.detail || 'No baseline files found');
         }
       } catch (err) {
-        setBaselineError(`โหลด baseline ไม่สำเร็จ: ${err.message}`);
+        setBaselineError(`Failed to load baselines: ${err.message}`);
       } finally {
         setLoadingBaselines(false);
       }
@@ -69,10 +70,10 @@ function Home() {
           setAgents(data);
           setSelectedAgent(data[0].agent_id);
         } else {
-          setAgentError('ไม่พบ agent ที่ลงทะเบียนไว้');
+          setAgentError('No registered agents found');
         }
       } catch (err) {
-        setAgentError(`โหลด agent ไม่สำเร็จ: ${err.message}`);
+        setAgentError(`Failed to load agents: ${err.message}`);
       } finally {
         setLoadingAgents(false);
       }
@@ -90,7 +91,7 @@ function Home() {
 
   const handleConnect = async () => {
     if (!ip || !scanUsername || !password) {
-      setErrorMsg('กรุณากรอก IP, Username และ Password ให้ครบ');
+      setErrorMsg('Please enter IP, username, and password');
       return;
     }
     setErrorMsg('');
@@ -106,10 +107,10 @@ function Home() {
       const data = await res.json();
       if (res.ok && data.success) {
         setConnStatus('success');
-        setConnMessage(`เชื่อมต่อสำเร็จ — ${data.hostname || ip}`);
+        setConnMessage(`Connected successfully - ${data.hostname || ip}`);
       } else {
         setConnStatus('error');
-        setConnMessage(data.message || 'เชื่อมต่อไม่สำเร็จ');
+        setConnMessage(data.message || 'Connection failed');
       }
     } catch (err) {
       setConnStatus('error');
@@ -118,8 +119,8 @@ function Home() {
   };
 
   const handleStartRemoteScan = () => {
-    if (connStatus !== 'success') { setErrorMsg('กรุณา Connect ให้สำเร็จก่อนสแกน'); return; }
-    if (!version) { setErrorMsg('กรุณาเลือก Baseline Version'); return; }
+    if (connStatus !== 'success') { setErrorMsg('Please connect successfully before scanning'); return; }
+    if (!version) { setErrorMsg('Please select a baseline version'); return; }
     setErrorMsg('');
     navigate('/result', {
       state: {
@@ -133,8 +134,8 @@ function Home() {
   };
 
   const handleStartAgentScan = () => {
-    if (!selectedAgent) { setErrorMsg('กรุณาเลือก Agent'); return; }
-    if (!version) { setErrorMsg('กรุณาเลือก Baseline Version'); return; }
+    if (!selectedAgent) { setErrorMsg('Please select an agent'); return; }
+    if (!version) { setErrorMsg('Please select a baseline version'); return; }
     setErrorMsg('');
     const agentInfo = agents.find((a) => a.agent_id === selectedAgent);
     navigate('/result', {
@@ -152,10 +153,10 @@ function Home() {
   };
 
   const handleStartSubnetScan = () => {
-    if (!subnet)       { setErrorMsg('กรุณากรอก Subnet'); return; }
-    if (!scanUsername) { setErrorMsg('กรุณากรอก Username'); return; }
-    if (!password)     { setErrorMsg('กรุณากรอก Password'); return; }
-    if (!version)      { setErrorMsg('กรุณาเลือก Baseline Version'); return; }
+    if (!subnet)       { setErrorMsg('Please enter a subnet'); return; }
+    if (!scanUsername) { setErrorMsg('Please enter a username'); return; }
+    if (!password)     { setErrorMsg('Please enter a password'); return; }
+    if (!version)      { setErrorMsg('Please select a baseline version'); return; }
     setErrorMsg('');
     navigate('/result', {
       state: {
@@ -170,8 +171,8 @@ function Home() {
   };
 
   const handleStartAgentSubnetScan = () => {
-    if (!subnet)  { setErrorMsg('กรุณากรอก Subnet'); return; }
-    if (!version) { setErrorMsg('กรุณาเลือก Baseline Version'); return; }
+    if (!subnet)  { setErrorMsg('Please enter a subnet'); return; }
+    if (!version) { setErrorMsg('Please select a baseline version'); return; }
     setErrorMsg('');
     navigate('/result', {
       state: {
@@ -227,11 +228,7 @@ function Home() {
               <span className="sideLinkDot" />
               History
             </button>
-            <button className="sideLink" onClick={() => navigate('/guide')}>
-              <span className="sideLinkDot" />
-              Guide
-            </button>
-            {localStorage.getItem('role') === 'admin' && (
+            {admin && (
               <>
                 <button className="sideLink" onClick={() => navigate('/admin/agents')}>
                   <span className="sideLinkDot" />
@@ -264,13 +261,6 @@ function Home() {
             </p>
           </div>
           <div className="topbarActions">
-            <button className="notifBtn">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M8 1a5 5 0 0 1 5 5v3l1 2H2l1-2V6a5 5 0 0 1 5-5zM6.5 13a1.5 1.5 0 0 0 3 0" strokeLinecap="round" />
-              </svg>
-              <span className="notifDot" />
-            </button>
-
             <ProfileMenu />
           </div>
         </header>
@@ -278,7 +268,7 @@ function Home() {
         {/* Page title */}
         <div className="pageHead">
           <h1 className="pageTitle">Network Scanner</h1>
-          <p className="pageDesc">ตั้งค่าการสแกนและเลือก baseline เพื่อตรวจสอบความปลอดภัยของระบบ</p>
+          <p className="pageDesc">Configure scan target and baseline for security assessment</p>
         </div>
 
         {/* Error */}
@@ -295,10 +285,10 @@ function Home() {
         <section className="section">
           <div className="sectionHead">
             <span className="stepNum">01</span>
-            <h2 className="sectionTitle">เลือก Baseline Version</h2>
+            <h2 className="sectionTitle">Select Baseline Version</h2>
           </div>
           <div className="sectionBody">
-            {loadingBaselines && <div className="hint"><span className="spin" />กำลังโหลด...</div>}
+            {loadingBaselines && <div className="hint"><span className="spin" />Loading...</div>}
             {!loadingBaselines && baselineError && <p className="errText">{baselineError}</p>}
             {!loadingBaselines && !baselineError && (
               <div className="selectWrap">
@@ -325,7 +315,7 @@ function Home() {
         <section className="section">
           <div className="sectionHead">
             <span className="stepNum">02</span>
-            <h2 className="sectionTitle">เลือก Target</h2>
+            <h2 className="sectionTitle">Select Target</h2>
           </div>
 
           <div className="tabs">
@@ -393,7 +383,7 @@ function Home() {
               <div className="connRow">
                 <button className={`connBtn ${connStatus}`} onClick={handleConnect}
                   disabled={connStatus === 'loading' || loadingBaselines}>
-                  {connStatus === 'loading' ? <><span className="spin" />กำลังเชื่อมต่อ</> : 'ทดสอบการเชื่อมต่อ'}
+                  {connStatus === 'loading' ? <><span className="spin" />Connecting</> : 'Test Connection'}
                 </button>
                 {connMessage && (
                   <span className={`connMsg ${connStatus}`}>
@@ -407,7 +397,7 @@ function Home() {
           {/* Agent */}
           {scanMode === 'agent' && (
             <div className="sectionBody animIn">
-              {loadingAgents && <div className="hint"><span className="spin" />กำลังโหลด agents...</div>}
+              {loadingAgents && <div className="hint"><span className="spin" />Loading agents...</div>}
               {!loadingAgents && agentError && <p className="errText">{agentError}</p>}
               {!loadingAgents && !agentError && (
                 <div className="agentGrid">
@@ -468,7 +458,7 @@ function Home() {
               </div>
               {!loadingAgents && !agentError && (
                 <div className="hint">
-                  จะสแกนเฉพาะ agents ที่ heartbeat แล้วมี IP อยู่ใน subnet นี้
+                  Only agents with a recent heartbeat and an IP address in this subnet will be scanned.
                 </div>
               )}
             </div>
@@ -537,7 +527,7 @@ function Home() {
             }
             disabled={!canScan}
           >
-            เริ่มสแกน
+            Start Scan
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.8">
               <path d="M2 7h10M8 3l4 4-4 4" strokeLinecap="round" strokeLinejoin="round" />
             </svg>

@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './History.css';
-import { clearAuth } from '../auth';
+import { clearAuth, useIsAdmin } from '../auth';
 import { apiUrl } from '../config/api';
 import ProfileMenu from './ProfileMenu';
 
 function History() {
   const navigate = useNavigate();
+  const admin = useIsAdmin();
 
   const [history,  setHistory]  = useState([]);
   const [loading,  setLoading]  = useState(true);
@@ -34,10 +35,10 @@ function History() {
       if (res.ok && Array.isArray(data)) {
         setHistory(data);
       } else {
-        setErrorMsg('โหลดประวัติไม่สำเร็จ');
+        setErrorMsg('Unable to load history');
       }
     } catch (err) {
-      setErrorMsg(`เกิดข้อผิดพลาด: ${err.message}`);
+      setErrorMsg(`Error: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -50,14 +51,14 @@ function History() {
     }
     try {
       const res = await fetch(apiUrl(`/api/scan/history/${scanId}/children`), {
-        headers: authHeader(),  // ← แก้จาก authHeaders() เป็น authHeader()
+        headers: authHeader(),
       });
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
       setSubnetChildren(prev => ({ ...prev, [scanId]: data }));
       setExpandedSubnet(scanId);
     } catch (err) {
-      setErrorMsg(`โหลด children ไม่สำเร็จ: ${err.message}`);
+      setErrorMsg(`Unable to load child scans: ${err.message}`);
     }
   };
 
@@ -77,20 +78,20 @@ function History() {
               targetName: data.target_name,
               hostname:   data.hostname || '',
               version:    data.version  || '',
-              scan_id:    data.id,        // ← เพิ่ม
+              scan_id:    data.id,
             },
           },
         });
       } else {
-        setErrorMsg(data.detail || 'โหลดรายละเอียดไม่สำเร็จ');
+        setErrorMsg(data.detail || 'Unable to load report details');
       }
     } catch (err) {
-      setErrorMsg(`เกิดข้อผิดพลาด: ${err.message}`);
+      setErrorMsg(`Error: ${err.message}`);
     }
   };
 
   const handleDelete = async (id) => {
-    if (!window.confirm('ต้องการลบประวัตินี้?')) return;
+    if (!window.confirm('Delete this history item?')) return;
     setDeleting(id);
     try {
       const res = await fetch(apiUrl(`/api/scan/history/${id}`), {
@@ -102,10 +103,10 @@ function History() {
         setHistory((prev) => prev.filter((h) => h.id !== id));
       } else {
         const data = await res.json();
-        setErrorMsg(data.detail || 'ลบไม่สำเร็จ');
+        setErrorMsg(data.detail || 'Unable to delete history item');
       }
     } catch (err) {
-      setErrorMsg(`เกิดข้อผิดพลาด: ${err.message}`);
+      setErrorMsg(`Error: ${err.message}`);
     } finally {
       setDeleting(null);
     }
@@ -120,7 +121,7 @@ function History() {
       .filter((item) => new Date(item.scan_date).getTime() < currentTime)
       .sort((a, b) => new Date(b.scan_date) - new Date(a.scan_date))[0];
     if (!base) {
-      setErrorMsg('ไม่พบ scan ก่อนหน้าของเครื่องเดียวกันสำหรับ comparison');
+      setErrorMsg('No earlier scan for the same host is available for comparison');
       return;
     }
     try {
@@ -154,7 +155,7 @@ function History() {
 
   return (
     <div className="root">
-      {/* ── Sidebar ── */}
+      {/*  Sidebar  */}
       <aside className="sidebar">
         <div className="sideTop">
           <div className="logo">
@@ -172,10 +173,7 @@ function History() {
             <button className="sideLink active">
               <span className="sideLinkDot" />History
             </button>
-            <button className="sideLink" onClick={() => navigate('/guide')}>
-              <span className="sideLinkDot" />Guide
-            </button>
-            {localStorage.getItem('role') === 'admin' && (
+            {admin && (
               <>
                 <button className="sideLink" onClick={() => navigate('/admin/agents')}>
                   <span className="sideLinkDot" />Agents
@@ -195,7 +193,7 @@ function History() {
         </button>
       </aside>
 
-      {/* ── Main ── */}
+      {/*  Main  */}
       <main className="main">
         {/* Topbar */}
         <header className="topbar">
@@ -203,12 +201,6 @@ function History() {
             {new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
           </p>
           <div className="topbarActions">
-            <button className="notifBtn">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <path d="M8 1a5 5 0 0 1 5 5v3l1 2H2l1-2V6a5 5 0 0 1 5-5zM6.5 13a1.5 1.5 0 0 0 3 0" strokeLinecap="round" />
-              </svg>
-              <span className="notifDot" />
-            </button>
             <ProfileMenu />
           </div>
         </header>
@@ -216,7 +208,7 @@ function History() {
         {/* Page head */}
         <div className="pageHead">
           <h1 className="pageTitle">History</h1>
-          <p className="pageDesc">ประวัติการสแกนความปลอดภัยของระบบ</p>
+          <p className="pageDesc">Security scan history and reports</p>
         </div>
 
         {/* Error */}
@@ -232,7 +224,7 @@ function History() {
         {comparison && (
           <div className="historyCard" style={{ marginBottom: 16, padding: 16 }}>
             <div className="historyActions" style={{ justifyContent: 'space-between' }}>
-              <strong>Comparison: scan #{comparison.base_scan_id} → #{comparison.current_scan_id}</strong>
+              <strong>Comparison: scan #{comparison.base_scan_id}  #{comparison.current_scan_id}</strong>
               <button className="deleteBtn" onClick={() => setComparison(null)}>Close</button>
             </div>
             <div className="historyCompareGrid">
@@ -248,10 +240,10 @@ function History() {
         <div className="historyCard">
           {loading ? (
             <div className="historyEmpty">
-              <span className="spin" />กำลังโหลด...
+              <span className="spin" /> Loading...
             </div>
           ) : history.length === 0 ? (
-            <div className="historyEmpty">ยังไม่มีประวัติการสแกน</div>
+            <div className="historyEmpty">No scan history found</div>
           ) : (
             <table className="historyTable">
               <thead>
@@ -282,17 +274,17 @@ function History() {
                         )}
                         {h.target_name}
                       </td>
-                      <td className="monoCell">{h.version || '—'}</td>
+                      <td className="monoCell">{h.version || ''}</td>
                       <td className="scoreCell" style={{ color: scoreColor(h.score) }}>{h.score}%</td>
-                      <td className="passCell">✔ {h.pass_count}</td>
-                      <td className="failCell">✖ {h.fail_count}</td>
+                      <td className="passCell"> {h.pass_count}</td>
+                      <td className="failCell"> {h.fail_count}</td>
                       <td>
                         <div className="historyActions">
                           {h.scan_type === 'subnet' ? (
                             <>
                               <button className="viewBtn" onClick={() => navigate(`/scan/${h.id}/subnet`)}>View</button>
                               <button className="viewBtn" onClick={() => loadChildren(h.id)}>
-                                {expandedSubnet === h.id ? '▲ ซ่อน' : '▼ รายเครื่อง'}
+                                {expandedSubnet === h.id ? 'Hide' : 'Children'}
                               </button>
                             </>
                           ) : (
@@ -306,27 +298,27 @@ function History() {
                             onClick={() => handleDelete(h.id)}
                             disabled={deleting === h.id}
                           >
-                            {deleting === h.id ? '…' : 'Delete'}
+                            {deleting === h.id ? '' : 'Delete'}
                           </button>
                         </div>
                       </td>
                     </tr>
 
-                    {/* ── Children rows ── */}
+                    {/*  Children rows  */}
                     {expandedSubnet === h.id && subnetChildren[h.id]?.map((child) => (
                       <tr key={child.id} style={{ background: 'var(--cream-dark)' }}>
                         <td className="monoCell" style={{ paddingLeft: 32 }}>
                           {formatDate(child.scan_date)}
                         </td>
                         <td className="targetCell" style={{ paddingLeft: 32 }}>
-                          ↳ {child.hostname || child.target_name}
+                           {child.hostname || child.target_name}
                         </td>
-                        <td className="monoCell">{child.version || '—'}</td>
+                        <td className="monoCell">{child.version || ''}</td>
                         <td className="scoreCell" style={{ color: scoreColor(child.score) }}>
                           {child.score}%
                         </td>
-                        <td className="passCell">✔ {child.pass_count}</td>
-                        <td className="failCell">✖ {child.fail_count}</td>
+                        <td className="passCell"> {child.pass_count}</td>
+                        <td className="failCell"> {child.fail_count}</td>
                         <td>
                           <div className="historyActions">
                             <button className="viewBtn" onClick={() => handleView(child.id)}>View</button>
@@ -341,7 +333,7 @@ function History() {
           )}
 
           <div className="historyFooter">
-            <button className="backBtn"   onClick={() => navigate(-1)}>← Back</button>
+            <button className="backBtn"   onClick={() => navigate(-1)}> Back</button>
             <button className="finishBtn" onClick={() => navigate('/home')}>Finish</button>
           </div>
         </div>
@@ -351,3 +343,5 @@ function History() {
 }
 
 export default History;
+
+

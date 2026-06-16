@@ -20,8 +20,8 @@ function Login() {
       if (response.ok) {
         const data = await response.json();
         localStorage.setItem('token', data.access_token);
-        localStorage.setItem('username', data.username);
-        localStorage.setItem('role', data.role);  
+        localStorage.setItem('username', data.username); 
+        localStorage.removeItem('role');  
         navigate('/home');
       } else {
         const errorData = await response.json();
@@ -66,10 +66,10 @@ function Login() {
           </div>
           <div className="login-field">
             <label className="login-label">Password</label>
-            <input className="login-input" type="password" placeholder="••••••••"
+            <input className="login-input" type="password" placeholder="Password"
               value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
-          <button type="submit" className="login-btn">Sign In →</button>
+          <button type="submit" className="login-btn">Sign In</button>
         </form>
 
         <div className="login-footer">
@@ -81,3 +81,4 @@ function Login() {
 }
 
 export default Login;
+

@@ -37,11 +37,11 @@ export default function ChangePassword() {
     setSuccess('');
 
     if (newPassword.length < 6) {
-      setError('รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร');
+      setError('Password must be at least 6 characters');
       return;
     }
     if (newPassword !== confirmPassword) {
-      setError('รหัสผ่านใหม่และยืนยันรหัสผ่านไม่ตรงกัน');
+      setError('Password confirmation does not match');
       return;
     }
 
@@ -68,16 +68,16 @@ export default function ChangePassword() {
       const data = await res.json();
 
       if (res.ok) {
-        setSuccess('เปลี่ยนรหัสผ่านสำเร็จ กรุณา login ใหม่');
+        setSuccess('Password changed successfully. Please sign in again.');
         setTimeout(() => {
           clearAuth();
           navigate('/login');
         }, 2000);
       } else {
-        setError(data.detail || 'เกิดข้อผิดพลาด');
+        setError(data.detail || 'Request failed');
       }
     } catch {
-      setError('ไม่สามารถเชื่อมต่อกับ server ได้');
+      setError('Unable to connect to server');
     } finally {
       setLoading(false);
     }
@@ -108,7 +108,7 @@ export default function ChangePassword() {
         </div>
 
         <h1 className="cp-title">Change Password</h1>
-        <p className="cp-subtitle">เปลี่ยนรหัสผ่านของบัญชี {localStorage.getItem('username') || ''}</p>
+        <p className="cp-subtitle">Update password for {localStorage.getItem('username') || ''}</p>
 
         {/* Messages */}
         {error && (
@@ -139,7 +139,7 @@ export default function ChangePassword() {
               <input
                 className="cp-input"
                 type={showCurrent ? 'text' : 'password'}
-                placeholder="••••••••"
+                placeholder=""
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
                 required
@@ -172,7 +172,7 @@ export default function ChangePassword() {
               <input
                 className="cp-input"
                 type={showNew ? 'text' : 'password'}
-                placeholder="••••••••"
+                placeholder=""
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
                 required
@@ -223,7 +223,7 @@ export default function ChangePassword() {
               <input
                 className="cp-input"
                 type={showConfirm ? 'text' : 'password'}
-                placeholder="••••••••"
+                placeholder=""
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
@@ -253,24 +253,26 @@ export default function ChangePassword() {
                 className="cp-match"
                 style={{ color: newPassword === confirmPassword ? 'var(--green)' : 'var(--red)' }}
               >
-                {newPassword === confirmPassword ? '✓ รหัสผ่านตรงกัน' : '✕ รหัสผ่านไม่ตรงกัน'}
+                {newPassword === confirmPassword ? 'Passwords match' : 'Passwords do not match'}
               </div>
             )}
           </div>
 
           <button type="submit" className="cp-btn" disabled={loading}>
             {loading ? (
-              <><span className="cp-spin" /> กำลังบันทึก...</>
+              <><span className="cp-spin" /> Saving...</>
             ) : (
-              'เปลี่ยนรหัสผ่าน →'
+              'Change Password'
             )}
           </button>
         </form>
 
         <button className="cp-back" onClick={() => navigate(-1)}>
-          ← กลับ
+           Back
         </button>
       </div>
     </div>
   );
 }
+
+

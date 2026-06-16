@@ -1,11 +1,11 @@
-﻿"""
-main.py  (updated â€” config-driven multi-OS support via JSON baselines)
+"""
+main.py  (updated — config-driven multi-OS support via JSON baselines)
 
-à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸«à¸¥à¸±à¸à¹†:
-  - à¸–à¸­à¸”à¸à¸²à¸£à¹‚à¸«à¸¥à¸”à¹à¸¥à¸°à¹à¸à¸°à¹„à¸Ÿà¸¥à¹Œ Excel/XLSX à¸•à¸±à¸§à¹€à¸à¹ˆà¸²à¸­à¸­à¸à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”
-  - à¹ƒà¸Šà¹‰ load_checks() à¹à¸¥à¸° list_available_versions() à¹€à¸žà¸·à¹ˆà¸­à¸”à¸¶à¸‡à¸‚à¹‰à¸­à¸¡à¸¹à¸¥à¸•à¸£à¸‡à¸ˆà¸²à¸ JSON à¹à¸—à¸™
-  - à¸›à¸£à¸±à¸šà¸›à¸£à¸¸à¸‡ _run_scan_job à¹ƒà¸«à¹‰à¸ªà¹ˆà¸‡à¸Ÿà¸±à¸‡à¸à¹Œà¸Šà¸±à¸™ checks à¹€à¸‚à¹‰à¸² run_baseline_scan()
-  - à¸›à¸£à¸±à¸šà¸›à¸£à¸¸à¸‡à¸—à¸¸à¸ Endpoint (/run, /remote, /versions, /agent) à¹ƒà¸«à¹‰à¸£à¸­à¸‡à¸£à¸±à¸šà¹‚à¸„à¸£à¸‡à¸ªà¸£à¹‰à¸²à¸‡à¹ƒà¸«à¸¡à¹ˆ
+เปลี่ยนหลักๆ:
+  - ถอดการโหลดและแกะไฟล์ Excel/XLSX ตัวเก่าออกทั้งหมด
+  - ใช้ load_checks() และ list_available_versions() เพื่อดึงข้อมูลตรงจาก JSON แทน
+  - ปรับปรุง _run_scan_job ให้ส่งฟังก์ชัน checks เข้า run_baseline_scan()
+  - ปรับปรุงทุก Endpoint (/run, /remote, /versions, /agent) ให้รองรับโครงสร้างใหม่
 """
 
 import os
@@ -54,8 +54,8 @@ from app.core.config import AUTH_PROVIDER
 from app.core.ldap_auth import authenticate_ldap
 from app.core.scan.scanner.security_scanner import SecurityScanner as SecurityBaselineScanner
 from app.core.scan.scanner.baseline_config import (
-    load_checks,               # â† à¹ƒà¸«à¸¡à¹ˆ: load checks à¸ˆà¸²à¸ JSON
-    list_available_versions,   # â† à¹ƒà¸«à¸¡à¹ˆ: list à¸ˆà¸²à¸ JSON files
+    load_checks,               # ← ใหม่: load checks จาก JSON
+    list_available_versions,   # ← ใหม่: list จาก JSON files
 )
 from app.core.scan.scanner.executors.remote_executor import RemoteExecutor
 from fastapi.concurrency import run_in_threadpool
@@ -142,7 +142,27 @@ def _ensure_agent_inventory_columns():
 
 _ensure_agent_inventory_columns()
 
+
+def _ensure_owner_user():
+    db = SessionLocal()
+    try:
+        owner = db.query(User).filter(User.username == "Boat").first()
+        if owner and owner.role != "owner":
+            owner.role = "owner"
+            owner.is_active = True
+            db.commit()
+            print("[startup] Promoted Boat to owner")
+    finally:
+        db.close()
+
+
+_ensure_owner_user()
+
 app = FastAPI()
+
+
+def _has_admin_access(user: User) -> bool:
+    return user.role in ("admin", "owner")
 
 app.include_router(installer_router)
 app.include_router(agent_router)
@@ -174,7 +194,7 @@ AGENT_JOB_MAX_ATTEMPTS = int(os.environ.get("AGENT_JOB_MAX_ATTEMPTS", "2"))
 
 @app.on_event("startup")
 async def startup_event():
-    """à¸•à¸£à¸§à¸ˆà¸ªà¸­à¸šà¸«à¸£à¸·à¸­à¹à¸ªà¸”à¸‡à¸œà¸¥à¸£à¸°à¸šà¸šà¸ˆà¸±à¸”à¹€à¸à¹‡à¸š Baseline à¹à¸šà¸šà¹ƒà¸«à¸¡à¹ˆà¸•à¸­à¸™à¹€à¸£à¸´à¹ˆà¸¡à¸•à¹‰à¸™à¸£à¸°à¸šà¸š"""
+    """ตรวจสอบหรือแสดงผลระบบจัดเก็บ Baseline แบบใหม่ตอนเริ่มต้นระบบ"""
     try:
         versions = list_available_versions()
         print(f"[startup] Available JSON baselines detected: {versions}")
@@ -302,7 +322,7 @@ class SubnetScanRequest(BaseModel):
     role:          str  = Field("Member Server")
     use_ssl:       bool = Field(False)
     skip_ca_check: bool = Field(True)
-    max_parallel:  int  = Field(10)  # à¸ªà¹à¸à¸™à¸žà¸£à¹‰à¸­à¸¡à¸à¸±à¸™à¸ªà¸¹à¸‡à¸ªà¸¸à¸” 10 à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡
+    max_parallel:  int  = Field(10)  # สแกนพร้อมกันสูงสุด 10 เครื่อง
 
 
 # ---------------------------------------------------------------------------
@@ -371,7 +391,9 @@ def _scan_counts_from_details(details: dict | None) -> dict:
     }
     if not isinstance(details, dict):
         return counts
-    for value in details.values():
+    for key, value in details.items():
+        if str(key).startswith("_"):
+            continue
         if not isinstance(value, dict):
             status = str(value)
             severity = ""
@@ -395,6 +417,55 @@ def _scan_counts_from_details(details: dict | None) -> dict:
     return counts
 
 
+def _score_breakdown_from_details(details: dict | None) -> dict | None:
+    if not isinstance(details, dict):
+        return None
+
+
+def _aggregate_score_breakdowns(results: list[dict]) -> tuple[int, dict | None]:
+    weights = {"critical": 10, "high": 7, "medium": 4, "low": 1}
+    passed_weight = assessed_weight = excluded_manual = 0
+    severity_totals = {key: 0 for key in weights}
+    severity_failed = {key: 0 for key in weights}
+    for row in results:
+        breakdown = row.get("score_breakdown") if isinstance(row, dict) else None
+        if not isinstance(breakdown, dict) or breakdown.get("model") != "nist_cis_informed_v1":
+            continue
+        passed_weight += int(breakdown.get("passed_weight", 0) or 0)
+        assessed_weight += int(breakdown.get("assessed_weight", 0) or 0)
+        excluded_manual += int(breakdown.get("excluded_manual_count", 0) or 0)
+        for sev in weights:
+            severity_totals[sev] += int((breakdown.get("severity_totals") or {}).get(sev, 0))
+            severity_failed[sev] += int((breakdown.get("severity_failed") or {}).get(sev, 0))
+
+    if assessed_weight <= 0:
+        return 0, None
+    score = int((passed_weight / assessed_weight) * 100)
+    return score, {
+        "model": "nist_cis_informed_v1",
+        "passed_weight": passed_weight,
+        "assessed_weight": assessed_weight,
+        "excluded_manual_count": excluded_manual,
+        "severity_weights": weights,
+        "severity_totals": severity_totals,
+        "severity_failed": severity_failed,
+    }
+    breakdown = details.get("_score_breakdown")
+    if not isinstance(breakdown, dict):
+        return None
+    if breakdown.get("model") != "nist_cis_informed_v1":
+        return None
+    try:
+        return {
+            **breakdown,
+            "passed_weight": int(breakdown.get("passed_weight", 0)),
+            "assessed_weight": int(breakdown.get("assessed_weight", 0)),
+            "excluded_manual_count": int(breakdown.get("excluded_manual_count", 0)),
+        }
+    except Exception:
+        return None
+
+
 def _subnet_summary_from_details(details):
     if not isinstance(details, dict):
         return None
@@ -411,12 +482,13 @@ def _subnet_summary_from_details(details):
         "failed_host_count": failed_count,
         "critical_count": 0,
         "high_count": 0,
+        "score_breakdown": details.get("score_breakdown") if isinstance(details.get("score_breakdown"), dict) else None,
     }
 
 
 def _subnet_summary_from_children(parent: ScanResult, db: Session, current_user: User) -> dict:
     query = db.query(ScanResult).filter(ScanResult.parent_scan_id == parent.id)
-    if current_user.role != "admin":
+    if not _has_admin_access(current_user):
         query = query.filter(ScanResult.user_id == current_user.id)
     children = query.all()
     if not children:
@@ -436,17 +508,36 @@ def _subnet_summary_from_children(parent: ScanResult, db: Session, current_user:
     pass_count = fail_count = critical_count = high_count = 0
     score_total = 0
     scored = 0
+    aggregate_passed_weight = 0
+    aggregate_assessed_weight = 0
+    aggregate_manual_excluded = 0
+    aggregate_severity_totals = {"critical": 0, "high": 0, "medium": 0, "low": 0}
+    aggregate_severity_failed = {"critical": 0, "high": 0, "medium": 0, "low": 0}
     for child in children:
         counts = _scan_counts_from_details(child.details)
         pass_count += counts["pass_count"]
         fail_count += counts["fail_count"]
         critical_count += counts["critical_count"]
         high_count += counts["high_count"]
+        breakdown = _score_breakdown_from_details(child.details)
+        if breakdown:
+            aggregate_passed_weight += breakdown["passed_weight"]
+            aggregate_assessed_weight += breakdown["assessed_weight"]
+            aggregate_manual_excluded += breakdown["excluded_manual_count"]
+            for sev in aggregate_severity_totals:
+                aggregate_severity_totals[sev] += int((breakdown.get("severity_totals") or {}).get(sev, 0))
+                aggregate_severity_failed[sev] += int((breakdown.get("severity_failed") or {}).get(sev, 0))
         if counts["fail_count"] > 0 or (child.score or 0) < 100:
             failed_host_count += 1
         if child.score is not None:
             score_total += int(child.score or 0)
             scored += 1
+
+    score = (
+        int((aggregate_passed_weight / aggregate_assessed_weight) * 100)
+        if aggregate_assessed_weight > 0
+        else int(score_total / scored) if scored else (parent.score or 0)
+    )
 
     return {
         "items_scanned": host_count,
@@ -456,7 +547,16 @@ def _subnet_summary_from_children(parent: ScanResult, db: Session, current_user:
         "failed_host_count": failed_host_count,
         "critical_count": critical_count,
         "high_count": high_count,
-        "score": int(score_total / scored) if scored else (parent.score or 0),
+        "score": score,
+        "score_breakdown": {
+            "model": "nist_cis_informed_v1",
+            "passed_weight": aggregate_passed_weight,
+            "assessed_weight": aggregate_assessed_weight,
+            "excluded_manual_count": aggregate_manual_excluded,
+            "severity_weights": {"critical": 10, "high": 7, "medium": 4, "low": 1},
+            "severity_totals": aggregate_severity_totals,
+            "severity_failed": aggregate_severity_failed,
+        } if aggregate_assessed_weight > 0 else None,
     }
 
 
@@ -883,9 +983,9 @@ async def _run_subnet_scan_job(job, hosts, req, user_id):
 
     job.status   = "running"
     job.progress = 0
-    job.message  = f"à¸à¸³à¸¥à¸±à¸‡ discover hosts à¹ƒà¸™ {req.subnet}..."
+    job.message  = f"กำลัง discover hosts ใน {req.subnet}..."
 
-    # à¸ªà¸£à¹‰à¸²à¸‡ parent record à¸à¹ˆà¸­à¸™
+    # สร้าง parent record ก่อน
     def _save_parent():
         db = SessionLocal()
         try:
@@ -937,7 +1037,7 @@ async def _run_subnet_scan_job(job, hosts, req, user_id):
                 job.progress = min(10, int(discovered / len(hosts) * 10))
                 job.message = (
                     f"Discover WinRM {discovered}/{len(hosts)} hosts "
-                    f"(à¹€à¸ˆà¸­ {live_count} à¹€à¸„à¸£à¸·à¹ˆà¸­à¸‡)"
+                    f"(เจอ {live_count} เครื่อง)"
                 )
 
     for result in await asyncio.gather(*(probe_host(host) for host in hosts)):
@@ -952,7 +1052,7 @@ async def _run_subnet_scan_job(job, hosts, req, user_id):
             "score": 0,
             "status": "error",
             "phase": "discovery",
-            "error": f"WinRM port {discovery_port} à¹„à¸¡à¹ˆà¸•à¸­à¸šà¸ à¸²à¸¢à¹ƒà¸™ {int(SUBNET_DISCOVERY_TIMEOUT_SECONDS * 1000)}ms",
+            "error": f"WinRM port {discovery_port} ไม่ตอบภายใน {int(SUBNET_DISCOVERY_TIMEOUT_SECONDS * 1000)}ms",
         }
         for host in hosts
         if host not in live_host_set
@@ -977,7 +1077,7 @@ async def _run_subnet_scan_job(job, hosts, req, user_id):
         await run_in_threadpool(_update_parent_empty)
         job.status = "done"
         job.progress = 100
-        job.message = f"à¹„à¸¡à¹ˆà¸žà¸š host à¸—à¸µà¹ˆà¹€à¸›à¸´à¸” WinRM port {discovery_port} à¹ƒà¸™ {req.subnet}"
+        job.message = f"ไม่พบ host ที่เปิด WinRM port {discovery_port} ใน {req.subnet}"
         job.result = {
             "subnet": req.subnet,
             "total": len(hosts),
@@ -1001,7 +1101,7 @@ async def _run_subnet_scan_job(job, hosts, req, user_id):
     done      = 0
     total     = len(live_hosts)
     job.progress = 10
-    job.message = f"à¸žà¸š WinRM {total}/{len(hosts)} hosts à¸à¸³à¸¥à¸±à¸‡à¹€à¸£à¸´à¹ˆà¸¡ scan..."
+    job.message = f"พบ WinRM {total}/{len(hosts)} hosts กำลังเริ่ม scan..."
 
     async def scan_one(host: str):
         nonlocal done
@@ -1078,11 +1178,12 @@ async def _run_subnet_scan_job(job, hosts, req, user_id):
                 scan_id = await run_in_threadpool(_save)
                 done += 1
                 job.progress = 10 + int(done / total * 90)
-                job.message  = f"à¸ªà¹à¸à¸™à¹à¸¥à¹‰à¸§ {done}/{total} hosts"
+                job.message  = f"สแกนแล้ว {done}/{total} hosts"
 
                 return {
                     "host": host, "hostname": hostname,
                     "score": score, "scan_id": scan_id, "status": "done",
+                    "score_breakdown": _score_breakdown_from_details(details),
                 }
 
             except Exception as e:
@@ -1097,8 +1198,8 @@ async def _run_subnet_scan_job(job, hosts, req, user_id):
     success = [r for r in results if r["status"] == "done"]
     failed  = [r for r in results if r["status"] == "error"]
 
-    # update parent score
-    avg_score = int(sum(r["score"] for r in success) / len(success)) if success else 0
+    aggregate_score, aggregate_breakdown = _aggregate_score_breakdowns(success)
+    avg_score = aggregate_score if aggregate_breakdown else int(sum(r["score"] for r in success) / len(success)) if success else 0
 
     def _update_parent():
         db = SessionLocal()
@@ -1110,6 +1211,7 @@ async def _run_subnet_scan_job(job, hosts, req, user_id):
                     "results": results,
                     "subnet": req.subnet,
                     "discovered_hosts": total,
+                    "score_breakdown": aggregate_breakdown,
                 }
                 db.commit()
         finally:
@@ -1119,7 +1221,7 @@ async def _run_subnet_scan_job(job, hosts, req, user_id):
 
     job.status   = "done"
     job.progress = 100
-    job.message  = f"à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™: à¸ªà¸³à¹€à¸£à¹‡à¸ˆ {len(success)}, à¸¥à¹‰à¸¡à¹€à¸«à¸¥à¸§ {len(failed)}"
+    job.message  = f"เสร็จสิ้น: สำเร็จ {len(success)}, ล้มเหลว {len(failed)}"
     job.result   = {
         "subnet":        req.subnet,
         "total":         len(hosts),
@@ -1137,14 +1239,14 @@ async def get_subnet_children(
     current_user: User    = Depends(get_current_user),
 ):
     parent_query = db.query(ScanResult).filter(ScanResult.id == scan_id)
-    if current_user.role != "admin":
+    if not _has_admin_access(current_user):
         parent_query = parent_query.filter(ScanResult.user_id == current_user.id)
     parent = parent_query.first()
     if not parent:
-        raise HTTPException(status_code=404, detail="à¹„à¸¡à¹ˆà¸žà¸š subnet scan à¸™à¸µà¹‰à¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆà¸¡à¸µà¸ªà¸´à¸—à¸˜à¸´à¹Œà¹€à¸‚à¹‰à¸²à¸–à¸¶à¸‡")
+        raise HTTPException(status_code=404, detail="ไม่พบ subnet scan นี้หรือไม่มีสิทธิ์เข้าถึง")
 
     query = db.query(ScanResult).filter(ScanResult.parent_scan_id == scan_id)
-    if current_user.role != "admin":
+    if not _has_admin_access(current_user):
         query = query.filter(ScanResult.user_id == current_user.id)
     children = query.order_by(ScanResult.scan_date).all()
     rows = []
@@ -1170,6 +1272,7 @@ async def get_subnet_children(
             "fail_count":  counts["fail_count"],
             "critical_count": counts["critical_count"],
             "high_count": counts["high_count"],
+            "score_breakdown": _score_breakdown_from_details(details),
             "details":     details,
             "findings":    findings,
         })
@@ -1185,14 +1288,14 @@ async def run_subnet_scan(
     try:
         network = ipaddress.ip_network(req.subnet, strict=False)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"subnet à¹„à¸¡à¹ˆà¸–à¸¹à¸à¸•à¹‰à¸­à¸‡: {req.subnet}")
+        raise HTTPException(status_code=400, detail=f"subnet ไม่ถูกต้อง: {req.subnet}")
 
     hosts = [str(h) for h in network.hosts()]
     if len(hosts) > 254:
-        raise HTTPException(status_code=400, detail="subnet à¹ƒà¸«à¸à¹ˆà¹€à¸à¸´à¸™à¹„à¸› (max /24)")
+        raise HTTPException(status_code=400, detail="subnet ใหญ่เกินไป (max /24)")
 
     job_id, job = _new_job()
-    job.message = f"à¹€à¸•à¸£à¸µà¸¢à¸¡à¸ªà¹à¸à¸™ {len(hosts)} hosts..."
+    job.message = f"เตรียมสแกน {len(hosts)} hosts..."
 
     background_tasks.add_task(
         _run_subnet_scan_job,
@@ -1209,7 +1312,7 @@ async def run_subnet_scan(
     }
 
 # ---------------------------------------------------------------------------
-# Background scan worker (à¸ˆà¸¸à¸”à¸—à¸µà¹ˆ 2 à¸•à¸²à¸¡à¸«à¸¥à¸±à¸à¸à¸²à¸£à¹à¸à¹‰à¹‚à¸„à¹‰à¸”à¹ƒà¸«à¸¡à¹ˆ)
+# Background scan worker (จุดที่ 2 ตามหลักการแก้โค้ดใหม่)
 # ---------------------------------------------------------------------------
 
 async def _run_scan_job(
@@ -1225,10 +1328,10 @@ async def _run_scan_job(
 
     job.status   = "running"
     job.progress = 5
-    job.message  = "à¸à¸³à¸¥à¸±à¸‡à¹‚à¸«à¸¥à¸” check definitions..."
+    job.message  = "กำลังโหลด check definitions..."
     _log_stage("job_started", f"version={version} role={role} target={target_label}")
 
-    # â”€â”€ à¹‚à¸«à¸¥à¸” checks à¸ˆà¸²à¸ JSON à¹à¸—à¸™à¸à¸²à¸£à¹à¸à¸°à¹„à¸Ÿà¸¥à¹Œà¸•à¸±à¸§à¹€à¸à¹ˆà¸² â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+    # ── โหลด checks จาก JSON แทนการแกะไฟล์ตัวเก่า ──────────────────
     try:
         checks = load_checks(version, role=role)
     except FileNotFoundError as e:
@@ -1239,12 +1342,12 @@ async def _run_scan_job(
 
     if not checks:
         job.status = "error"
-        job.error  = f"à¹„à¸¡à¹ˆà¸žà¸š check definitions à¸ªà¸³à¸«à¸£à¸±à¸š version '{version}'"
+        job.error  = f"ไม่พบ check definitions สำหรับ version '{version}'"
         _log_stage("load_checks_empty")
         return
 
     job.progress = 10
-    job.message  = "à¸à¸³à¸¥à¸±à¸‡à¹€à¸•à¸£à¸µà¸¢à¸¡à¸‚à¹‰à¸­à¸¡à¸¹à¸¥ Registry..."
+    job.message  = "กำลังเตรียมข้อมูล Registry..."
     _log_stage("checks_loaded", f"count={len(checks)}")
 
     if executor and hasattr(executor, "prefetch_registry_bulk"):
@@ -1262,10 +1365,10 @@ async def _run_scan_job(
                 elif path_upper.startswith("HKCU\\") or path_upper.startswith("HKEY_CURRENT_USER\\"):
                     sub = _re.sub(r"^(HKEY_CURRENT_USER|HKCU)\\", "", path_part, flags=_re.IGNORECASE)
                     registry_keys.append(("HKCU", sub, key_name))
-                elif path_upper.startswith("MACHINE\\"):  # â† à¹€à¸žà¸´à¹ˆà¸¡à¸™à¸µà¹‰
+                elif path_upper.startswith("MACHINE\\"):  # ← เพิ่มนี้
                     sub = _re.sub(r"^MACHINE\\", "", path_part, flags=_re.IGNORECASE)
                     registry_keys.append(("HKLM", sub, key_name))
-                elif path_upper.startswith("SOFTWARE\\"):  # â† à¹€à¸žà¸´à¹ˆà¸¡à¸™à¸µà¹‰
+                elif path_upper.startswith("SOFTWARE\\"):  # ← เพิ่มนี้
                     registry_keys.append(("HKLM", path_part, key_name))
         if registry_keys:
             batch_size = 100
@@ -1275,9 +1378,9 @@ async def _run_scan_job(
                 batch_number = index // batch_size + 1
                 batch = registry_keys[index:index + batch_size]
                 job.progress = 10 + int(4 * (batch_number - 1) / max(total_batches, 1))
-                job.message = f"à¸à¸³à¸¥à¸±à¸‡à¹€à¸•à¸£à¸µà¸¢à¸¡à¸‚à¹‰à¸­à¸¡à¸¹à¸¥ Registry... ({batch_number}/{total_batches})"
+                job.message = f"กำลังเตรียมข้อมูล Registry... ({batch_number}/{total_batches})"
                 _log_stage("prefetch_registry_batch_start", f"batch={batch_number}/{total_batches} keys={len(batch)}")
-                # à¹ƒà¸Šà¹‰ timeout à¸£à¸­à¸šà¸à¸²à¸£ prefetch à¹à¸•à¹ˆà¸¥à¸° batch à¹€à¸žà¸·à¹ˆà¸­à¸›à¹‰à¸­à¸‡à¸à¸±à¸™à¸à¸²à¸£à¸„à¹‰à¸²à¸‡à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”
+                # ใช้ timeout รอบการ prefetch แต่ละ batch เพื่อป้องกันการค้างทั้งหมด
                 try:
                     batch_timeout = getattr(executor, "_REGISTRY_PREFETCH_TIMEOUT", 25)
                     # cap timeout to a reasonable upper bound
@@ -1288,15 +1391,15 @@ async def _run_scan_job(
                     )
                     _log_stage("prefetch_registry_batch_done", f"batch={batch_number}/{total_batches} keys={len(batch)}")
                 except asyncio.TimeoutError:
-                    # à¸–à¹‰à¸²à¸šà¸²à¸‡ batch timeout à¹ƒà¸«à¹‰à¸šà¸±à¸™à¸—à¸¶à¸à¹à¸¥à¹‰à¸§à¸¢à¸¸à¸•à¸´à¸à¸²à¸£ prefetch à¸—à¸±à¹‰à¸‡à¸«à¸¡à¸”
-                    # (à¸à¸²à¸£à¸£à¸­à¹ƒà¸«à¹‰ timeout à¸‹à¹‰à¸³à¸«à¸¥à¸²à¸¢ batch à¸—à¸³à¹ƒà¸«à¹‰à¹€à¸ªà¸µà¸¢à¹€à¸§à¸¥à¸²à¹€à¸›à¹‡à¸™à¸ˆà¸³à¸™à¸§à¸™à¸¡à¸²à¸)
+                    # ถ้าบาง batch timeout ให้บันทึกแล้วยุติการ prefetch ทั้งหมด
+                    # (การรอให้ timeout ซ้ำหลาย batch ทำให้เสียเวลาเป็นจำนวนมาก)
                     _log_stage("prefetch_registry_batch_timeout", f"batch={batch_number}/{total_batches}")
-                    job.message = f"à¸à¸³à¸¥à¸±à¸‡à¹€à¸•à¸£à¸µà¸¢à¸¡à¸‚à¹‰à¸­à¸¡à¸¹à¸¥ Registry... (à¸¢à¸à¹€à¸¥à¸´à¸à¸à¸²à¸£ prefetch à¹€à¸™à¸·à¹ˆà¸­à¸‡à¸ˆà¸²à¸ timeout à¸—à¸µà¹ˆ batch {batch_number})"
+                    job.message = f"กำลังเตรียมข้อมูล Registry... (ยกเลิกการ prefetch เนื่องจาก timeout ที่ batch {batch_number})"
                     prefetch_failed = True
                     break
                 except Exception as e:
                     _log_stage("prefetch_registry_batch_error", f"batch={batch_number}/{total_batches} err={type(e).__name__}: {e}")
-                    job.message = f"à¹€à¸à¸´à¸”à¸‚à¹‰à¸­à¸œà¸´à¸”à¸žà¸¥à¸²à¸”à¸‚à¸“à¸°à¹€à¸•à¸£à¸µà¸¢à¸¡ Registry (batch {batch_number})"
+                    job.message = f"เกิดข้อผิดพลาดขณะเตรียม Registry (batch {batch_number})"
                     prefetch_failed = True
                     break
             # end for batches
@@ -1307,11 +1410,11 @@ async def _run_scan_job(
             
 
     job.progress = 15
-    job.message  = "à¸à¸³à¸¥à¸±à¸‡à¸ªà¹à¸à¸™ Security Policy..."
+    job.message  = "กำลังสแกน Security Policy..."
     _log_stage("scan_phase_start", f"checks={len(checks)}")
 
     try:
-        # â”€â”€ à¸ªà¸£à¹‰à¸²à¸‡ scanner à¹„à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸ªà¹ˆà¸‡ baseline_config / data_path à¸­à¸µà¸à¹à¸¥à¹‰à¸§ â”€â”€
+        # ── สร้าง scanner ไม่ต้องส่ง baseline_config / data_path อีกแล้ว ──
         from app.core.scan.scanner.security_scanner import SecurityScanner as SecurityBaselineScanner
         scanner = SecurityBaselineScanner(
             executor=executor,
@@ -1321,18 +1424,18 @@ async def _run_scan_job(
         try:
             _log_stage("scanner_run_start")
             score, details = await asyncio.wait_for(
-                run_in_threadpool(scanner.run_baseline_scan, checks),  # â† à¸ªà¹ˆà¸‡à¸•à¸±à¸§à¹à¸›à¸£ checks à¹€à¸‚à¹‰à¸²à¹„à¸›à¸•à¸£à¸‡à¹†
+                run_in_threadpool(scanner.run_baseline_scan, checks),  # ← ส่งตัวแปร checks เข้าไปตรงๆ
                 timeout=SCAN_TIMEOUT_SECONDS,
             )
             _log_stage("scanner_run_done", f"score={score} details={len(details)}")
         except asyncio.TimeoutError:
             job.status = "error"
-            job.error  = f"Scan timeout à¸«à¸¥à¸±à¸‡à¸ˆà¸²à¸ {SCAN_TIMEOUT_SECONDS}s"
+            job.error  = f"Scan timeout หลังจาก {SCAN_TIMEOUT_SECONDS}s"
             _log_stage("scanner_run_timeout", f"timeout={SCAN_TIMEOUT_SECONDS}s")
             return
 
         job.progress = 90
-        job.message  = "à¸à¸³à¸¥à¸±à¸‡à¸šà¸±à¸™à¸—à¸¶à¸à¸œà¸¥..."
+        job.message  = "กำลังบันทึกผล..."
         _log_stage("save_phase_start")
 
         findings        = enrich_scan_details(details, version=version, role=role)
@@ -1348,7 +1451,7 @@ async def _run_scan_job(
                 new_scan = ScanResult(
                     target_name=target_label,
                     score=score,
-                    details=details,          # à¹€à¸à¹‡à¸š dict à¸„à¸£à¸š metadata
+                    details=details,          # เก็บ dict ครบ metadata
                     scan_date=datetime.datetime.now(),
                     version=version,
                     hostname=executor.host if executor else "localhost",
@@ -1366,16 +1469,17 @@ async def _run_scan_job(
 
         job.status   = "done"
         job.progress = 100
-        job.message  = "à¹€à¸ªà¸£à¹‡à¸ˆà¸ªà¸´à¹‰à¸™"
+        job.message  = "เสร็จสิ้น"
         job.result   = {
             "scan_id":       scan_id,
             "target_name":   target_label,
             "version":       version,
             "score":         score,
-            "items_scanned": len(details),
+            "items_scanned": _scan_counts_from_details(details)["items_scanned"],
             "details":       details,
             "findings":      findings,
             "summary":       finding_summary,
+            "score_breakdown": _score_breakdown_from_details(details),
         }
         _log_stage("job_done", f"score={score} items={len(details)}")
 
@@ -1431,12 +1535,24 @@ def login(form_data: OAuth2PasswordRequestForm = Depends(), db: Session = Depend
         user = db.query(User).filter(User.username == form_data.username).first()
         if not user or not user.hashed_password or not verify_password(form_data.password, user.hashed_password):
             raise HTTPException(status_code=400, detail="Username or password incorrect")
+        if not user.is_active:
+            raise HTTPException(status_code=403, detail="User account is inactive")
     access_token = create_access_token(data={"sub": user.username, "role": user.role})
     return {
         "access_token": access_token,
         "token_type":   "bearer",
         "username":     user.username,
         "role":         user.role,
+    }
+
+
+@app.get("/api/me")
+def get_me(current_user: User = Depends(get_current_user)):
+    return {
+        "id": current_user.id,
+        "username": current_user.username,
+        "role": current_user.role,
+        "is_active": current_user.is_active,
     }
 
 
@@ -1449,13 +1565,13 @@ def change_password(
     if not current_user.hashed_password:
         raise HTTPException(status_code=400, detail="LDAP users cannot change password here")
     if not verify_password(body.current_password, current_user.hashed_password):
-        raise HTTPException(status_code=400, detail="à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™à¹€à¸”à¸´à¸¡à¹„à¸¡à¹ˆà¸–à¸¹à¸à¸•à¹‰à¸­à¸‡")
+        raise HTTPException(status_code=400, detail="รหัสผ่านเดิมไม่ถูกต้อง")
     if len(body.new_password) < 6:
-        raise HTTPException(status_code=400, detail="à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™à¹ƒà¸«à¸¡à¹ˆà¸•à¹‰à¸­à¸‡à¸¡à¸µà¸­à¸¢à¹ˆà¸²à¸‡à¸™à¹‰à¸­à¸¢ 6 à¸•à¸±à¸§à¸­à¸±à¸à¸©à¸£")
+        raise HTTPException(status_code=400, detail="รหัสผ่านใหม่ต้องมีอย่างน้อย 6 ตัวอักษร")
     current_user.hashed_password = get_password_hash(body.new_password)
     db.add(current_user)
     db.commit()
-    return {"ok": True, "message": "à¹€à¸›à¸¥à¸µà¹ˆà¸¢à¸™à¸£à¸«à¸±à¸ªà¸œà¹ˆà¸²à¸™à¸ªà¸³à¹€à¸£à¹‡à¸ˆ"}
+    return {"ok": True, "message": "เปลี่ยนรหัสผ่านสำเร็จ"}
 
 
 # ---------------------------------------------------------------------------
@@ -1468,7 +1584,7 @@ async def get_dashboard_stats(
     current_user: User    = Depends(get_current_user),
 ):
     query = db.query(ScanResult)
-    if current_user.role != "admin":
+    if not _has_admin_access(current_user):
         query = query.filter(ScanResult.user_id == current_user.id)
 
     latest = query.order_by(ScanResult.scan_date.desc()).first()
@@ -1484,7 +1600,7 @@ async def get_dashboard_stats(
 
 
 # ---------------------------------------------------------------------------
-# Local Scan (à¸ˆà¸¸à¸”à¸—à¸µà¹ˆ 4 - à¹à¸à¹‰à¹„à¸‚ Local Scan à¹€à¸­à¸² resolve_baseline_path à¸­à¸­à¸)
+# Local Scan (จุดที่ 4 - แก้ไข Local Scan เอา resolve_baseline_path ออก)
 # ---------------------------------------------------------------------------
 
 @app.post("/api/scan/run")
@@ -1507,7 +1623,7 @@ async def run_security_scan(
 
 
 # ---------------------------------------------------------------------------
-# Remote Scan (à¸ˆà¸¸à¸”à¸—à¸µà¹ˆ 4 - à¹à¸à¹‰à¹„à¸‚ Remote Scan à¹€à¸­à¸² resolve_baseline_path à¸­à¸­à¸)
+# Remote Scan (จุดที่ 4 - แก้ไข Remote Scan เอา resolve_baseline_path ออก)
 # ---------------------------------------------------------------------------
 
 @app.post("/api/scan/test-connection")
@@ -1551,14 +1667,14 @@ async def run_remote_security_scan(
             run_in_threadpool(executor.test_connection), timeout=15,
         )
     except asyncio.TimeoutError:
-        raise HTTPException(status_code=408, detail=f"à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­ {req.host}: timeout 15s")
+        raise HTTPException(status_code=408, detail=f"ไม่สามารถเชื่อมต่อ {req.host}: timeout 15s")
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
     if not conn_test["success"]:
         raise HTTPException(
             status_code=400,
-            detail=f"à¹„à¸¡à¹ˆà¸ªà¸²à¸¡à¸²à¸£à¸–à¹€à¸Šà¸·à¹ˆà¸­à¸¡à¸•à¹ˆà¸­ {req.host}: {conn_test['message']}"
+            detail=f"ไม่สามารถเชื่อมต่อ {req.host}: {conn_test['message']}"
         )
 
     hostname     = conn_test.get("hostname") or req.host
@@ -1598,7 +1714,7 @@ async def get_scan_status(
         _recover_stale_agent_jobs(db)
         db_job = db.query(AgentJob).filter(AgentJob.job_id == job_id).first()
         if db_job:
-            if current_user.role != "admin" and db_job.user_id != current_user.id:
+            if not _has_admin_access(current_user) and db_job.user_id != current_user.id:
                 raise HTTPException(status_code=404, detail="job not found")
             _sync_memory_agent_job(db_job)
             job = _jobs.get(job_id)
@@ -1653,9 +1769,9 @@ async def get_scan_history(
     current_user: User    = Depends(get_current_user),
 ):
     query = db.query(ScanResult).filter(
-        ScanResult.parent_scan_id == None  # â† à¹€à¸‰à¸žà¸²à¸° top-level
+        ScanResult.parent_scan_id == None  # ← เฉพาะ top-level
     )
-    if current_user.role != "admin":
+    if not _has_admin_access(current_user):
         query = query.filter(ScanResult.user_id == current_user.id)
     scans = query.order_by(ScanResult.scan_date.desc()).limit(limit).all()
     rows = []
@@ -1677,6 +1793,7 @@ async def get_scan_history(
             "failed_host_count": subnet_summary.get("failed_host_count", 0) if subnet_summary else (1 if single_counts["fail_count"] else 0),
             "critical_count": subnet_summary.get("critical_count", single_counts["critical_count"]) if subnet_summary else single_counts["critical_count"],
             "high_count": subnet_summary.get("high_count", single_counts["high_count"]) if subnet_summary else single_counts["high_count"],
+            "score_breakdown": subnet_summary.get("score_breakdown") if subnet_summary else _score_breakdown_from_details(s.details),
         })
     return rows
 
@@ -1688,11 +1805,11 @@ async def get_scan_detail(
     current_user: User    = Depends(get_current_user),
 ):
     query = db.query(ScanResult).filter(ScanResult.id == scan_id)
-    if current_user.role != "admin":
+    if not _has_admin_access(current_user):
         query = query.filter(ScanResult.user_id == current_user.id)
     scan = query.first()
     if not scan:
-        raise HTTPException(status_code=404, detail="à¹„à¸¡à¹ˆà¸žà¸šà¸œà¸¥à¸à¸²à¸£à¸ªà¹à¸à¸™à¸™à¸µà¹‰à¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆà¸¡à¸µà¸ªà¸´à¸—à¸˜à¸´à¹Œà¹€à¸‚à¹‰à¸²à¸–à¸¶à¸‡")
+        raise HTTPException(status_code=404, detail="ไม่พบผลการสแกนนี้หรือไม่มีสิทธิ์เข้าถึง")
     role = "Domain Controller" if "Domain Controller" in (scan.target_name or "") else "Member Server"
     if getattr(scan, "scan_type", "single") == "subnet":
         findings = []
@@ -1701,6 +1818,11 @@ async def get_scan_detail(
         findings = enrich_scan_details(scan.details, version=scan.version or "", role=role)
         summary = summarize_findings(findings)
     count_summary = summary if getattr(scan, "scan_type", "single") == "subnet" else _scan_counts_from_details(scan.details)
+    score_breakdown = (
+        count_summary.get("score_breakdown")
+        if isinstance(count_summary, dict) and getattr(scan, "scan_type", "single") == "subnet"
+        else _score_breakdown_from_details(scan.details)
+    )
     return {
         "id":            scan.id,
         "target_name":   scan.target_name,
@@ -1710,7 +1832,7 @@ async def get_scan_detail(
         "hostname":      scan.hostname or "",
         "scan_type":     getattr(scan, "scan_type", "single"),
         "parent_scan_id": scan.parent_scan_id,
-        "items_scanned": count_summary.get("items_scanned", len(scan.details) if scan.details else 0) if isinstance(count_summary, dict) else len(scan.details) if scan.details else 0,
+        "items_scanned": count_summary.get("items_scanned", 0) if isinstance(count_summary, dict) else 0,
         "pass_count":    count_summary.get("pass_count", 0) if isinstance(count_summary, dict) else 0,
         "fail_count":    count_summary.get("fail_count", 0) if isinstance(count_summary, dict) else 0,
         "host_count":    count_summary.get("host_count", 1) if isinstance(count_summary, dict) else 1,
@@ -1720,6 +1842,7 @@ async def get_scan_detail(
         "details":       scan.details,
         "findings":      findings,
         "summary":       summary,
+        "score_breakdown": score_breakdown,
     }
 
 
@@ -1768,7 +1891,7 @@ async def compare_scan_results(
     current_user: User = Depends(get_current_user),
 ):
     query = db.query(ScanResult).filter(ScanResult.id.in_([scan_id, base_scan_id]))
-    if current_user.role != "admin":
+    if not _has_admin_access(current_user):
         query = query.filter(ScanResult.user_id == current_user.id)
     scans = {scan.id: scan for scan in query.all()}
     current = scans.get(scan_id)
@@ -1819,24 +1942,24 @@ async def delete_scan(
     current_user: User    = Depends(get_current_user),
 ):
     query = db.query(ScanResult).filter(ScanResult.id == scan_id)
-    if current_user.role != "admin":
+    if not _has_admin_access(current_user):
         query = query.filter(ScanResult.user_id == current_user.id)
     scan = query.first()
     if not scan:
-        raise HTTPException(status_code=404, detail="à¹„à¸¡à¹ˆà¸žà¸šà¸œà¸¥à¸à¸²à¸£à¸ªà¹à¸à¸™à¸«à¸£à¸·à¸­à¹„à¸¡à¹ˆà¸¡à¸µà¸ªà¸´à¸—à¸˜à¸´à¹Œà¸¥à¸š")
+        raise HTTPException(status_code=404, detail="ไม่พบผลการสแกนหรือไม่มีสิทธิ์ลบ")
     db.delete(scan)
     db.commit()
     return {"ok": True}
 
 
-# â”€â”€ à¸ˆà¸¸à¸”à¸—à¸µà¹ˆ 3 - à¹à¸à¹‰à¹„à¸‚à¹€à¸§à¸­à¸£à¹Œà¸Šà¸±à¸™à¹ƒà¸«à¹‰à¸­à¹ˆà¸²à¸™à¸ˆà¸²à¸ /baselines/generated/*.json à¹à¸—à¸™ â”€â”€
+# ── จุดที่ 3 - แก้ไขเวอร์ชันให้อ่านจาก /baselines/generated/*.json แทน ──
 @app.get("/api/scan/versions")
 async def get_supported_versions(current_user: User = Depends(get_current_user)):
     return list_available_versions()
 
 
 # ---------------------------------------------------------------------------
-# Agent Scan (à¸›à¸£à¸±à¸šà¸•à¸±à¸§à¹à¸›à¸£à¸•à¸²à¸¡à¸ªà¸–à¸²à¸›à¸±à¸•à¸¢à¸à¸£à¸£à¸¡ JSON à¹ƒà¸«à¸¡à¹ˆ)
+# Agent Scan (ปรับตัวแปรตามสถาปัตยกรรม JSON ใหม่)
 # ---------------------------------------------------------------------------
 
 @app.post("/api/scan/agent")
@@ -1852,7 +1975,7 @@ async def run_agent_scan(
     try:
         db_agent = db.query(AgentToken).filter(AgentToken.agent_id == req.agent_id).first()
         if not db_agent:
-            raise HTTPException(status_code=404, detail=f"à¹„à¸¡à¹ˆà¸žà¸š agent: {req.agent_id}")
+            raise HTTPException(status_code=404, detail=f"ไม่พบ agent: {req.agent_id}")
         if req.version.lower() == "auto":
             baseline_info = _resolve_agent_baseline(db_agent)
             if baseline_info.get("error"):
@@ -2001,6 +2124,7 @@ async def _run_agent_subnet_scan_job(parent_job, parent_scan_id, req, user_id, o
                     "version": child_job.result.get("version") or agent["baseline_info"].get("version", ""),
                     "baseline_match_type": agent["baseline_info"].get("match_type", ""),
                     "baseline_warning": agent["baseline_info"].get("warning", ""),
+                    "score_breakdown": child_job.result.get("score_breakdown"),
                 })
             else:
                 results.append({
@@ -2020,7 +2144,8 @@ async def _run_agent_subnet_scan_job(parent_job, parent_scan_id, req, user_id, o
 
     success = [r for r in results if r.get("status") == "done"]
     failed = [r for r in results if r.get("status") == "error"]
-    avg_score = int(sum(r.get("score", 0) for r in success) / len(success)) if success else 0
+    aggregate_score, aggregate_breakdown = _aggregate_score_breakdowns(success)
+    avg_score = aggregate_score if aggregate_breakdown else int(sum(r.get("score", 0) for r in success) / len(success)) if success else 0
 
     def _update_parent():
         db = SessionLocal()
@@ -2033,6 +2158,7 @@ async def _run_agent_subnet_scan_job(parent_job, parent_scan_id, req, user_id, o
                     "subnet": req.subnet,
                     "method": "agent",
                     "discovered_hosts": len(results),
+                    "score_breakdown": aggregate_breakdown,
                 }
                 db.commit()
         finally:
@@ -2063,7 +2189,7 @@ async def run_agent_subnet_scan(
     try:
         network = ipaddress.ip_network(req.subnet, strict=False)
     except ValueError:
-        raise HTTPException(status_code=400, detail=f"subnet à¹„à¸¡à¹ˆà¸–à¸¹à¸à¸•à¹‰à¸­à¸‡: {req.subnet}")
+        raise HTTPException(status_code=400, detail=f"subnet ไม่ถูกต้อง: {req.subnet}")
 
     db = SessionLocal()
     try:

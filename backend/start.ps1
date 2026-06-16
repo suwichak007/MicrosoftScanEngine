@@ -18,9 +18,8 @@ if (Test-Path $envPath) {
 }
 
 $logPath = Join-Path $PSScriptRoot "start_env.log"
-$tokenLength = ($env:AGENT_INSTALL_TOKEN | ForEach-Object { if ($_) { $_.Length } else { 0 } })
 $pythonPath = (Get-Command python -ErrorAction SilentlyContinue).Source
-"$(Get-Date -Format o) envPath=$envPath envExists=$(Test-Path $envPath) tokenLength=$tokenLength python=$pythonPath" | Out-File -FilePath $logPath -Append -Encoding utf8
+"$(Get-Date -Format o) envPath=$envPath envExists=$(Test-Path $envPath) python=$pythonPath" | Out-File -FilePath $logPath -Append -Encoding utf8
 
 Write-Host "Configuring WinRM Client..."
 winrm set winrm/config/client '@{AllowUnencrypted="true"}'

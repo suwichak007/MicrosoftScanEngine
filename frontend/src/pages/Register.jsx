@@ -17,7 +17,7 @@ function Register() {
     setSuccess('');
 
     if (password !== confirmPassword) {
-      setError('Password และ Confirm Password ไม่ตรงกัน');
+      setError('Password and Confirm Password do not match');
       return;
     }
 
@@ -29,7 +29,7 @@ function Register() {
       });
       const data = await response.json();
       if (response.ok) {
-        setSuccess('Register success! กำลังไปหน้า Login...');
+        setSuccess('Registration successful. Redirecting to login...');
         setTimeout(() => navigate('/'), 1500);
       } else {
         setError(data.detail || 'Register failed');
@@ -94,7 +94,7 @@ function Register() {
             <input
               className="register-input"
               type="password"
-              placeholder="••••••••"
+              placeholder=""
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -105,14 +105,14 @@ function Register() {
             <input
               className="register-input"
               type="password"
-              placeholder="••••••••"
+              placeholder=""
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
             />
           </div>
 
-          <button type="submit" className="register-btn">Create Account →</button>
+          <button type="submit" className="register-btn">Create Account </button>
         </form>
 
         <div className="register-footer">
@@ -124,3 +124,5 @@ function Register() {
 }
 
 export default Register;
+
+

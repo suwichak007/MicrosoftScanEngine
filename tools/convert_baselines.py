@@ -7,7 +7,9 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import shutil
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -68,6 +70,17 @@ def _clean(value: Any) -> str:
 
 def _slug(value: str) -> str:
     return re.sub(r"[^a-zA-Z0-9]+", "-", value).strip("-").lower() or "baseline"
+
+
+def _detect_baseline(path: Path, source_filename: str | None = None):
+    if not source_filename:
+        return auto_detect_baseline(str(path))
+
+    safe_name = Path(source_filename).name
+    with tempfile.TemporaryDirectory(dir=path.parent) as tmp_dir:
+        alias_path = Path(tmp_dir) / safe_name
+        shutil.copy2(path, alias_path)
+        return auto_detect_baseline(str(alias_path))
 
 
 # check_id prefix: WIN11, WS2022, WS2025, DC
@@ -220,14 +233,14 @@ def _remediation(category: str, policy_path: str, check_name: str,
 # Core converter
 # ---------------------------------------------------------------------------
 
-def analyze_workbook(path: Path) -> dict[str, Any]:
-    cfg = auto_detect_baseline(str(path))
+def analyze_workbook(path: Path, source_filename: str | None = None) -> dict[str, Any]:
+    cfg = _detect_baseline(path, source_filename)
     sheets = pd.read_excel(path, sheet_name=None, nrows=1)
     result = {
         "baseline_id": _slug(cfg.version_id),
         "baseline_name": cfg.display_name,
         "os_family": cfg.os_family,
-        "filename": path.name,
+        "filename": source_filename or path.name,
         "sheets": [],
     }
     for sheet_name, df in sheets.items():
@@ -250,8 +263,9 @@ def convert_workbook(
     path: Path,
     target_column_overrides: dict[str, list[str]] | None = None,
     severity_mapping: dict[str, Any] | None = None,
+    source_filename: str | None = None,
 ) -> dict[str, Any]:
-    cfg    = auto_detect_baseline(str(path))
+    cfg    = _detect_baseline(path, source_filename)
     sheets = pd.read_excel(path, sheet_name=None)
     os_pfx = _os_prefix(cfg.version_id)
     overrides = target_column_overrides or {}
@@ -267,12 +281,14 @@ def convert_workbook(
             continue
 
         # แก้จาก v1: ใช้ col in df.columns ตรงๆ ไม่ผ่าน resolve_target_col
-        requested_columns = overrides.get(sheet_name) or overrides.get(sheet_cfg.sheet_type)
-        target_columns = (
-            [c for c in requested_columns if c in df.columns]
-            if requested_columns
-            else [c for c in sheet_cfg.target_columns if c in df.columns]
-        )
+        if sheet_name in overrides:
+            requested_columns = overrides[sheet_name]
+            target_columns = [c for c in requested_columns if c in df.columns]
+        elif sheet_cfg.sheet_type in overrides:
+            requested_columns = overrides[sheet_cfg.sheet_type]
+            target_columns = [c for c in requested_columns if c in df.columns]
+        else:
+            target_columns = [c for c in sheet_cfg.target_columns if c in df.columns]
         if not target_columns:
             continue
 
@@ -332,7 +348,7 @@ def convert_workbook(
         "baseline_id":   _slug(cfg.version_id),
         "baseline_name": cfg.display_name,
         "os_family":     cfg.os_family,
-        "source_file":   path.name,
+        "source_file":   source_filename or path.name,
         "schema_version": "2.0",
         "checks": list(seen.values()),
     }

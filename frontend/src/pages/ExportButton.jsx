@@ -1,24 +1,24 @@
 /**
  * ExportButton.jsx
- * ─────────────────
- * ปุ่ม Export PDF / CSV ใช้งานได้ทั้งใน Result.jsx และ History.jsx
+ * 
+ * Export PDF / Excel button used by Result.jsx and History.jsx
  *
  * Props:
- *   scanId   {number}  — ID ของ scan ใน database
- *   label    {string}  — ข้อความบนปุ่ม (optional, default "Export")
- *   variant  {string}  — "icon" | "full" (default "full")
+ *   scanId   {number}   scan ID in database
+ *   label    {string}   button label (optional, default "Export")
+ *   variant  {string}   "icon" | "full" (default "full")
  *
- * Usage ใน Result.jsx (ต้องมี scanId จาก job result):
+ * Usage in Result.jsx when scanId is available:
  *   <ExportButton scanId={scanData.scan_id} />
  *
- * Usage ใน History.jsx (แต่ละ row):
+ * Usage in History.jsx rows:
  *   <ExportButton scanId={h.id} variant="icon" />
  */
 
 import React, { useState, useRef, useEffect } from 'react';
 import { apiUrl } from '../config/api';
 
-// ─── Inline styles (ไม่ต้องพึ่ง CSS ไฟล์แยก) ────────────────────────────────
+// Inline styles
 const S = {
   wrap: {
     position: 'relative',
@@ -98,7 +98,7 @@ const S = {
   },
 };
 
-// ─── Icon components ──────────────────────────────────────────────────────────
+//  Icon components 
 const IconChevron = () => (
   <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.8">
     <path d="M2 3.5l3 3 3-3" strokeLinecap="round" strokeLinejoin="round" />
@@ -112,7 +112,7 @@ const IconPDF = () => (
   </svg>
 );
 
-const IconCSV = () => (
+const IconExcel = () => (
   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
     <rect x="2" y="1" width="10" height="12" rx="1.5" />
     <path d="M4 5h6M4 7.5h6M4 10h6" strokeLinecap="round" />
@@ -128,16 +128,16 @@ const IconSpinner = () => (
   </svg>
 );
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+//  Main Component 
 export default function ExportButton({ scanId, label = 'Export', variant = 'full' }) {
   const [open,        setOpen]        = useState(false);
-  const [loading,     setLoading]     = useState(null); // 'pdf' | 'csv' | 'xlsx' | null
+  const [loading,     setLoading]     = useState(null); // 'pdf' | 'xlsx' | null
   const [hover,       setHover]       = useState(false);
   const [hoverItem,   setHoverItem]   = useState(null);
   const [errorMsg,    setErrorMsg]    = useState('');
   const wrapRef = useRef(null);
 
-  // ปิด dropdown เมื่อคลิกนอก
+  // Close dropdown when clicking outside
   useEffect(() => {
     const handler = (e) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target)) {
@@ -150,7 +150,7 @@ export default function ExportButton({ scanId, label = 'Export', variant = 'full
 
   const handleExport = async (format) => {
     if (!scanId) {
-      setErrorMsg('ไม่พบ Scan ID — กรุณาบันทึกผลสแกนก่อน export');
+      setErrorMsg('Missing scan ID. Please open a scan report before exporting.');
       setTimeout(() => setErrorMsg(''), 4000);
       return;
     }
@@ -166,7 +166,7 @@ export default function ExportButton({ scanId, label = 'Export', variant = 'full
       );
 
       if (!res.ok) {
-        const err = await res.json().catch(() => ({ detail: 'Export ไม่สำเร็จ' }));
+        const err = await res.json().catch(() => ({ detail: 'Export failed' }));
         throw new Error(err.detail || `HTTP ${res.status}`);
       }
 
@@ -174,7 +174,7 @@ export default function ExportButton({ scanId, label = 'Export', variant = 'full
       const blob     = await res.blob();
       const url      = URL.createObjectURL(blob);
       const a        = document.createElement('a');
-      const ext      = format === 'pdf' ? 'pdf' : format === 'xlsx' ? 'xlsx' : 'csv';
+      const ext      = format === 'pdf' ? 'pdf' : 'xlsx';
       a.href         = url;
       a.download     = `scan-report-${scanId}-${new Date().toISOString().slice(0, 10)}.${ext}`;
       document.body.appendChild(a);
@@ -183,7 +183,7 @@ export default function ExportButton({ scanId, label = 'Export', variant = 'full
       URL.revokeObjectURL(url);
 
     } catch (err) {
-      setErrorMsg(`Export ${format.toUpperCase()} ไม่สำเร็จ: ${err.message}`);
+      setErrorMsg(`Export ${format.toUpperCase()} failed: ${err.message}`);
       setTimeout(() => setErrorMsg(''), 5000);
     } finally {
       setLoading(null);
@@ -208,7 +208,7 @@ export default function ExportButton({ scanId, label = 'Export', variant = 'full
           onMouseEnter={() => setHover(true)}
           onMouseLeave={() => setHover(false)}
           disabled={isLoading}
-          title="Export รายงาน"
+          title="Export report"
         >
           {isLoading ? (
             <>
@@ -241,22 +241,6 @@ export default function ExportButton({ scanId, label = 'Export', variant = 'full
 
             <div style={S.dropDivider} />
 
-            {/* CSV */}
-            <button
-              style={{
-                ...S.dropItem,
-                ...(hoverItem === 'csv' ? S.dropItemHover : {}),
-              }}
-              onMouseEnter={() => setHoverItem('csv')}
-              onMouseLeave={() => setHoverItem(null)}
-              onClick={() => handleExport('csv')}
-            >
-              <IconCSV />
-              Export as CSV
-            </button>
-
-            <div style={S.dropDivider} />
-
             {/* Excel */}
             <button
               style={{
@@ -267,7 +251,7 @@ export default function ExportButton({ scanId, label = 'Export', variant = 'full
               onMouseLeave={() => setHoverItem(null)}
               onClick={() => handleExport('xlsx')}
             >
-              <IconCSV />
+              <IconExcel />
               Export as Excel
             </button>
           </div>
@@ -277,9 +261,11 @@ export default function ExportButton({ scanId, label = 'Export', variant = 'full
       {/* Error toast */}
       {errorMsg && (
         <div style={S.errorToast} onClick={() => setErrorMsg('')}>
-          ⚠ {errorMsg}
+           {errorMsg}
         </div>
       )}
     </>
   );
 }
+
+

@@ -671,9 +671,8 @@ class SecurityScanner:
                 "current_value": current_value,
             }
 
-        actual_pass  = sum(1 for r in self.results.values() if r["status"] == "Pass")
-        actual_total = len(self.results)
-        score = int((actual_pass / actual_total) * 100) if actual_total > 0 else 0
+        score, score_breakdown = self._calculate_compliance_score()
+        self.results["_score_breakdown"] = score_breakdown
         self._log_timing(
             "scan_total",
             time.perf_counter() - started_at,
@@ -683,12 +682,65 @@ class SecurityScanner:
         return score, self.results
 
     # ------------------------------------------------------------------
+    # NIST/CIS-informed compliance score
+    # ------------------------------------------------------------------
+
+    def _calculate_compliance_score(self) -> tuple[int, dict]:
+        """
+        NIST/CIS-informed compliance score.
+
+        Critical/High controls carry more weight than Medium/Low controls.
+        Manual checks are excluded from the denominator because they were not
+        automatically assessed.
+        """
+        weights = {
+            "critical": 10,
+            "high": 7,
+            "medium": 4,
+            "low": 1,
+        }
+        earned = 0
+        possible = 0
+        excluded_manual = 0
+        severity_totals = {key: 0 for key in weights}
+        severity_failed = {key: 0 for key in weights}
+
+        for result in self.results.values():
+            status = str(result.get("status", "")).lower()
+            if status.startswith("manual") or "manual" in status or status in {"n/a", "na", "skipped", "__skip__"}:
+                excluded_manual += 1
+                continue
+
+            severity = str(result.get("severity", "low")).lower()
+            weight = weights.get(severity, 1)
+            severity_key = severity if severity in weights else "low"
+            severity_totals[severity_key] += 1
+            possible += weight
+            if status == "pass":
+                earned += weight
+            elif status.startswith("fail"):
+                severity_failed[severity_key] += 1
+
+        score = int((earned / possible) * 100) if possible > 0 else 0
+        return score, {
+            "model": "nist_cis_informed_v1",
+            "passed_weight": earned,
+            "assessed_weight": possible,
+            "excluded_manual_count": excluded_manual,
+            "severity_weights": weights,
+            "severity_totals": severity_totals,
+            "severity_failed": severity_failed,
+        }
+
+    # ------------------------------------------------------------------
     # Summary log
     # ------------------------------------------------------------------
 
     def _print_summary(self, score: int):
         section_stats: dict[str, dict] = {}
-        for res in self.results.values():
+        for key, res in self.results.items():
+            if str(key).startswith("_") or not isinstance(res, dict) or "status" not in res:
+                continue
             sec = res["category"]
             if sec not in section_stats:
                 section_stats[sec] = {"Total": 0, "Pass": 0, "Fail": 0, "Manual": 0}
@@ -724,13 +776,14 @@ class SecurityScanner:
     # ------------------------------------------------------------------
 
     def print_summary(self, score: int, results: dict):
-        pass_list   = [k for k, v in results.items() if v["status"] == "Pass"]
-        fail_list   = [k for k, v in results.items() if v["status"].startswith("Fail")]
-        manual_list = [k for k, v in results.items() if "Manual" in v["status"]]
+        check_rows = {k: v for k, v in results.items() if not str(k).startswith("_") and isinstance(v, dict) and "status" in v}
+        pass_list   = [k for k, v in check_rows.items() if v["status"] == "Pass"]
+        fail_list   = [k for k, v in check_rows.items() if v["status"].startswith("Fail")]
+        manual_list = [k for k, v in check_rows.items() if "Manual" in v["status"]]
         print(f"\n{'='*60}")
         print(f"  Security Baseline Scan")
         print(f"{'='*60}")
-        print(f"  Health Score : {score}%")
+        print(f"  NIST/CIS-informed Compliance Score : {score}%")
         print(f"  Total Checks : {self.total}")
         print(f"  Passed       : {len(pass_list)}")
         print(f"  Failed       : {len(fail_list)}")

@@ -6,13 +6,10 @@ import { API_BASE, apiUrl } from '../config/api';
 import './AgentManagement.css';
 import ProfileMenu from './ProfileMenu';
 
-const INSTALL_TOKEN_PLACEHOLDER = '<INSTALL_TOKEN>';
-
 function Sidebar({ navigate }) {
   const items = [
     { label: 'Home', path: '/home' },
     { label: 'History', path: '/history' },
-    { label: 'Guide', path: '/guide' },
     { label: 'Agents', path: '/admin/agents', active: true },
     { label: 'Users', path: '/admin/users' },
   ];
@@ -57,7 +54,7 @@ function formatDate(value) {
 }
 
 function buildInstallCommand() {
-  return `.\\ScanAgentSetup.exe --backend-url ${API_BASE} --install-token ${INSTALL_TOKEN_PLACEHOLDER}`;
+  return `.\\ScanAgentSetup.exe --backend-url ${API_BASE}`;
 }
 
 function healthLabel(status) {
@@ -77,6 +74,34 @@ function normalizeAgentRows(data) {
   return [];
 }
 
+function baselineLabel(baseline) {
+  return baseline?.display_name || baseline?.version_id || baseline?.baseline_id || baseline?.filename || 'baseline';
+}
+
+function friendlyBaselineError(detail, fallback = 'Baseline operation failed') {
+  const text = String(detail || fallback);
+  const lower = text.toLowerCase();
+  if (lower.includes('only .xlsx') || lower.includes('.xlsx')) {
+    return 'Only Microsoft Excel .xlsx files are supported.';
+  }
+  if (lower.includes('0 checks') || lower.includes('no checks')) {
+    return 'No checks were found. Please review the Excel baseline format.';
+  }
+  if (lower.includes('pending upload not found')) {
+    return 'The pending upload session expired. Please choose the Excel file again.';
+  }
+  if (lower.includes('analyze baseline failed')) {
+    return text.replace(/^Analyze baseline failed:\s*/i, 'The workbook could not be analyzed: ');
+  }
+  if (lower.includes('convert baseline failed')) {
+    return text.replace(/^Convert baseline failed:\s*/i, 'The workbook could not be converted: ');
+  }
+  if (lower.includes('baseline not found')) {
+    return 'Baseline not found. Refresh the library and try again.';
+  }
+  return text;
+}
+
 export default function AgentManagement() {
   const navigate = useNavigate();
   const [agents, setAgents] = useState([]);
@@ -86,10 +111,13 @@ export default function AgentManagement() {
   const [baselines, setBaselines] = useState([]);
   const [loadingBaselines, setLoadingBaselines] = useState(true);
   const [baselineFile, setBaselineFile] = useState(null);
-  const [uploadingBaseline, setUploadingBaseline] = useState(false);
-  const [baselineMsg, setBaselineMsg] = useState('');
   const [baselineAnalysis, setBaselineAnalysis] = useState(null);
-  const [selectedColumns, setSelectedColumns] = useState({});
+  const [baselineColumns, setBaselineColumns] = useState({});
+  const [analyzingBaseline, setAnalyzingBaseline] = useState(false);
+  const [uploadingBaseline, setUploadingBaseline] = useState(false);
+  const [baselineNotice, setBaselineNotice] = useState(null);
+  const [baselineDeleteTarget, setBaselineDeleteTarget] = useState(null);
+  const [deletingBaseline, setDeletingBaseline] = useState(false);
   const [schedules, setSchedules] = useState([]);
   const [loadingSchedules, setLoadingSchedules] = useState(true);
   const [scheduleMsg, setScheduleMsg] = useState('');
@@ -127,12 +155,12 @@ export default function AgentManagement() {
         return;
       }
       if (!res.ok) {
-        setErrorMsg(data.detail || 'ไม่สามารถโหลด agent ได้');
+        setErrorMsg(data.detail || 'Unable to load agents');
         return;
       }
       setAgents(Array.isArray(data) ? data : []);
     } catch (err) {
-      setErrorMsg(`เกิดข้อผิดพลาด: ${err.message}`);
+      setErrorMsg(`Error: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -147,12 +175,12 @@ export default function AgentManagement() {
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
       if (!res.ok) {
-        setErrorMsg(data.detail || 'โหลด baseline ไม่สำเร็จ');
+        setErrorMsg(data.detail || 'Unable to load baselines');
         return;
       }
       setBaselines(Array.isArray(data) ? data : []);
     } catch (err) {
-      setErrorMsg(`โหลด baseline ไม่สำเร็จ: ${err.message}`);
+      setErrorMsg(`Unable to load baselines: ${err.message}`);
     } finally {
       setLoadingBaselines(false);
     }
@@ -180,21 +208,34 @@ export default function AgentManagement() {
 
   useEffect(() => { fetchSchedules(); }, [fetchSchedules]);
 
-  const uploadBaseline = async () => {
+  const resetBaselineAnalysis = () => {
+    setBaselineAnalysis(null);
+    setBaselineColumns({});
+  };
+
+  const analyzeBaseline = async () => {
     if (!baselineFile) {
-      setBaselineMsg('กรุณาเลือกไฟล์ .xlsx ก่อน');
+      setBaselineNotice({
+        type: 'error',
+        title: 'Analyze failed',
+        lines: ['Please choose a .xlsx baseline file first.'],
+      });
       return;
     }
     if (!baselineFile.name.toLowerCase().endsWith('.xlsx')) {
-      setBaselineMsg('รองรับเฉพาะไฟล์ .xlsx เท่านั้น');
+      setBaselineNotice({
+        type: 'error',
+        title: 'Analyze failed',
+        lines: ['Only Microsoft Excel .xlsx files are supported.'],
+      });
       return;
     }
 
-    setUploadingBaseline(true);
-    setBaselineMsg('');
+    setAnalyzingBaseline(true);
+    setBaselineNotice(null);
     setErrorMsg('');
-    setBaselineAnalysis(null);
-    setSelectedColumns({});
+    resetBaselineAnalysis();
+
     const form = new FormData();
     form.append('file', baselineFile);
     try {
@@ -206,59 +247,122 @@ export default function AgentManagement() {
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
       if (!res.ok) {
-        setBaselineMsg(data.detail || 'อัปโหลด baseline ไม่สำเร็จ');
+        setBaselineNotice({
+          type: 'error',
+          title: 'Analyze failed',
+          lines: [friendlyBaselineError(data.detail, 'Analyze baseline failed')],
+        });
         return;
       }
-      setBaselineMsg(`อัปโหลดสำเร็จ: ${data.baseline_name} (${data.check_count} checks)`);
-      const initial = {};
+
+      const initialColumns = {};
       (data.sheets || []).forEach((sheet) => {
-        initial[sheet.sheet] = sheet.selected_target_columns || [];
+        initialColumns[sheet.sheet] = sheet.selected_target_columns || sheet.detected_target_columns || [];
       });
-      setSelectedColumns(initial);
       setBaselineAnalysis(data);
-      setBaselineMsg(`Uploaded: ${data.baseline_name}. Review columns, then save baseline.`);
+      setBaselineColumns(initialColumns);
+      setBaselineNotice({
+        type: 'info',
+        title: 'Workbook analyzed',
+        lines: [
+          `Baseline: ${data.baseline_name || data.baseline_id || 'Unknown baseline'}`,
+          `Sheets: ${(data.sheets || []).length}`,
+          'Review target columns below, then upload baseline.',
+        ],
+      });
     } catch (err) {
-      setBaselineMsg(`อัปโหลด baseline ไม่สำเร็จ: ${err.message}`);
+      setBaselineNotice({
+        type: 'error',
+        title: 'Analyze failed',
+        lines: [friendlyBaselineError(err.message, 'Analyze baseline failed')],
+      });
     } finally {
-      setUploadingBaseline(false);
+      setAnalyzingBaseline(false);
     }
   };
 
   const toggleBaselineColumn = (sheetName, columnName) => {
-    setSelectedColumns((prev) => {
-      const current = new Set(prev[sheetName] || []);
-      if (current.has(columnName)) current.delete(columnName);
-      else current.add(columnName);
-      return { ...prev, [sheetName]: Array.from(current) };
+    setBaselineColumns((prev) => {
+      const selected = new Set(prev[sheetName] || []);
+      if (selected.has(columnName)) {
+        selected.delete(columnName);
+      } else {
+        selected.add(columnName);
+      }
+      return { ...prev, [sheetName]: Array.from(selected) };
     });
   };
 
-  const confirmBaselineUpload = async () => {
-    if (!baselineAnalysis?.upload_id) return;
-    setUploadingBaseline(true);
-    setBaselineMsg('');
-    try {
-      const res = await fetch(apiUrl('/api/admin/baselines/upload/confirm'), {
-        method: 'POST',
-        headers: authHeader(),
-        body: JSON.stringify({
-          upload_id: baselineAnalysis.upload_id,
-          target_columns: selectedColumns,
-        }),
+  const uploadBaseline = async () => {
+    if (!baselineFile) {
+      setBaselineNotice({
+        type: 'error',
+        title: 'Upload failed',
+        lines: ['Please choose a .xlsx baseline file first.'],
       });
+      return;
+    }
+    if (!baselineFile.name.toLowerCase().endsWith('.xlsx')) {
+      setBaselineNotice({
+        type: 'error',
+        title: 'Upload failed',
+        lines: ['Only Microsoft Excel .xlsx files are supported.'],
+      });
+      return;
+    }
+
+    setUploadingBaseline(true);
+    setBaselineNotice(null);
+    setErrorMsg('');
+    const form = new FormData();
+    form.append('file', baselineFile);
+    try {
+      const hasAnalysis = Boolean(baselineAnalysis?.upload_id);
+      const res = hasAnalysis
+        ? await fetch(apiUrl('/api/admin/baselines/upload/confirm'), {
+            method: 'POST',
+            headers: authHeader(),
+            body: JSON.stringify({
+              upload_id: baselineAnalysis.upload_id,
+              target_columns: baselineColumns,
+            }),
+          })
+        : await fetch(apiUrl('/api/admin/baselines/upload'), {
+            method: 'POST',
+            headers: authOnlyHeader(),
+            body: form,
+          });
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
       if (!res.ok) {
-        setBaselineMsg(data.detail || 'Upload baseline failed');
+        setBaselineNotice({
+          type: 'error',
+          title: 'Upload failed',
+          lines: [friendlyBaselineError(data.detail, 'Upload baseline failed')],
+        });
         return;
       }
-      setBaselineMsg(`Upload complete: ${data.baseline_name} (${data.check_count} checks)`);
+      setBaselineNotice({
+        type: 'success',
+        title: 'Upload successful',
+        lines: [
+          `Baseline: ${data.baseline_name || data.baseline_id || 'Unknown baseline'}`,
+          `Baseline ID: ${data.baseline_id || '-'}`,
+          `Source file: ${data.source_file || baselineFile.name}`,
+          `Checks: ${data.check_count || 0}`,
+          `Generated files: ${(data.generated_files || []).map((f) => String(f).split(/[\\/]/).pop()).join(', ') || '-'}`,
+          'Agent update: agents will download the updated scanner package on their next scan job.',
+        ],
+      });
       setBaselineFile(null);
-      setBaselineAnalysis(null);
-      setSelectedColumns({});
+      resetBaselineAnalysis();
       await fetchBaselines();
     } catch (err) {
-      setBaselineMsg(`Upload baseline failed: ${err.message}`);
+      setBaselineNotice({
+        type: 'error',
+        title: 'Upload failed',
+        lines: [friendlyBaselineError(err.message, 'Upload baseline failed')],
+      });
     } finally {
       setUploadingBaseline(false);
     }
@@ -266,9 +370,15 @@ export default function AgentManagement() {
 
   const deleteBaseline = async (baseline) => {
     if (!baseline?.filename) return;
-    const label = baseline.display_name || baseline.version_id || baseline.filename;
-    if (!window.confirm(`Delete baseline "${label}"?`)) return;
-    setBaselineMsg('');
+    setBaselineDeleteTarget(baseline);
+  };
+
+  const confirmDeleteBaseline = async () => {
+    const baseline = baselineDeleteTarget;
+    if (!baseline?.filename) return;
+    const label = baselineLabel(baseline);
+    setDeletingBaseline(true);
+    setBaselineNotice(null);
     try {
       const res = await fetch(apiUrl(`/api/admin/baselines/${encodeURIComponent(baseline.filename)}`), {
         method: 'DELETE',
@@ -277,13 +387,32 @@ export default function AgentManagement() {
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
       if (!res.ok) {
-        setBaselineMsg(data.detail || 'Delete baseline failed');
+        setBaselineNotice({
+          type: 'error',
+          title: 'Delete failed',
+          lines: [friendlyBaselineError(data.detail, 'Delete baseline failed')],
+        });
         return;
       }
-      setBaselineMsg(`Deleted baseline: ${label}`);
+      setBaselineNotice({
+        type: 'success',
+        title: 'Baseline deleted',
+        lines: [
+          `Baseline: ${label}`,
+          `Removed files: ${(data.removed || [data.filename]).join(', ')}`,
+          'Agent update: agents will download the updated scanner package on their next scan job.',
+        ],
+      });
+      setBaselineDeleteTarget(null);
       await fetchBaselines();
     } catch (err) {
-      setBaselineMsg(`Delete baseline failed: ${err.message}`);
+      setBaselineNotice({
+        type: 'error',
+        title: 'Delete failed',
+        lines: [friendlyBaselineError(err.message, 'Delete baseline failed')],
+      });
+    } finally {
+      setDeletingBaseline(false);
     }
   };
 
@@ -339,7 +468,7 @@ export default function AgentManagement() {
       role: schedule.role || 'auto',
       frequency: schedule.frequency || 'daily',
       time: schedule.time || '09:00',
-      day_of_week: schedule.day_of_week ?? 0,
+      day_of_week: schedule.day_of_week || 0,
       enabled: !!schedule.enabled,
     });
   };
@@ -395,7 +524,7 @@ export default function AgentManagement() {
       setCopied(copyKey);
       window.setTimeout(() => setCopied(''), 1800);
     } catch (err) {
-      setErrorMsg(`Copy command ไม่สำเร็จ: ${err.message}`);
+      setErrorMsg(`Unable to copy command: ${err.message}`);
     }
   };
 
@@ -420,7 +549,7 @@ export default function AgentManagement() {
         <div className="pageHead agentPageHead">
           <div>
             <h1 className="pageTitle">Agent Management</h1>
-            <p className="pageDesc">จัดการ agent ที่ลงทะเบียนและคัดลอกคำสั่งติดตั้งสำหรับเครื่องปลายทาง</p>
+            <p className="pageDesc">Manage registered agents, schedules, install commands, and baseline uploads</p>
           </div>
           <button className="agentPrimaryBtn" onClick={() => copyCommand()}>
             {copied === 'new-agent' ? 'Copied' : 'Copy install command'}
@@ -567,7 +696,7 @@ export default function AgentManagement() {
                   <div className="agentStack">
                     <span className="agentStrong">{schedule.name}</span>
                     <span className="muted">
-                      {schedule.scan_type === 'agent' ? schedule.agent_id : schedule.subnet} · {schedule.frequency} · {schedule.version}
+                      {schedule.scan_type === 'agent' ? schedule.agent_id : schedule.subnet} ? {schedule.frequency} ? {schedule.version}
                     </span>
                     <span className="muted">Next run {formatDate(schedule.next_run)}</span>
                     {schedule.last_error && <span className="agentBaselineError">{schedule.last_error}</span>}
@@ -598,69 +727,74 @@ export default function AgentManagement() {
                   accept=".xlsx"
                   onChange={(e) => {
                     setBaselineFile(e.target.files?.[0] || null);
-                    setBaselineMsg('');
-                    setBaselineAnalysis(null);
-                    setSelectedColumns({});
+                    setBaselineNotice(null);
+                    resetBaselineAnalysis();
                   }}
                 />
                 <span>{baselineFile ? baselineFile.name : 'Choose Excel baseline'}</span>
               </label>
-              <button className="agentPrimaryBtn" onClick={uploadBaseline} disabled={uploadingBaseline}>
+              <button className="agentSecondaryBtn" onClick={analyzeBaseline} disabled={analyzingBaseline || uploadingBaseline || !baselineFile}>
+                {analyzingBaseline ? 'Analyzing...' : 'Analyze columns'}
+              </button>
+              <button className="agentPrimaryBtn" onClick={uploadBaseline} disabled={uploadingBaseline || !baselineFile}>
                 {uploadingBaseline ? 'Uploading...' : 'Upload baseline'}
               </button>
               <button className="agentSecondaryBtn" onClick={fetchBaselines} disabled={loadingBaselines}>
                 Refresh
               </button>
             </div>
-            {baselineMsg && <div className="baselineUploadMsg">{baselineMsg}</div>}
-            {baselineAnalysis && (
-              <div className="baselineColumnMapper">
-                <div className="agentCardHead compactHead">
-                  <h2>Review Columns</h2>
-                  <span className="muted">{baselineAnalysis.sheets?.length || 0} sheets</span>
-                </div>
-                {(baselineAnalysis.sheets || []).map((sheet) => (
-                  <div className="baselineSheetMap" key={sheet.sheet}>
-                    <div className="agentStack">
-                      <span className="agentStrong">{sheet.sheet}</span>
-                      <span className="muted">{sheet.sheet_type}</span>
-                    </div>
-                    <div className="baselineColumnChips">
-                      {(sheet.columns || []).map((column) => {
-                        const checked = (selectedColumns[sheet.sheet] || []).includes(column);
-                        return (
-                          <label className={`baselineColumnChip ${checked ? 'selected' : ''}`} key={column}>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={() => toggleBaselineColumn(sheet.sheet, column)}
-                            />
-                            {column}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
+            {baselineNotice && (
+              <div className={`baselineNotice ${baselineNotice.type || 'info'}`}>
+                <strong>{baselineNotice.title}</strong>
+                {(baselineNotice.lines || []).map((line) => (
+                  <span key={line}>{line}</span>
                 ))}
-                <div className="baselineMapperActions">
-                  <button className="agentPrimaryBtn" onClick={confirmBaselineUpload} disabled={uploadingBaseline}>
-                    {uploadingBaseline ? 'Saving...' : 'Save baseline'}
-                  </button>
-                  <button
-                    className="agentSecondaryBtn"
-                    onClick={() => {
-                      setBaselineAnalysis(null);
-                      setSelectedColumns({});
-                    }}
-                  >
-                    Cancel
-                  </button>
+              </div>
+            )}
+            {baselineAnalysis && (
+              <div className="baselineColumnPanel">
+                <div className="baselineColumnHead">
+                  <div>
+                    <strong>{baselineAnalysis.baseline_name || baselineAnalysis.baseline_id}</strong>
+                    <span>Choose target columns to scan. Leave detected columns selected for the default behavior.</span>
+                  </div>
+                  <code>{baselineAnalysis.filename}</code>
+                </div>
+                <div className="baselineSheetList">
+                  {(baselineAnalysis.sheets || []).map((sheet) => {
+                    const selected = baselineColumns[sheet.sheet] || [];
+                    return (
+                      <div className="baselineSheet" key={sheet.sheet}>
+                        <div className="baselineSheetTitle">
+                          <span>{sheet.sheet}</span>
+                          <em>{sheet.sheet_type}</em>
+                        </div>
+                        <div className="baselineColumnChoices">
+                          {(sheet.columns || []).map((column) => {
+                            const checked = selected.includes(column);
+                            const detected = (sheet.detected_target_columns || []).includes(column);
+                            return (
+                              <label className={`baselineColumnChoice ${checked ? 'selected' : ''}`} key={`${sheet.sheet}-${column}`}>
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => toggleBaselineColumn(sheet.sheet, column)}
+                                />
+                                <span>{column}</span>
+                                {detected && <small>detected</small>}
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             )}
             <div className="baselineList">
-              {loadingBaselines && <div className="baselineEmpty">กำลังโหลด baseline...</div>}
-              {!loadingBaselines && baselines.length === 0 && <div className="baselineEmpty">ยังไม่มี baseline</div>}
+              {loadingBaselines && <div className="baselineEmpty">Loading baselines...</div>}
+              {!loadingBaselines && baselines.length === 0 && <div className="baselineEmpty">No baselines found</div>}
               {!loadingBaselines && baselines.map((b) => (
                 <div className="baselineItem" key={`${b.filename}-${b.version_id}`}>
                   <div className="agentStack">
@@ -694,13 +828,13 @@ export default function AgentManagement() {
           {loading && (
             <div className="agentEmpty">
               <span className="spin" />
-              กำลังโหลด agents...
+              Loading agents...
             </div>
           )}
 
           {!loading && agents.length === 0 && (
             <div className="agentEmpty">
-              <p>ยังไม่มี agent ที่ลงทะเบียน</p>
+              <p>No registered agents found</p>
               <button className="agentPrimaryBtn" onClick={() => copyCommand()}>
                 {copied === 'new-agent' ? 'Copied' : 'Copy install command'}
               </button>
@@ -762,7 +896,7 @@ export default function AgentManagement() {
                           <span className="agentStrong">{agent.os_name || '-'}</span>
                           {(agent.os_release || agent.os_build) && (
                             <span className="muted">
-                              {[agent.os_release, agent.os_build && `build ${agent.os_build}`].filter(Boolean).join(' · ')}
+                              {[agent.os_release, agent.os_build && `build ${agent.os_build}`].filter(Boolean).join(' ? ')}
                             </span>
                           )}
                         </div>
@@ -807,6 +941,40 @@ export default function AgentManagement() {
           )}
         </section>
       </main>
+
+      {baselineDeleteTarget && (
+        <div className="baselineModalBackdrop" role="presentation">
+          <div className="baselineModal" role="dialog" aria-modal="true" aria-labelledby="delete-baseline-title">
+            <h2 id="delete-baseline-title">Delete baseline?</h2>
+            <p>
+              Delete "{baselineLabel(baselineDeleteTarget)}" from the active baseline library.
+            </p>
+            <div className="baselineModalFacts">
+              <span>File: {baselineDeleteTarget.filename}</span>
+              <span>Checks: {baselineDeleteTarget.check_count || 0}</span>
+              <span>Agents will download the updated scanner package on their next scan job.</span>
+            </div>
+            <div className="baselineModalActions">
+              <button
+                className="agentSecondaryBtn"
+                onClick={() => setBaselineDeleteTarget(null)}
+                disabled={deletingBaseline}
+              >
+                Cancel
+              </button>
+              <button
+                className="baselineDeleteBtn"
+                onClick={confirmDeleteBaseline}
+                disabled={deletingBaseline}
+              >
+                {deletingBaseline ? 'Deleting...' : 'Delete baseline'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
+
+

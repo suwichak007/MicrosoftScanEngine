@@ -40,6 +40,8 @@ def enrich_scan_details(
     findings: list[dict[str, Any]] = []
 
     for check_id, res in (details or {}).items():
+        if str(check_id).startswith("_"):
+            continue
         # รองรับทั้ง v3 (dict) และ v2 เก่า (string) เพื่อ backward compat
         if isinstance(res, str):
             findings.append(_from_legacy_string(check_id, res))

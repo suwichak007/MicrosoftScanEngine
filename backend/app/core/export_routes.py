@@ -103,6 +103,8 @@ def _parse_details(details: dict) -> dict:
     manual_list = []
 
     for key, value in (details or {}).items():
+        if str(key).startswith("_"):
+            continue
         val_str = str(value)
         is_dict = isinstance(value, dict)
         section_match = key[1:key.index("]")] if key.startswith("[") and "]" in key else "General"
@@ -165,6 +167,13 @@ def _parse_details(details: dict) -> dict:
     fail_list.sort(key=lambda x: sev_order.get(x["severity"], 9))
 
     return {"pass": pass_list, "fail": fail_list, "manual": manual_list}
+
+
+def _score_breakdown(details: dict | None) -> dict | None:
+    if not isinstance(details, dict):
+        return None
+    value = details.get("_score_breakdown")
+    return value if isinstance(value, dict) and value.get("model") == "nist_cis_informed_v1" else None
 
 
 # ---------------------------------------------------------------------------
@@ -303,7 +312,7 @@ def _build_pdf(scan: ScanResult) -> bytes:
 
     summary_data = [
         [
-            Paragraph(f'<font size="28" color="{score_color.hexval()}"><b>{score}%</b></font><br/><font size="8" color="#6b7280">Health Score</font>', style_cell),
+            Paragraph(f'<font size="28" color="{score_color.hexval()}"><b>{score}%</b></font><br/><font size="8" color="#6b7280">NIST/CIS-informed Compliance Score</font>', style_cell),
             Paragraph(f'<font size="20" color="{COLOR_PASS.hexval()}"><b>{n_pass}</b></font><br/><font size="8" color="#6b7280">Pass</font>', style_cell),
             Paragraph(f'<font size="20" color="{COLOR_CRITICAL.hexval()}"><b>{n_fail}</b></font><br/><font size="8" color="#6b7280">Fail</font>', style_cell),
             Paragraph(f'<font size="20" color="{COLOR_MEDIUM.hexval()}"><b>{n_manual}</b></font><br/><font size="8" color="#6b7280">Manual</font>', style_cell),
@@ -322,6 +331,7 @@ def _build_pdf(scan: ScanResult) -> bytes:
         ("ROUNDEDCORNERS", [4]),
     ]))
     story.append(summary_table)
+    story.append(Paragraph("Score model: weighted control compliance by severity; manual/N/A checks are excluded from the denominator.", style_small))
     story.append(Spacer(1, 6))
 
     # severity breakdown
@@ -487,7 +497,8 @@ def _build_csv(scan: ScanResult) -> bytes:
     writer.writerow(["Target",   scan.target_name or ""])
     writer.writerow(["Hostname", scan.hostname    or ""])
     writer.writerow(["Version",  scan.version     or ""])
-    writer.writerow(["Score",    f"{scan.score}%"])
+    writer.writerow(["NIST/CIS-informed Compliance Score", f"{scan.score}%"])
+    writer.writerow(["Score Model", "Weighted control compliance by severity; manual/N/A checks are excluded"])
     writer.writerow(["Date",     scan_date])
     writer.writerow([])
 
@@ -550,9 +561,10 @@ def _build_xlsx(scan: ScanResult) -> bytes:
         ("Target", scan.target_name or ""),
         ("Hostname", scan.hostname or ""),
         ("Version", scan.version or ""),
-        ("Score", f"{scan.score or 0}%"),
+        ("NIST/CIS-informed Compliance Score", f"{scan.score or 0}%"),
+        ("Score Model", "Weighted control compliance by severity; manual/N/A checks are excluded"),
         ("Date", scan_date),
-        ("Total Checks", len(scan.details or {})),
+        ("Total Checks", len(all_items)),
         ("Pass", len(parsed["pass"])),
         ("Fail", len(parsed["fail"])),
         ("Manual", len(parsed["manual"])),

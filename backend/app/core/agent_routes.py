@@ -19,29 +19,67 @@ from app.models.agent_job import AgentJob
 router = APIRouter(prefix="/agent", tags=["agent"])
 
 
-def _load_agent_install_token() -> str:
-    token = os.environ.get("AGENT_INSTALL_TOKEN", "")
-    if token and token != "change-me":
-        return token
-
-    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "..", ".env"))
-    if os.path.exists(env_path):
-        with open(env_path, "r", encoding="utf-8-sig") as env_file:
-            for raw_line in env_file:
-                line = raw_line.strip()
-                if not line or line.startswith("#") or "=" not in line:
-                    continue
-                key, value = line.split("=", 1)
-                if key.strip() == "AGENT_INSTALL_TOKEN":
-                    return value.strip().strip('"').strip("'")
-    return "change-me"
-
-
-AGENT_INSTALL_TOKEN = _load_agent_install_token()
 AGENT_JOB_RUNNING_TIMEOUT_SECONDS = int(os.environ.get("AGENT_JOB_RUNNING_TIMEOUT_SECONDS", "900"))
 AGENT_JOB_MAX_ATTEMPTS = int(os.environ.get("AGENT_JOB_MAX_ATTEMPTS", "2"))
 ROOT_DIR = Path(__file__).resolve().parents[3]
 SCANNER_SOURCE_DIR = Path(__file__).resolve().parent / "scan" / "scanner"
+
+
+def _score_breakdown_from_details(details: dict | None) -> dict | None:
+    if not isinstance(details, dict):
+        return None
+    breakdown = details.get("_score_breakdown")
+    if isinstance(breakdown, dict) and breakdown.get("model") == "nist_cis_informed_v1":
+        return breakdown
+    return None
+
+
+def _calculate_compliance_score(details: dict | None) -> tuple[int, dict | None]:
+    if not isinstance(details, dict):
+        return 0, None
+    existing = _score_breakdown_from_details(details)
+    if existing:
+        assessed = int(existing.get("assessed_weight", 0) or 0)
+        passed = int(existing.get("passed_weight", 0) or 0)
+        return (int((passed / assessed) * 100) if assessed else 0), existing
+
+    weights = {"critical": 10, "high": 7, "medium": 4, "low": 1}
+    passed_weight = assessed_weight = excluded_manual = 0
+    severity_totals = {key: 0 for key in weights}
+    severity_failed = {key: 0 for key in weights}
+    for key, result in details.items():
+        if str(key).startswith("_") or not isinstance(result, dict):
+            continue
+        status = str(result.get("status", "")).lower()
+        if status.startswith("manual") or "manual" in status or status in {"n/a", "na", "skipped", "__skip__"}:
+            excluded_manual += 1
+            continue
+        severity = str(result.get("severity", "low")).lower()
+        severity = severity if severity in weights else "low"
+        weight = weights[severity]
+        assessed_weight += weight
+        severity_totals[severity] += 1
+        if status == "pass":
+            passed_weight += weight
+        elif status.startswith("fail"):
+            severity_failed[severity] += 1
+
+    breakdown = {
+        "model": "nist_cis_informed_v1",
+        "passed_weight": passed_weight,
+        "assessed_weight": assessed_weight,
+        "excluded_manual_count": excluded_manual,
+        "severity_weights": weights,
+        "severity_totals": severity_totals,
+        "severity_failed": severity_failed,
+    }
+    return int((passed_weight / assessed_weight) * 100) if assessed_weight else 0, breakdown
+
+
+def _items_scanned(details: dict | None) -> int:
+    if not isinstance(details, dict):
+        return 0
+    return sum(1 for key in details if not str(key).startswith("_"))
 
 
 def _baseline_source_dirs() -> list[Path]:
@@ -329,13 +367,19 @@ def job_result(
 
         findings        = enrich_scan_details(body.details, version=version, role=role)
         finding_summary = summarize_findings(findings)
+        compliance_score, score_breakdown = _calculate_compliance_score(body.details)
+        final_score = compliance_score if score_breakdown else body.score
+        stored_details = dict(body.details or {})
+        if score_breakdown and "_score_breakdown" not in stored_details:
+            stored_details["_score_breakdown"] = score_breakdown
 
         result_payload = {
-            "score":         body.score,
-            "details":       body.details,
+            "score":         final_score,
+            "details":       stored_details,
             "findings":      findings,
             "summary":       finding_summary,
-            "items_scanned": len(body.details),
+            "items_scanned": _items_scanned(stored_details),
+            "score_breakdown": score_breakdown,
             "version":       version,
             "baseline_match_type": baseline_match_type,
             "baseline_warning": baseline_warning,
@@ -356,8 +400,8 @@ def job_result(
                 agent.last_error_at = None
             scan_record = ScanResult(
                 target_name = f"{hostname} ({version})" if version else hostname,
-                score       = body.score,
-                details     = body.details,
+                score       = final_score,
+                details     = stored_details,
                 scan_date   = datetime.datetime.now(),
                 hostname    = hostname,
                 version     = version,
@@ -387,10 +431,7 @@ def job_result(
 
 # ── Admin: ลงทะเบียน agent ─────────────────────────────────────────
 @router.post("/register")
-def register_agent(hostname: str, install_token: str, db: Session = Depends(get_db)):
-    if install_token != AGENT_INSTALL_TOKEN:
-        raise HTTPException(status_code=403, detail="Invalid install token")
-
+def register_agent(hostname: str, db: Session = Depends(get_db)):
     agent_id = f"agent-{hostname}"
     
     # ถ้ามีอยู่แล้ว ให้ออก token ใหม่

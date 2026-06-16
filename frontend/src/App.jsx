@@ -23,8 +23,7 @@ function App() {
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
 
-        {/* ไม่ต้อง protect — user ยังไม่ได้ login ก็เข้าได้ */}
-        <Route path="/change-password" element={<ChangePassword />} />
+        <Route path="/change-password" element={protectedPage(<ChangePassword />)} />
         <Route path="/register" element={<Register />} />
 
         <Route path="/home"      element={protectedPage(<Home />)} />

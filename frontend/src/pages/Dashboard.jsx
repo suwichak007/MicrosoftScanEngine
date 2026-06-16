@@ -6,7 +6,7 @@ function Dashboard() {
     const [stats, setStats] = useState(null);
     const [scanning, setScanning] = useState(false);
 
-    // ฟังก์ชันดึงข้อมูลจาก Backend
+    // Fetch data from backend
     const fetchStats = useCallback(async () => {
         try {
             const res = await fetch(apiUrl('/api/dashboard/stats'));
@@ -42,7 +42,7 @@ function Dashboard() {
         fetchStats();
     }, [fetchStats]);
 
-    // ฟังก์ชันสั่ง Run Scan ใหม่
+    // Trigger a new scan
     const handleStartScan = async () => {
         setScanning(true);
         try {
@@ -70,7 +70,7 @@ function Dashboard() {
     }
 
     const chartData = [
-        { name: 'Security Score', value: stats.latest_score },
+        { name: 'Compliance Score', value: stats.latest_score },
         { name: 'Risk', value: 100 - stats.latest_score }
     ];
     const COLORS = ['#10b981', '#ef4444']; // Green and Red
@@ -98,7 +98,7 @@ function Dashboard() {
                 {/* Left: Overall Score Chart */}
                 <div className="col-lg-4">
                     <div className="card border-0 shadow-sm p-4 text-center h-100">
-                        <h5 className="text-secondary fw-bold mb-3">Overall Health Score</h5>
+                        <h5 className="text-secondary fw-bold mb-3">Overall Compliance Score</h5>
                         <div style={{ width: '100%', height: 250 }}>
                             <ResponsiveContainer>
                                 <PieChart>
@@ -139,7 +139,7 @@ function Dashboard() {
                             <div className="list-group list-group-flush">
                                 {stats.details && Object.keys(stats.details).length > 0 ? (
                                     Object.entries(stats.details).map(([policy, status]) => {
-                                        // ตรวจสอบสถานะเพื่อกำหนดสี Badge
+                                        // Pick badge color from status
                                         const statusStr = String(status).toLowerCase();
                                         const isPass = statusStr.includes('pass');
                                         const isManual = statusStr.includes('manual');
@@ -177,3 +177,4 @@ function Dashboard() {
 }
 
 export default Dashboard;
+

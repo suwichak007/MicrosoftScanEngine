@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { clearAuth } from '../auth';
-import { API_BASE, apiUrl } from '../config/api';
+import { clearAuth, useCurrentUser } from '../auth';
+import { apiUrl } from '../config/api';
 import ProfileMenu from './ProfileMenu';
 
-// ─── Inline styles (ใช้ style เดียวกับ History.jsx) ──────────────────────────
+// Inline styles
 const S = {
   root: { display: 'flex', minHeight: '100vh', background: 'var(--bg, #f5f5f0)' },
 
@@ -100,6 +100,12 @@ const S = {
     background: 'rgba(200,129,58,0.12)', color: '#c8813a',
     border: '1px solid rgba(200,129,58,0.3)',
   },
+  badgeOwner: {
+    display: 'inline-flex', alignItems: 'center', gap: '4px',
+    padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 700,
+    background: 'rgba(26,26,46,0.10)', color: '#1a1a2e',
+    border: '1px solid rgba(26,26,46,0.25)',
+  },
   badgeViewer: {
     display: 'inline-flex', alignItems: 'center', gap: '4px',
     padding: '2px 10px', borderRadius: '20px', fontSize: '11px', fontWeight: 600,
@@ -141,6 +147,23 @@ const S = {
     border: '1px solid #e5e7eb', outline: 'none', marginBottom: '16px',
     boxSizing: 'border-box',
   },
+  roleOptionGrid: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', margin: '16px 0' },
+  roleOption: {
+    padding: '12px', borderRadius: '10px', border: '1px solid #e5e7eb',
+    background: '#fafaf8', cursor: 'pointer', textAlign: 'left',
+  },
+  roleOptionActive: {
+    border: '1px solid rgba(200,129,58,0.55)',
+    background: 'rgba(200,129,58,0.10)',
+    boxShadow: '0 0 0 3px rgba(200,129,58,0.08)',
+  },
+  roleOptionTitle: { display: 'block', fontSize: '13px', fontWeight: 700, color: '#1a1a2e', marginBottom: '4px' },
+  roleOptionDesc: { display: 'block', fontSize: '11px', color: '#6b7280', lineHeight: 1.35 },
+  warningBox: {
+    padding: '10px 12px', borderRadius: '10px', marginBottom: '16px',
+    background: 'rgba(200,129,58,0.10)', color: '#92400e',
+    border: '1px solid rgba(200,129,58,0.25)', fontSize: '12px', lineHeight: 1.45,
+  },
   modalActions: { display: 'flex', gap: '8px', justifyContent: 'flex-end' },
   btnCancel: {
     padding: '8px 16px', borderRadius: '8px', fontSize: '13px',
@@ -166,14 +189,14 @@ const S = {
   },
 };
 
-// ─── Modal Components ─────────────────────────────────────────────────────────
+//  Modal Components 
 
 function ResetPasswordModal({ user, onConfirm, onClose }) {
   const [pw, setPw]   = useState('');
   const [err, setErr] = useState('');
 
   const handleSubmit = () => {
-    if (pw.length < 6) { setErr('Password ต้องมีอย่างน้อย 6 ตัวอักษร'); return; }
+    if (pw.length < 6) { setErr('Password must be at least 6 characters'); return; }
     onConfirm(pw);
   };
 
@@ -181,7 +204,7 @@ function ResetPasswordModal({ user, onConfirm, onClose }) {
     <div style={S.overlay} onClick={onClose}>
       <div style={S.modal} onClick={(e) => e.stopPropagation()}>
         <div style={S.modalTitle}>Reset Password</div>
-        <div style={S.modalDesc}>ตั้ง password ใหม่สำหรับ <b>{user.username}</b></div>
+        <div style={S.modalDesc}>Set a new password for <b>{user.username}</b></div>
         {err && <div style={{ color: '#dc2626', fontSize: '12px', marginBottom: '8px' }}>{err}</div>}
         <input
           style={S.modalInput}
@@ -204,24 +227,113 @@ function DeleteModal({ user, onConfirm, onClose }) {
   return (
     <div style={S.overlay} onClick={onClose}>
       <div style={S.modal} onClick={(e) => e.stopPropagation()}>
-        <div style={S.modalTitle}>ลบ User</div>
+        <div style={S.modalTitle}>Delete User</div>
         <div style={S.modalDesc}>
-          ต้องการลบ <b>{user.username}</b> ออกจากระบบ?<br />
-          การกระทำนี้ไม่สามารถย้อนกลับได้
+          Delete <b>{user.username}</b> from the system?<br />
+          This action cannot be undone.
         </div>
         <div style={S.modalActions}>
           <button style={S.btnCancel} onClick={onClose}>Cancel</button>
-          <button style={S.btnConfirmDanger} onClick={onConfirm}>ลบ</button>
+          <button style={S.btnConfirmDanger} onClick={onConfirm}>Delete</button>
         </div>
       </div>
     </div>
   );
 }
 
-// ─── Main Component ───────────────────────────────────────────────────────────
+//  Main Component 
+
+function ChangeRoleModal({ user, currentUser, onConfirm, onClose, saving }) {
+  const [selectedRole, setSelectedRole] = useState(user.role || 'viewer');
+  const [confirming, setConfirming] = useState(false);
+  const changed = selectedRole !== user.role;
+  const roleOptions = [
+    { role: 'viewer', title: 'Viewer', desc: 'Can scan and view reports within allowed access.' },
+    { role: 'admin', title: 'Admin', desc: 'Can manage users, agents, baselines, and schedules.' },
+  ];
+
+  if (confirming) {
+    return (
+      <div style={S.overlay} onClick={onClose}>
+        <div style={{ ...S.modal, width: '440px' }} onClick={(e) => e.stopPropagation()}>
+          <div style={S.modalTitle}>Confirm role change</div>
+          <div style={S.modalDesc}>
+            You are about to change <b>{user.username}</b> from <b>{user.role}</b> to <b>{selectedRole}</b>.
+          </div>
+
+          <div style={S.warningBox}>
+            Role changes affect access to scanner data and administrative actions. Confirm only if this change is intentional.
+          </div>
+
+          <div style={S.modalActions}>
+            <button style={S.btnCancel} onClick={() => setConfirming(false)} disabled={saving}>Back</button>
+            <button style={S.btnCancel} onClick={onClose} disabled={saving}>Cancel</button>
+            <button
+              style={selectedRole === 'viewer' ? S.btnConfirmDanger : S.btnConfirm}
+              onClick={() => onConfirm(selectedRole)}
+              disabled={saving}
+            >
+              {saving ? 'Saving...' : 'Confirm change'}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={S.overlay} onClick={onClose}>
+      <div style={{ ...S.modal, width: '440px' }} onClick={(e) => e.stopPropagation()}>
+        <div style={S.modalTitle}>Change user role</div>
+        <div style={S.modalDesc}>
+          Update permissions for <b>{user.username}</b>. Admin users can manage users, agents, baselines, and schedules.
+        </div>
+
+        <div style={S.roleOptionGrid}>
+          {roleOptions.map((option) => (
+            <button
+              key={option.role}
+              type="button"
+              style={{
+                ...S.roleOption,
+                ...(selectedRole === option.role ? S.roleOptionActive : {}),
+              }}
+              onClick={() => setSelectedRole(option.role)}
+            >
+              <span style={S.roleOptionTitle}>{option.title}</span>
+              <span style={S.roleOptionDesc}>{option.desc}</span>
+            </button>
+          ))}
+        </div>
+
+        {selectedRole !== 'viewer' && selectedRole !== user.role && (
+          <div style={S.warningBox}>
+            This grants elevated access. Confirm that this user is allowed to administer scanner data and agent operations.
+          </div>
+        )}
+
+        <div style={S.modalActions}>
+          <button style={S.btnCancel} onClick={onClose} disabled={saving}>Cancel</button>
+          <button
+            style={{
+              ...S.btnConfirm,
+              opacity: !changed || saving ? 0.55 : 1,
+              cursor: !changed || saving ? 'not-allowed' : 'pointer',
+            }}
+            onClick={() => changed && setConfirming(true)}
+            disabled={!changed || saving}
+          >
+            Review change
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
 
 export default function AdminUsers() {
   const navigate = useNavigate();
+  const { user: currentUser } = useCurrentUser();
 
   const [users,    setUsers]    = useState([]);
   const [loading,  setLoading]  = useState(true);
@@ -230,28 +342,29 @@ export default function AdminUsers() {
   // Modal state
   const [resetModal,  setResetModal]  = useState(null); // user object
   const [deleteModal, setDeleteModal] = useState(null); // user object
+  const [roleModal,   setRoleModal]   = useState(null); // user object
   const [saving,      setSaving]      = useState(false);
 
   const token      = () => localStorage.getItem('token') || '';
-  const currentUsername = localStorage.getItem('username') || '';
+  const currentUsername = currentUser?.username || '';
   const authHeader = () => ({
     'Content-Type':  'application/json',
     'Authorization': `Bearer ${token()}`,
   });
 
-  // ─── Fetch users ──────────────────────────────────────────────────
+  //  Fetch users 
   const fetchUsers = useCallback(async () => {
     setLoading(true);
     setErrorMsg('');
     try {
       const res = await fetch(apiUrl('/api/admin/users'), { headers: authHeader() });
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
-      if (res.status === 403) { setErrorMsg('ต้องการสิทธิ์ Admin'); setLoading(false); return; }
+      if (res.status === 403) { setErrorMsg('Admin permission required'); setLoading(false); return; }
       const data = await res.json();
       if (res.ok) setUsers(data);
-      else setErrorMsg(data.detail || 'โหลดข้อมูลไม่สำเร็จ');
+      else setErrorMsg(data.detail || 'Unable to load users');
     } catch (err) {
-      setErrorMsg(`เกิดข้อผิดพลาด: ${err.message}`);
+      setErrorMsg(`Error: ${err.message}`);
     } finally {
       setLoading(false);
     }
@@ -259,30 +372,31 @@ export default function AdminUsers() {
 
   useEffect(() => { fetchUsers(); }, [fetchUsers]);
 
-  // ─── Toggle role ──────────────────────────────────────────────────
-  const handleToggleRole = async (user) => {
-    const newRole = user.role === 'admin' ? 'viewer' : 'admin';
+  //  Toggle role 
+  const handleChangeRole = async (newRole) => {
+    if (!roleModal || newRole === roleModal.role) return;
     setSaving(true);
     try {
-      const res = await fetch(apiUrl(`/api/admin/users/${user.id}/role`), {
+      const res = await fetch(apiUrl(`/api/admin/users/${roleModal.id}/role`), {
         method:  'PATCH',
         headers: authHeader(),
         body:    JSON.stringify({ role: newRole }),
       });
       const data = await res.json();
       if (res.ok) {
-        setUsers((prev) => prev.map((u) => u.id === user.id ? { ...u, role: newRole } : u));
+        setUsers((prev) => prev.map((u) => u.id === roleModal.id ? { ...u, role: newRole } : u));
+        setRoleModal(null);
       } else {
-        setErrorMsg(data.detail || 'เปลี่ยน role ไม่สำเร็จ');
+        setErrorMsg(data.detail || 'Unable to change role');
       }
     } catch (err) {
-      setErrorMsg(`เกิดข้อผิดพลาด: ${err.message}`);
+      setErrorMsg(`Error: ${err.message}`);
     } finally {
       setSaving(false);
     }
   };
 
-  // ─── Reset password ───────────────────────────────────────────────
+  //  Reset password 
   const handleResetPassword = async (newPassword) => {
     if (!resetModal) return;
     setSaving(true);
@@ -296,16 +410,16 @@ export default function AdminUsers() {
       if (res.ok) {
         setResetModal(null);
       } else {
-        setErrorMsg(data.detail || 'Reset password ไม่สำเร็จ');
+        setErrorMsg(data.detail || 'Unable to reset password');
       }
     } catch (err) {
-      setErrorMsg(`เกิดข้อผิดพลาด: ${err.message}`);
+      setErrorMsg(`Error: ${err.message}`);
     } finally {
       setSaving(false);
     }
   };
 
-  // ─── Delete user ──────────────────────────────────────────────────
+  //  Delete user 
   const handleDelete = async () => {
     if (!deleteModal) return;
     setSaving(true);
@@ -319,18 +433,19 @@ export default function AdminUsers() {
         setUsers((prev) => prev.filter((u) => u.id !== deleteModal.id));
         setDeleteModal(null);
       } else {
-        setErrorMsg(data.detail || 'ลบ user ไม่สำเร็จ');
+        setErrorMsg(data.detail || 'Unable to delete user');
       }
     } catch (err) {
-      setErrorMsg(`เกิดข้อผิดพลาด: ${err.message}`);
+      setErrorMsg(`Error: ${err.message}`);
     } finally {
       setSaving(false);
     }
   };
 
-  // ─── Stats ────────────────────────────────────────────────────────
+  //  Stats 
   const totalUsers  = users.length;
   const adminCount  = users.filter((u) => u.role === 'admin').length;
+  const ownerCount  = users.filter((u) => u.role === 'owner').length;
   const viewerCount = users.filter((u) => u.role === 'viewer').length;
 
   return (
@@ -341,7 +456,7 @@ export default function AdminUsers() {
       `}</style>
 
       <div style={S.root}>
-        {/* ── Sidebar ── */}
+        {/*  Sidebar  */}
         <aside style={S.sidebar}>
           <div style={S.sideTop}>
             <div style={S.logo}>
@@ -356,7 +471,6 @@ export default function AdminUsers() {
               {[
                 { label: 'Home',    path: '/home' },
                 { label: 'History', path: '/history' },
-                { label: 'Guide',   path: '/guide' },
                 { label: 'Agents',  path: '/admin/agents' },
                 { label: 'Users',   path: '/admin/users', active: true },
               ].map((item) => (
@@ -379,7 +493,7 @@ export default function AdminUsers() {
           </button>
         </aside>
 
-        {/* ── Main ── */}
+        {/*  Main  */}
         <main style={S.main}>
           {/* Topbar */}
           <header style={S.topbar}>
@@ -394,7 +508,7 @@ export default function AdminUsers() {
           {/* Page head */}
           <div style={S.pageHead}>
             <h1 style={S.pageTitle}>User Management</h1>
-            <p style={S.pageDesc}>จัดการผู้ใช้งานในระบบ</p>
+            <p style={S.pageDesc}>Manage system user access and roles</p>
           </div>
 
           <div style={S.content}>
@@ -411,7 +525,8 @@ export default function AdminUsers() {
             {/* Stats */}
             <div style={S.statsRow}>
               {[
-                { num: totalUsers,  label: 'Users ทั้งหมด' },
+                { num: totalUsers,  label: 'Total users' },
+                { num: ownerCount,  label: 'Owner' },
                 { num: adminCount,  label: 'Admin' },
                 { num: viewerCount, label: 'Viewer' },
               ].map((s) => (
@@ -425,16 +540,16 @@ export default function AdminUsers() {
             {/* Table */}
             <div style={S.card}>
               <div style={S.cardHead}>
-                <h2 style={S.cardTitle}>รายชื่อผู้ใช้งาน</h2>
+                <h2 style={S.cardTitle}>User list</h2>
                 <span style={{ fontSize: '12px', color: '#9ca3af' }}>{totalUsers} users</span>
               </div>
 
               {loading ? (
                 <div style={S.empty}>
-                  <span style={S.spin} /> กำลังโหลด...
+                  <span style={S.spin} /> Loading...
                 </div>
               ) : users.length === 0 ? (
-                <div style={S.empty}>ไม่พบผู้ใช้งาน</div>
+                <div style={S.empty}>No users found</div>
               ) : (
                 <table style={S.table}>
                   <thead>
@@ -449,6 +564,11 @@ export default function AdminUsers() {
                   <tbody>
                     {users.map((user) => {
                       const isSelf = user.username === currentUsername;
+                      const isOwnerRow = user.role === 'owner';
+                      const canManageRole = !isSelf && (
+                        currentUser?.role === 'owner' ||
+                        !['admin', 'owner'].includes(user.role)
+                      );
                       return (
                         <tr key={user.id}>
                           <td style={{ ...S.td, color: '#9ca3af', fontFamily: 'monospace' }}>
@@ -461,13 +581,13 @@ export default function AdminUsers() {
                                 marginLeft: '8px', fontSize: '10px', color: '#9ca3af',
                                 background: '#f3f4f6', padding: '1px 6px', borderRadius: '4px',
                               }}>
-                                คุณ
+                                You
                               </span>
                             )}
                           </td>
                           <td style={S.td}>
-                            <span style={user.role === 'admin' ? S.badgeAdmin : S.badgeViewer}>
-                              {user.role === 'admin' ? '★ Admin' : '● Viewer'}
+                            <span style={user.role === 'owner' ? S.badgeOwner : user.role === 'admin' ? S.badgeAdmin : S.badgeViewer}>
+                              {user.role === 'owner' ? ' Owner' : user.role === 'admin' ? ' Admin' : ' Viewer'}
                             </span>
                           </td>
                           <td style={S.td}>
@@ -475,19 +595,24 @@ export default function AdminUsers() {
                               fontSize: '11px', fontWeight: 500,
                               color: user.is_active ? '#16a34a' : '#dc2626',
                             }}>
-                              {user.is_active ? '● Active' : '○ Inactive'}
+                              {user.is_active ? ' Active' : ' Inactive'}
                             </span>
                           </td>
                           <td style={{ ...S.td, textAlign: 'center' }}>
+                            {isOwnerRow ? (
+                              <span style={{ fontSize: '12px', color: '#9ca3af', fontWeight: 600 }}>
+                                Protected owner
+                              </span>
+                            ) : (
                             <div style={{ ...S.actionRow, justifyContent: 'center' }}>
-                              {/* Toggle Role */}
+                              {/* Change Role */}
                               <button
                                 style={{ ...S.btnSm, ...S.btnRole }}
-                                onClick={() => handleToggleRole(user)}
-                                disabled={saving || isSelf}
-                                title={isSelf ? 'ไม่สามารถเปลี่ยน role ตัวเองได้' : `เปลี่ยนเป็น ${user.role === 'admin' ? 'Viewer' : 'Admin'}`}
+                                onClick={() => setRoleModal(user)}
+                                disabled={saving || !canManageRole}
+                                title={isSelf ? 'You cannot change your own role' : !canManageRole ? 'Only owner can manage admin or owner roles' : 'Change role'}
                               >
-                                {user.role === 'admin' ? '→ Viewer' : '→ Admin'}
+                                Change role
                               </button>
 
                               {/* Reset Password */}
@@ -504,11 +629,12 @@ export default function AdminUsers() {
                                 style={{ ...S.btnSm, ...S.btnDelete }}
                                 onClick={() => setDeleteModal(user)}
                                 disabled={saving || isSelf}
-                                title={isSelf ? 'ไม่สามารถลบตัวเองได้' : 'ลบ user'}
+                                title={isSelf ? 'You cannot delete yourself' : 'Delete user'}
                               >
-                                ลบ
+                                Delete
                               </button>
                             </div>
+                            )}
                           </td>
                         </tr>
                       );
@@ -521,12 +647,21 @@ export default function AdminUsers() {
         </main>
       </div>
 
-      {/* ── Modals ── */}
+      {/*  Modals  */}
       {resetModal && (
         <ResetPasswordModal
           user={resetModal}
           onConfirm={handleResetPassword}
           onClose={() => setResetModal(null)}
+        />
+      )}
+      {roleModal && (
+        <ChangeRoleModal
+          user={roleModal}
+          currentUser={currentUser}
+          onConfirm={handleChangeRole}
+          onClose={() => setRoleModal(null)}
+          saving={saving}
         />
       )}
       {deleteModal && (
@@ -539,3 +674,5 @@ export default function AdminUsers() {
     </>
   );
 }
+
+

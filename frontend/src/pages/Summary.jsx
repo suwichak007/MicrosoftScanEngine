@@ -2,11 +2,11 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ExportButton from './ExportButton';
 import './Summary.css';
-import { authHeaders, clearAuth } from '../auth';
+import { authHeaders, clearAuth, useIsAdmin } from '../auth';
 import { apiUrl } from '../config/api';
 import ProfileMenu from './ProfileMenu';
 
-// ─── Severity helpers ─────────────────────────────────────────────────────────
+//  Severity helpers 
 const CRITICAL_KEYWORDS = ['remote desktop','lsa protection','credential','ntlm','kerberos','bitlocker'];
 const HIGH_KEYWORDS = [
   'network access','network security','user rights','privilege','logon',
@@ -43,17 +43,19 @@ const SEV_CONFIG = {
   low:      { label: 'Low',      color: 'var(--sev-low)',      bg: 'var(--sev-low-bg)',      bd: 'var(--sev-low-bd)' },
 };
 
-// ─── LLM Phase config ─────────────────────────────────────────────────────────
+//  LLM Phase config 
 const PHASE_INFO = {
-  loading_model: { icon: '⚙️', label: 'โหลด Model',          color: 'var(--ink-lt)' },
-  generating:    { icon: '🧠', label: 'LLM กำลังวิเคราะห์',  color: 'var(--amber)' },
-  parsing:       { icon: '🔧', label: 'แปลงผลลัพธ์',          color: 'var(--sev-medium)' },
-  done:          { icon: '✅', label: 'เสร็จสิ้น',             color: 'var(--green)' },
-  error:         { icon: '❌', label: 'เกิดข้อผิดพลาด',        color: 'var(--red)' },
+  loading_model: { icon: '', label: 'Loading model', color: 'var(--ink-lt)' },
+  generating:    { icon: '', label: 'Generating analysis', color: 'var(--amber)' },
+  parsing:       { icon: '', label: 'Parsing response', color: 'var(--sev-medium)' },
+  done:          { icon: '', label: 'Complete', color: 'var(--green)' },
+  error:         { icon: '', label: 'Error', color: 'var(--red)' },
 };
 
-// ─── Layout ───────────────────────────────────────────────────────────────────
+//  Layout 
 function Layout({ children, navigate }) {
+  const admin = useIsAdmin();
+
   return (
     <div className="root">
       <aside className="sidebar">
@@ -73,10 +75,7 @@ function Layout({ children, navigate }) {
             <button className="sideLink" onClick={() => navigate('/history')}>
               <span className="sideLinkDot" />History
             </button>
-            <button className="sideLink" onClick={() => navigate('/guide')}>
-              <span className="sideLinkDot" />Guide
-            </button>
-            {localStorage.getItem('role') === 'admin' && (
+            {admin && (
               <>
                 <button className="sideLink" onClick={() => navigate('/admin/agents')}>
                   <span className="sideLinkDot" />Agents
@@ -100,7 +99,7 @@ function Layout({ children, navigate }) {
   );
 }
 
-// ─── Topbar ───────────────────────────────────────────────────────────────────
+//  Topbar 
 function Topbar() {
   return (
     <header className="topbar">
@@ -108,19 +107,13 @@ function Topbar() {
         {new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
       </p>
       <div className="topbarActions">
-        <button className="notifBtn">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M8 1a5 5 0 0 1 5 5v3l1 2H2l1-2V6a5 5 0 0 1 5-5zM6.5 13a1.5 1.5 0 0 0 3 0" strokeLinecap="round" />
-          </svg>
-          <span className="notifDot" />
-        </button>
         <ProfileMenu />
       </div>
     </header>
   );
 }
 
-// ─── Score Ring ───────────────────────────────────────────────────────────────
+//  Score Ring 
 function ScoreRing({ score }) {
   const color = score >= 70 ? 'var(--green)' : score >= 40 ? 'var(--amber)' : 'var(--red)';
   const circumference = 2 * Math.PI * 42;
@@ -141,7 +134,7 @@ function ScoreRing({ score }) {
   );
 }
 
-// ─── Typewriter ───────────────────────────────────────────────────────────────
+//  Typewriter 
 function TypewriterText({ text, speed = 12 }) {
   const [displayed, setDisplayed] = useState('');
   const idx = useRef(0);
@@ -161,13 +154,13 @@ function TypewriterText({ text, speed = 12 }) {
   return <span>{displayed}<span className="cursor">|</span></span>;
 }
 
-// ─── LLM Progress Bar ─────────────────────────────────────────────────────────
+//  LLM Progress Bar 
 function LlmProgressBar({ phase, tokenCount, tokensPerSec, elapsed, message }) {
   const info = PHASE_INFO[phase] || PHASE_INFO.generating;
 
   const barPct = phase === 'done'         ? 100
                : phase === 'parsing'      ? 95
-               : phase === 'loading_model'? 5
+               : phase === 'loading_model' ? 5
                : Math.min(90, Math.round((tokenCount / 600) * 85) + 10);
 
   return (
@@ -189,7 +182,7 @@ function LlmProgressBar({ phase, tokenCount, tokensPerSec, elapsed, message }) {
         {phase === 'generating' && (
           <>
             <span className="llmStat">
-              <span className="llmStatLabel">เวลา</span>
+              <span className="llmStatLabel">elapsed</span>
               <span className="llmStatVal" style={{ color: 'var(--amber)' }}>{elapsed}s</span>
             </span>
             {tokensPerSec !== '~' && tokensPerSec > 0 && (
@@ -211,14 +204,14 @@ function LlmProgressBar({ phase, tokenCount, tokensPerSec, elapsed, message }) {
 
       <div className="llmDevLog">
         {phase === 'generating' && elapsed > 0
-          ? `› LLM running... ${elapsed}s elapsed${tokensPerSec !== '~' ? ` | ${tokenCount} tokens @ ${tokensPerSec} tok/s` : ' | computing...'}`
-          : `› ${message || phase}`}
+          ? ` LLM running... ${elapsed}s elapsed${tokensPerSec !== '~' ? ` | ${tokenCount} tokens @ ${tokensPerSec} tok/s` : ' | computing...'}`
+          : ` ${message || phase}`}
       </div>
     </div>
   );
 }
 
-// ─── Main ─────────────────────────────────────────────────────────────────────
+//  Main 
 const SEVERITY_ORDER = { critical: 0, high: 1, medium: 2, low: 3 };
 
 function normalizeStatus(value) {
@@ -261,7 +254,9 @@ function normalizeReportItems(scanData) {
     });
   }
 
-  return Object.entries(scanData?.details || {}).map(([key, value]) => {
+  return Object.entries(scanData?.details || {})
+    .filter(([key]) => !String(key).startsWith('_'))
+    .map(([key, value]) => {
     const sectionMatch = key.match(/^\[([^\]]+)\]/);
     const section = sectionMatch ? sectionMatch[1] : 'General';
     const name = key.replace(/^\[[^\]]+\]\s*/, '');
@@ -288,44 +283,44 @@ function buildRecommendations(failItems, counts, categoryBreakdown) {
 
   if (counts.critical + counts.high > 0) {
     recommendations.push({
-      title: 'แก้รายการความเสี่ยงสูงก่อน',
-      detail: `เริ่มจาก ${counts.critical + counts.high} รายการ Critical/High ก่อน แล้วค่อยไล่เก็บรายการทั่วไป`,
+      title: 'Fix high-risk findings first',
+      detail: `Start with ${counts.critical + counts.high} Critical/High findings, then continue with medium and low-risk items.`,
     });
   }
   if (/account|password|lockout/.test(haystack)) {
     recommendations.push({
-      title: 'ทบทวน Account Policy',
-      detail: 'พบรายการเกี่ยวกับ password, lockout หรือ account control ที่ยังไม่ตรง baseline',
+      title: 'Review account policies',
+      detail: 'Password, lockout, or account control settings do not match the selected baseline.',
     });
   }
   if (/audit/.test(haystack)) {
     recommendations.push({
-      title: 'ตรวจ Audit Policy',
-      detail: 'ช่องว่างด้าน audit อาจทำให้ตรวจสอบเหตุการณ์ย้อนหลังได้ไม่ครบ ควรเทียบค่ากับ baseline',
+      title: 'Review audit policy',
+      detail: 'Audit settings affect incident visibility and should be aligned with the baseline.',
     });
   }
   if (/rdp|remote desktop|ntlm|smb|network/.test(haystack)) {
     recommendations.push({
-      title: 'ลดความเสี่ยงด้าน Network Exposure',
-      detail: 'ควรจัดลำดับ RDP, SMB, NTLM และ network access control เป็นกลุ่มที่ต้องตรวจเพิ่ม',
+      title: 'Reduce network exposure',
+      detail: 'Review RDP, SMB, NTLM, and network access settings for unnecessary exposure.',
     });
   }
   if (/defender|firewall/.test(haystack)) {
     recommendations.push({
-      title: 'ปรับ Endpoint Protection ให้แข็งแรงขึ้น',
-      detail: 'พบรายการ Defender หรือ Firewall ที่ควรทบทวนเพื่อเพิ่มระดับการป้องกันของเครื่อง',
+      title: 'Strengthen endpoint protection',
+      detail: 'Defender or Firewall findings should be fixed to improve host-level protection.',
     });
   }
   if (recommendations.length === 0 && failItems.length > 0) {
     recommendations.push({
-      title: 'เริ่มจากหมวดที่ตกมากที่สุด',
-      detail: `เริ่มแก้จาก ${categoryBreakdown[0]?.section || 'หมวดหลักที่มีปัญหา'} ก่อน เพื่อลดปัญหาซ้ำ ๆ ในกลุ่มเดียวกัน`,
+      title: 'Start with the most affected category',
+      detail: `Prioritize ${categoryBreakdown[0]?.section || 'the category with the most findings'} because it has the highest concentration of failed checks.`,
     });
   }
   if (failItems.length === 0) {
     recommendations.push({
-      title: 'รักษาสถานะปัจจุบัน',
-      detail: 'ไม่พบรายการที่ fail ใน report นี้ ควร monitor ต่อและสแกนซ้ำหลังมีการเปลี่ยน baseline',
+      title: 'Maintain current posture',
+      detail: 'No failed checks were found in this report. Continue monitoring and rescan after baseline changes.',
     });
   }
   return recommendations.slice(0, 5);
@@ -369,6 +364,7 @@ function buildReportSummary(scanData) {
       version: scanData?.version || '-',
       scanId: scanData?.scan_id || '-',
       score: Number(scanData?.score || 0),
+      scoreBreakdown: scanData?.score_breakdown || scanData?.details?._score_breakdown || null,
     },
   };
 }
@@ -397,7 +393,7 @@ export default function Summary() {
   const counts = report.severityCounts;
   const passCount = report.passCount;
   const totalCount = report.totalCount;
-  // ─── SSE streaming ────────────────────────────────────────────────────────
+  //  SSE streaming 
   useEffect(() => {
     if (!scanData) return;
 
@@ -405,7 +401,7 @@ export default function Summary() {
     setLlmError('');
     setLlmPhase('loading_model');
     setTokenCount(0);
-    setPhaseMsg('กำลังเชื่อมต่อ...');
+    setPhaseMsg('Preparing AI analysis...');
 
     const top30 = failItems.slice(0, 30).map(i => ({
       name: i.name, section: i.section, severity: i.severity,
@@ -481,7 +477,7 @@ export default function Summary() {
               setTokensPerSec(data.tokens_per_sec);
               setElapsed(data.elapsed);
               if (data.tokens_per_sec === '~') {
-                setPhaseMsg(`LLM กำลังคิด... ผ่านมาแล้ว ${data.elapsed}s`);
+                setPhaseMsg(`AI analysis running... ${data.elapsed}s elapsed`);
               }
             } else if (event === 'result') {
               setLlmData(data);
@@ -502,17 +498,17 @@ export default function Summary() {
     return () => { aborted = true; controller.abort(); };
   }, [scanData, failItems, passCount, totalCount, counts, navigate]);
 
-  // ─── Export ───────────────────────────────────────────────────────────────
+  //  Export 
 
-  // ─── Guard ────────────────────────────────────────────────────────────────
+  //  Guard 
   if (!scanData) {
     return (
       <Layout navigate={navigate}>
         <Topbar />
         <div className="sumEmpty">
-          <div className="sumEmptyIcon">📋</div>
-          <div className="sumEmptyText">ไม่พบข้อมูลการสแกน</div>
-          <button className="sumEmptyBtn" onClick={() => navigate('/home')}>กลับหน้าหลัก</button>
+          <div className="sumEmptyIcon"></div>
+          <div className="sumEmptyText">No scan data available</div>
+          <button className="sumEmptyBtn" onClick={() => navigate('/home')}>Back to Home</button>
         </div>
       </Layout>
     );
@@ -525,7 +521,7 @@ export default function Summary() {
       <div className="sumHeader">
         <div>
           <h1 className="sumTitle">Security Summary Report</h1>
-          <p className="sumSubtitle">สรุปความเสี่ยง หมวดที่ตกบ่อย และสิ่งที่ควรแก้ก่อน</p>
+          <p className="sumSubtitle">Decision-ready risk summary, failed categories, and recommended next actions</p>
         </div>
         <div className="sumHeaderActions">
           <button className="sumBackBtn" onClick={() => navigate('/history')}>Compare</button>
@@ -538,6 +534,13 @@ export default function Summary() {
         <div className="sumScoreMeta">
           <div className="sumTarget">{report.context.target}</div>
           <div className="sumVersion">{report.context.version}</div>
+          <div className="sumVersion">NIST/CIS-informed compliance score</div>
+          {report.context.scoreBreakdown && (
+            <div className="sumVersion">
+              Assessed weight {report.context.scoreBreakdown.passed_weight}/{report.context.scoreBreakdown.assessed_weight}
+              {report.context.scoreBreakdown.excluded_manual_count ? ` · ${report.context.scoreBreakdown.excluded_manual_count} manual excluded` : ''}
+            </div>
+          )}
           <div className="sumBadgeRow">
             <span className="badge pass">{passCount} Pass</span>
             <span className="badge fail">{report.failCount} Fail</span>
@@ -559,36 +562,36 @@ export default function Summary() {
 
       <div className="sumMetricGrid">
         <div className="sumMetricCard">
-          <span className="sumMetricLabel">รายการที่ Fail</span>
+          <span className="sumMetricLabel">Failed Checks</span>
           <strong className="sumMetricValue">{report.failCount}</strong>
           <span className="sumMetricHint">of {totalCount || 0} total</span>
         </div>
         <div className="sumMetricCard critical">
           <span className="sumMetricLabel">Critical / High</span>
           <strong className="sumMetricValue">{counts.critical + counts.high}</strong>
-          <span className="sumMetricHint">ควรแก้ก่อน</span>
+          <span className="sumMetricHint">Fix first</span>
         </div>
         <div className="sumMetricCard">
-          <span className="sumMetricLabel">รอตรวจ Manual</span>
+          <span className="sumMetricLabel">Manual Review</span>
           <strong className="sumMetricValue">{report.manualCount}</strong>
-          <span className="sumMetricHint">ต้องตรวจยืนยัน</span>
+          <span className="sumMetricHint">Requires review</span>
         </div>
         <div className="sumMetricCard">
-          <span className="sumMetricLabel">หมวดที่ตกมากสุด</span>
+          <span className="sumMetricLabel">Top Category</span>
           <strong className="sumMetricValue textValue">{report.topCategory}</strong>
-          <span className="sumMetricHint">มี fail มากที่สุด</span>
+          <span className="sumMetricHint">Highest fail count</span>
         </div>
       </div>
 
       <section className="sumReportGrid">
         <div className="sumPanel fixPanel">
           <div className="sumPanelHead">
-            <h2>รายการที่ควรแก้ก่อน</h2>
+            <h2>Fix First</h2>
             <span>Top {report.topControls.length}</span>
           </div>
           <div className="fixList">
             {report.topControls.length === 0 ? (
-              <div className="sumSoftEmpty">ไม่พบรายการที่ fail ควร monitor ต่อและสแกนซ้ำหลังมีการเปลี่ยนแปลง</div>
+              <div className="sumSoftEmpty">No failed checks found. Continue monitoring after baseline changes.</div>
             ) : report.topControls.map((item) => {
               const sev = SEV_CONFIG[item.severity] || SEV_CONFIG.low;
               return (
@@ -612,7 +615,7 @@ export default function Summary() {
         <aside className="sumSideStack">
           <div className="sumPanel">
             <div className="sumPanelHead">
-              <h2>สิ่งที่ควรทำต่อ</h2>
+              <h2>Recommended Next Actions</h2>
             </div>
             <div className="recommendationList">
               {report.recommendations.map((item) => (
@@ -626,12 +629,12 @@ export default function Summary() {
 
           <div className="sumPanel">
             <div className="sumPanelHead">
-              <h2>สรุปตามหมวด</h2>
+              <h2>Category Breakdown</h2>
               <span>{report.categoryBreakdown.length} categories</span>
             </div>
             <div className="categoryList">
               {report.categoryBreakdown.length === 0 ? (
-                <div className="sumSoftEmpty">ไม่พบหมวดที่มีรายการ fail</div>
+                <div className="sumSoftEmpty">No failed categories found</div>
               ) : report.categoryBreakdown.map((item) => {
                 const width = `${Math.max(8, Math.round((item.count / Math.max(report.failCount, 1)) * 100))}%`;
                 return (
@@ -649,7 +652,7 @@ export default function Summary() {
 
           <div className="sumPanel">
             <div className="sumPanelHead">
-              <h2>ข้อมูลของรายงาน</h2>
+              <h2>Report Context</h2>
             </div>
             <div className="contextGrid compact">
               <div><span>Target</span><strong>{report.context.target}</strong></div>
@@ -666,9 +669,9 @@ export default function Summary() {
           <div className="sumSectionHeader aiHeader">
             <div>
               <span className="aiEyebrow">AI Context</span>
-              <h2 className="sumSectionTitle">คำอธิบายเสริมจาก AI</h2>
+              <h2 className="sumSectionTitle">AI Analysis</h2>
             </div>
-            <span className="aiStatus">{loading ? 'กำลังวิเคราะห์' : llmData ? 'พร้อมอ่าน' : 'รอผลวิเคราะห์'}</span>
+            <span className="aiStatus">{loading ? 'Analyzing' : llmData ? 'Ready' : 'Waiting for analysis'}</span>
           </div>
           {loading && (
             <LlmProgressBar
@@ -683,37 +686,37 @@ export default function Summary() {
 
           <div className="aiInsightGrid">
             <div className="aiPrimaryNote">
-              <span className="aiNoteLabel">ภาพรวม</span>
+              <span className="aiNoteLabel">Overview</span>
               <div className="aiNoteText">
                 {llmData?.overview
                   ? <TypewriterText text={llmData.overview} speed={8} />
-                  : <span className="sumPlaceholder">กำลังรอ AI วิเคราะห์ ส่วนสรุปแบบ rule-based ด้านบนพร้อมใช้งานแล้ว</span>}
+                  : <span className="sumPlaceholder">Waiting for AI analysis. The rule-based summary above is already available.</span>}
               </div>
             </div>
 
             <div className="aiSecondaryNotes">
               <div className="aiNoteCard">
-                <span className="aiNoteLabel">ประเด็นที่ควรอ่านประกอบ</span>
+                <span className="aiNoteLabel">Detected Risks</span>
                 {llmData?.detected?.length ? (
                   <ul className="aiBulletList">
                     {llmData.detected.slice(0, 4).map((item, index) => (
                       <li key={`${item.name}-${index}`}>
                         <strong>{item.name}</strong>
-                        <span>{item.why || `${item.section || 'General'} ถูกจัดเป็น ${item.severity || 'risk item'}`}</span>
+                        <span>{item.why || `${item.section || 'General'} includes ${item.severity || 'risk item'}`}</span>
                       </li>
                     ))}
                   </ul>
                 ) : (
-                  <span className="sumPlaceholder">AI จะสรุปเหตุผลประกอบเมื่อวิเคราะห์เสร็จ</span>
+                  <span className="sumPlaceholder">AI will list supporting risk observations when available.</span>
                 )}
               </div>
 
               <div className="aiNoteCard">
-                <span className="aiNoteLabel">คำแนะนำเสริม</span>
+                <span className="aiNoteLabel">Additional Recommendation</span>
                 <div className="aiNoteText compactText">
                   {llmData?.recommendation
                     ? <TypewriterText text={llmData.recommendation} speed={6} />
-                    : <span className="sumPlaceholder">ใช้ “สิ่งที่ควรทำต่อ” ด้านบนเป็นแนวทางหลักระหว่างรอ AI</span>}
+                    : <span className="sumPlaceholder">Use the recommended next actions above while AI analysis is loading.</span>}
                 </div>
               </div>
             </div>
@@ -721,11 +724,13 @@ export default function Summary() {
         </section>
       </div>
 
-      {/* ── Footer ── */}
+      {/*  Footer  */}
       <div className="sumFooter">
-        <button className="sumBackBtn" onClick={() => navigate(-1)}>← Back to Result</button>
+        <button className="sumBackBtn" onClick={() => navigate(-1)}> Back to Result</button>
       </div>
     </Layout>
   );
 }
+
+
 

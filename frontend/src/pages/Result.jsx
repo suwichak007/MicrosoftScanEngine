@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import './Result.css';
-import { authHeaders, clearAuth } from '../auth';
+import { authHeaders, clearAuth, useIsAdmin } from '../auth';
 import { apiUrl } from '../config/api';
 import ProfileMenu from './ProfileMenu';
 
@@ -39,21 +39,21 @@ function getSeverity(key) {
 }
 
 const SOLUTION_MAP = {
-  'account lockout': { text: 'ตั้งค่า Account Lockout Policy ผ่าน secpol.msc → Account Policies → Account Lockout Policy', link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/account-lockout-policy' },
-  'password':        { text: 'ตั้งค่า Password Policy ผ่าน secpol.msc → Account Policies → Password Policy', link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/password-policy' },
-  'uac':             { text: 'เปิดใช้งาน User Account Control ผ่าน secpol.msc → Local Policies → Security Options', link: 'https://learn.microsoft.com/en-us/windows/security/application-security/application-control/user-account-control/' },
-  'firewall':        { text: 'ตั้งค่า Windows Defender Firewall ผ่าน wf.msc หรือ Group Policy', link: 'https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/' },
-  'audit':           { text: 'ตั้งค่า Advanced Audit Policy ผ่าน secpol.msc → Advanced Audit Policy Configuration', link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/advanced-security-audit-policy-settings' },
-  'defender':        { text: 'ตั้งค่า Microsoft Defender ผ่าน Group Policy หรือ Windows Security Settings', link: 'https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/microsoft-defender-antivirus-windows' },
-  'ntlm':            { text: 'กำหนด LAN Manager authentication level ผ่าน secpol.msc → Local Policies → Security Options', link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/network-security-lan-manager-authentication-level' },
-  'smb':             { text: 'ปิดการใช้งาน SMBv1 และกำหนดค่า SMB Signing ผ่าน Registry หรือ Group Policy', link: 'https://learn.microsoft.com/en-us/windows-server/storage/file-server/troubleshoot/detect-enable-and-disable-smbv1-v2-v3' },
-  'lsa':             { text: 'เปิดใช้งาน LSA Protection ผ่าน Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa → RunAsPPL = 1', link: 'https://learn.microsoft.com/en-us/windows-server/security/credentials-protection-and-management/configuring-additional-lsa-protection' },
-  'remote desktop':  { text: 'กำหนดค่า RDP Security ผ่าน Group Policy → Computer Configuration → Administrative Templates → Windows Components → Remote Desktop Services', link: 'https://learn.microsoft.com/en-us/windows/security/identity-protection/remote-desktop-services' },
-  'bitlocker':       { text: 'เปิดใช้งาน BitLocker ผ่าน Control Panel → System and Security → BitLocker Drive Encryption', link: 'https://learn.microsoft.com/en-us/windows/security/operating-system-security/data-protection/bitlocker/' },
-  'attack surface':  { text: 'กำหนดค่า Attack Surface Reduction Rules ผ่าน Microsoft Defender หรือ Group Policy', link: 'https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/attack-surface-reduction-rules-reference' },
-  'smartscreen':     { text: 'เปิดใช้งาน SmartScreen ผ่าน Group Policy → Windows Defender SmartScreen', link: 'https://learn.microsoft.com/en-us/windows/security/operating-system-security/virus-and-threat-protection/microsoft-defender-smartscreen/' },
-  'autoplay':        { text: 'ปิด AutoPlay ผ่าน Group Policy → Computer Configuration → Administrative Templates → Windows Components → AutoPlay Policies', link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/turn-off-autoplay' },
-  'user rights':     { text: 'กำหนด User Rights Assignment ผ่าน secpol.msc → Local Policies → User Rights Assignment', link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/user-rights-assignment' },
+  'account lockout': { text: 'Open secpol.msc > Account Policies > Account Lockout Policy and update the setting to match the baseline.', link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/account-lockout-policy' },
+  'password':        { text: 'Open secpol.msc > Account Policies > Password Policy and update the setting to match the baseline.', link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/password-policy' },
+  'uac':             { text: 'Open secpol.msc > Local Policies > Security Options and review User Account Control settings.', link: 'https://learn.microsoft.com/en-us/windows/security/application-security/application-control/user-account-control/' },
+  'firewall':        { text: 'Open Windows Defender Firewall (wf.msc) or Group Policy and update firewall settings.', link: 'https://learn.microsoft.com/en-us/windows/security/operating-system-security/network-security/windows-firewall/' },
+  'audit':           { text: 'Open secpol.msc > Advanced Audit Policy Configuration and align audit settings with the baseline.', link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/auditing/advanced-security-audit-policy-settings' },
+  'defender':        { text: 'Review Microsoft Defender settings in Group Policy or Windows Security.', link: 'https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/microsoft-defender-antivirus-windows' },
+  'ntlm':            { text: 'Open secpol.msc > Local Policies > Security Options and configure LAN Manager authentication level.', link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/network-security-lan-manager-authentication-level' },
+  'smb':             { text: 'Review SMBv1 and SMB signing settings in Registry or Group Policy.', link: 'https://learn.microsoft.com/en-us/windows-server/storage/file-server/troubleshoot/detect-enable-and-disable-smbv1-v2-v3' },
+  'lsa':             { text: 'Enable LSA Protection in Registry: HKLM\\SYSTEM\\CurrentControlSet\\Control\\Lsa > RunAsPPL = 1.', link: 'https://learn.microsoft.com/en-us/windows-server/security/credentials-protection-and-management/configuring-additional-lsa-protection' },
+  'remote desktop':  { text: 'Review RDP security in Group Policy > Remote Desktop Services.', link: 'https://learn.microsoft.com/en-us/windows/security/identity-protection/remote-desktop-services' },
+  'bitlocker':       { text: 'Open BitLocker Drive Encryption and align encryption settings with the baseline.', link: 'https://learn.microsoft.com/en-us/windows/security/operating-system-security/data-protection/bitlocker/' },
+  'attack surface':  { text: 'Review Attack Surface Reduction rules in Microsoft Defender or Group Policy.', link: 'https://learn.microsoft.com/en-us/microsoft-365/security/defender-endpoint/attack-surface-reduction-rules-reference' },
+  'smartscreen':     { text: 'Review Windows Defender SmartScreen settings in Group Policy.', link: 'https://learn.microsoft.com/en-us/windows/security/operating-system-security/virus-and-threat-protection/microsoft-defender-smartscreen/' },
+  'autoplay':        { text: 'Open Group Policy > AutoPlay Policies and disable AutoPlay as required.', link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/turn-off-autoplay' },
+  'user rights':     { text: 'Open secpol.msc > Local Policies > User Rights Assignment and update permissions.', link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/user-rights-assignment' },
 };
 
 function getSolution(key) {
@@ -62,7 +62,7 @@ function getSolution(key) {
     if (lower.includes(keyword)) return sol;
   }
   return {
-    text: 'ตรวจสอบและแก้ไขผ่าน Group Policy Editor (gpedit.msc) หรือ Local Security Policy (secpol.msc)',
+    text: 'Review the setting in Group Policy Editor (gpedit.msc) or Local Security Policy (secpol.msc)',
     link: 'https://learn.microsoft.com/en-us/windows/security/threat-protection/security-policy-settings/security-policy-settings',
   };
 }
@@ -75,16 +75,16 @@ const SEVERITY_CONFIG = {
 };
 
 const SCAN_STEPS = [
-  'กำลังเชื่อมต่อกับเครื่องเป้าหมาย...',
-  'กำลังโหลด Security Baseline...',
-  'กำลังตรวจสอบ Security Policy...',
-  'กำลังตรวจสอบ Audit Policy...',
-  'กำลังตรวจสอบ Registry Settings...',
-  'กำลังตรวจสอบ Firewall Rules...',
-  'กำลังตรวจสอบ Windows Defender...',
-  'กำลังตรวจสอบ Services...',
-  'กำลังคำนวณ Security Score...',
-  'เสร็จสิ้น',
+  'Preparing target connection...',
+  'Loading Security Baseline...',
+  'Checking Security Policy...',
+  'Checking Audit Policy...',
+  'Checking Registry Settings...',
+  'Checking Firewall Rules...',
+  'Checking Windows Defender...',
+  'Checking Services...',
+  'Calculating compliance score...',
+  'Completed',
 ];
 
 const SESSION_KEY = 'scanResult';
@@ -136,7 +136,7 @@ function parseFindings(findings) {
     const targetValue = item.expected_value || '';
     const actualValue = item.current_value || 'Not Configured';
     
-    // ใช้ status จาก backend โดยตรง
+    // Prefer status from backend when available
     const rawStatus = String(item.status || '').toLowerCase();
     let status;
     if (rawStatus === 'pass') {
@@ -175,6 +175,7 @@ function parseResults(details, findings = null) {
   if (enriched.length > 0) return enriched;
   if (!details) return [];
   return Object.entries(details)
+    .filter(([key]) => !String(key).startsWith('_'))
     .map(([key, value]) => {
       const sectionMatch = key.match(/^\[([^\]]+)\]/);
       const section  = sectionMatch ? sectionMatch[1] : 'General';
@@ -197,13 +198,81 @@ function parseResults(details, findings = null) {
     });
 }
 
+function parseRegistryLocationEntries(registryPath) {
+  return String(registryPath || '')
+    .split(';')
+    .map((entry) => entry.trim())
+    .filter(Boolean)
+    .map((entry) => {
+      const bangIndex = entry.indexOf('!');
+      if (bangIndex === -1) return { keyPath: entry, valueName: '' };
+      return {
+        keyPath: entry.slice(0, bangIndex).trim(),
+        valueName: entry.slice(bangIndex + 1).trim(),
+      };
+    });
+}
+
+function getPolicyTool(policyPath = '', section = '', name = '') {
+  const text = `${policyPath} ${section} ${name}`.toLowerCase();
+  if (
+    text.includes('password policy') ||
+    text.includes('account lockout') ||
+    text.includes('user rights') ||
+    text.includes('security options') ||
+    text.includes('audit policy') ||
+    text.includes('local policies')
+  ) {
+    return 'secpol.msc';
+  }
+  if (text.includes('firewall')) return 'wf.msc';
+  return 'gpedit.msc';
+}
+
+function buildSettingLocationGuide(item, context = {}) {
+  if (!item || item.status !== 'fail') return { available: false };
+
+  const policyPath = String(item.policyPath || '').trim();
+  const registryEntries = parseRegistryLocationEntries(item.registryPath);
+  const hasRegistry = registryEntries.length > 0;
+  if (!policyPath && !hasRegistry) return { available: false };
+
+  const openTool = policyPath ? getPolicyTool(policyPath, item.section, item.name) : 'regedit.exe';
+  const lines = [
+    `Target: ${context.hostname || context.targetName || 'Target machine'}`,
+    `Check ID: ${item.checkId || item.key || '-'}`,
+    `Check Name: ${item.name || '-'}`,
+    `Open Tool: ${openTool}`,
+  ];
+
+  if (policyPath) lines.push(`Policy Path: ${policyPath}`);
+  registryEntries.forEach((entry, index) => {
+    const label = registryEntries.length > 1 ? `Registry ${index + 1}` : 'Registry';
+    lines.push(`${label} Key: ${entry.keyPath}`);
+    if (entry.valueName) lines.push(`${label} Value: ${entry.valueName}`);
+  });
+  lines.push(`Required Value: ${item.target || '-'}`);
+  lines.push(`Current Value: ${item.actual || 'Not Configured'}`);
+  lines.push(`Solution: ${item.solution?.text || '-'}`);
+
+  return {
+    available: true,
+    openTool,
+    policyPath,
+    registryEntries,
+    copyText: lines.join('\n'),
+  };
+}
+
 // -----------------------------------------------------------------------
-// Layout — matches Home sidebar exactly
+// Layout  matches Home sidebar exactly
 // -----------------------------------------------------------------------
 function Layout({ children, navigate }) {
+  const admin = useIsAdmin();
+
   return (
     <div className="root">
-      {/* ── Sidebar ── */}
+      {/*  Sidebar  */}
       <aside className="sidebar">
         <div className="sideTop">
           <div className="logo">
@@ -224,11 +293,7 @@ function Layout({ children, navigate }) {
               <span className="sideLinkDot" />
               History
             </button>
-            <button className="sideLink" onClick={() => navigate('/guide')}>
-              <span className="sideLinkDot" />
-              Guide
-            </button>
-            {localStorage.getItem('role') === 'admin' && (
+            {admin && (
               <>
                 <button className="sideLink" onClick={() => navigate('/admin/agents')}>
                   <span className="sideLinkDot" />
@@ -251,14 +316,14 @@ function Layout({ children, navigate }) {
         </button>
       </aside>
 
-      {/* ── Main ── */}
+      {/*  Main  */}
       <main className="main">{children}</main>
     </div>
   );
 }
 
 // -----------------------------------------------------------------------
-// Topbar — matches Home topbar
+// Topbar  matches Home topbar
 // -----------------------------------------------------------------------
 function Topbar() {
   return (
@@ -269,12 +334,6 @@ function Topbar() {
         </p>
       </div>
       <div className="topbarActions">
-        <button className="notifBtn">
-          <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M8 1a5 5 0 0 1 5 5v3l1 2H2l1-2V6a5 5 0 0 1 5-5zM6.5 13a1.5 1.5 0 0 0 3 0" strokeLinecap="round" />
-          </svg>
-          <span className="notifDot" />
-        </button>
         <ProfileMenu />
       </div>
     </header>
@@ -351,7 +410,7 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
 
             if (res.status === 404) {
               clearInterval(pollRef.current);
-              onError('ไม่พบ job หรือ scan หมดเวลา');
+              onError('Job or scan no longer exists');
               return;
             }
 
@@ -403,17 +462,18 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
                 return;
               }
 
-              if (!r || !r.details) { onError('ผลการสแกนไม่สมบูรณ์'); return; }
+              if (!r || !r.details) { onError('Scan result is incomplete'); return; }
 
               const result = {
                 score:      r.score,
                 details:    r.details || {},
                 findings:   r.findings || [],
                 summary:    r.summary || null,
+                score_breakdown: r.score_breakdown || r.details?._score_breakdown || null,
                 targetName: r.target_name || scanParams.target_name,
                 hostname:   scanParams.host,
                 version:    r.version || scanParams.version,
-                scan_id:    r.scan_id,   // ← เพิ่มบรรทัดนี้
+                scan_id:    r.scan_id,
               };
               sessionStorage.setItem(SESSION_KEY, JSON.stringify(result));
               setTimeout(() => onScanComplete(result), 600);
@@ -425,12 +485,12 @@ function ScanProgress({ scanParams, onScanComplete, onError }) {
             }
           } catch (e) {
             clearInterval(pollRef.current);
-            onError('ไม่สามารถเชื่อมต่อกับ server ได้');
+            onError('Unable to connect to server');
           }
         }, 2000);
       })
       .catch((err) => {
-        onError(typeof err === 'string' ? err : 'ไม่สามารถเริ่ม scan ได้');
+        onError(typeof err === 'string' ? err : 'Unable to start scan');
       });
 
     return () => { if (pollRef.current) clearInterval(pollRef.current); };
@@ -488,7 +548,7 @@ export default function Result() {
     }
     if (location.state?.fromHistory) return 'done';
     
-    // ถ้าเป็น /scan/:id/report ให้ไป loading-history เสมอ ไม่สนใจ sessionStorage
+    // Always load history route from backend when opening /scan/:id/report
     if (routeScanId && location.pathname.toLowerCase().endsWith('/report')) {
       return 'loading-history';
     }
@@ -499,7 +559,7 @@ export default function Result() {
 
   const [scanData, setScanData] = useState(() => {
     if (location.state?.fromHistory) return location.state.fromHistory;
-    // ถ้าเป็น history route ไม่ต้อง load sessionStorage
+    // Do not use sessionStorage for direct history route
     if (routeScanId && location.pathname.toLowerCase().endsWith('/report')) return null;
     const saved = sessionStorage.getItem(SESSION_KEY);
     return saved ? JSON.parse(saved) : null;
@@ -512,6 +572,7 @@ export default function Result() {
   const [expanded,      setExpanded]      = useState(null);
   const [sectionFilter, setSectionFilter] = useState('ALL');
   const [statusFilter,  setStatusFilter]  = useState('ALL');
+  const [copiedLocation, setCopiedLocation] = useState('');
 
   useEffect(() => {
     if (phase === 'redirect') navigate('/home', { replace: true });
@@ -565,6 +626,7 @@ export default function Result() {
           details,
           findings:   data.findings || [],
           summary:    data.summary || null,
+          score_breakdown: data.score_breakdown || details?._score_breakdown || null,
           targetName: data.target_name,
           hostname:   data.hostname || '',
           version:    data.version || '',
@@ -574,7 +636,7 @@ export default function Result() {
         setPhase('done');
       })
       .catch((err) => {
-        setErrorMsg(typeof err === 'string' ? err : 'ไม่สามารถโหลดรายงานได้');
+        setErrorMsg(typeof err === 'string' ? err : 'Unable to load report');
         setPhase('error');
       });
   }, [phase, routeScanId, navigate]);
@@ -582,6 +644,31 @@ export default function Result() {
   const tabs = ['ALL', 'critical', 'high', 'medium', 'low'];
   const handleSearch = () => setSearch(searchInput);
   const handleClear  = () => { setSearchInput(''); setSearch(''); };
+  const copyTextToClipboard = async (text) => {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.position = 'fixed';
+    textarea.style.opacity = '0';
+    document.body.appendChild(textarea);
+    textarea.select();
+    document.execCommand('copy');
+    document.body.removeChild(textarea);
+  };
+
+  const handleCopyLocation = async (key, text) => {
+    try {
+      await copyTextToClipboard(text);
+      setCopiedLocation(key);
+      setTimeout(() => setCopiedLocation(''), 1800);
+    } catch (err) {
+      setErrorMsg(`Unable to copy location: ${err.message}`);
+    }
+  };
 
   const {
     score      = 0,
@@ -590,6 +677,7 @@ export default function Result() {
     hostname   = '',
     targetName = '',
     version    = '',
+    score_breakdown: scoreBreakdown = null,
   } = scanData || {};
 
   const allItems = useMemo(() => parseResults(details, findings), [details, findings]);
@@ -630,7 +718,7 @@ export default function Result() {
       <Layout navigate={navigate}>
         <Topbar />
         <div className="scanProgressWrap">
-          <div className="scanStepMsg">กำลังโหลดรายงาน...</div>
+          <div className="scanStepMsg">Loading report...</div>
           <div className="scanBarWrap">
             <div className="scanBar" style={{ width: '35%' }} />
           </div>
@@ -644,8 +732,8 @@ export default function Result() {
       <Layout navigate={navigate}>
         <Topbar />
         <div className="pageHead">
-          <h1 className="pageTitle">Scanning…</h1>
-          <p className="pageDesc">กำลังตรวจสอบความปลอดภัยของระบบ กรุณารอสักครู่</p>
+          <h1 className="pageTitle">Scanning</h1>
+          <p className="pageDesc">Running security assessment. Please wait.</p>
         </div>
         <ScanProgress
           scanParams={scanParamsRef.current}
@@ -674,23 +762,23 @@ export default function Result() {
         </div>
         <div className="idleWrap">
           <div className="idleCard">
-            <div className="idleIcon">⚠️</div>
-            <h2 className="idleTitle" style={{ color: 'var(--red)' }}>เกิดข้อผิดพลาด</h2>
+            <div className="idleIcon">ï¸</div>
+            <h2 className="idleTitle" style={{ color: 'var(--red)' }}>Error</h2>
             <p className="idleDesc">{errorMsg}</p>
-            <button className="idleScanBtn" onClick={() => navigate('/home')}>กลับหน้าหลัก</button>
+            <button className="idleScanBtn" onClick={() => navigate('/home')}>Back to Home</button>
           </div>
         </div>
       </Layout>
     );
   }
-  // หลัง phase === 'error' block
+  // Subnet result block
   if (phase === 'done' && scanData?.isSubnet) {
     return (
       <Layout navigate={navigate}>
         <Topbar />
         <div className="pageHead">
           <h1 className="pageTitle">Subnet Scan Result</h1>
-          <p className="pageDesc">{scanData.subnet} — {scanData.version}</p>
+          <p className="pageDesc">{scanData.subnet}  {scanData.version}</p>
         </div>
 
         <div className="scoreSummary" style={{ marginBottom: 24 }}>
@@ -698,8 +786,8 @@ export default function Result() {
             <div className="scoreLabel">{scanData.subnet}</div>
             <div className="scoreVersion">{scanData.version}</div>
             <div className="scoreCounts" style={{ marginTop: 8 }}>
-              <span className="countBadge pass">✔ {scanData.success_count} สำเร็จ</span>
-              <span className="countBadge fail">✖ {scanData.failed_count} ล้มเหลว</span>
+              <span className="countBadge pass"> {scanData.success_count} successful</span>
+              <span className="countBadge fail"> {scanData.failed_count} failed</span>
             </div>
           </div>
         </div>
@@ -742,7 +830,7 @@ export default function Result() {
                         style={{ padding: '4px 12px', fontSize: 12 }}
                         onClick={() => navigate(`/scan/${r.scan_id}/report`)}
                       >
-                        View →
+                        View 
                       </button>
                     )}
                   </div>
@@ -767,7 +855,7 @@ export default function Result() {
 
       <div className="pageHead">
         <h1 className="pageTitle">Scan Result</h1>
-        <p className="pageDesc">ผลการตรวจสอบความปลอดภัยของระบบ</p>
+        <p className="pageDesc">Security scan result and remediation guidance</p>
       </div>
 
       {/* Score Summary */}
@@ -789,9 +877,16 @@ export default function Result() {
         <div className="scoreDetail">
           <div className="scoreLabel">{targetName || hostname}</div>
           <div className="scoreVersion">{version}</div>
+          <div className="scoreVersion">NIST/CIS-informed compliance score</div>
+          {scoreBreakdown && (
+            <div className="scoreVersion">
+              Assessed weight {scoreBreakdown.passed_weight}/{scoreBreakdown.assessed_weight}
+              {scoreBreakdown.excluded_manual_count ? ` · ${scoreBreakdown.excluded_manual_count} manual excluded` : ''}
+            </div>
+          )}
           <div className="scoreCounts">
-            <span className="countBadge pass">✔ {passCount} Pass</span>
-            <span className="countBadge fail">✖ {failCount} Fail</span>
+            <span className="countBadge pass"> {passCount} Pass</span>
+            <span className="countBadge fail"> {failCount} Fail</span>
           </div>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', marginTop: 4 }}>
             {tabs.slice(1).map((sev) => (
@@ -848,13 +943,13 @@ export default function Result() {
             <div className="searchWrap">
               <input
                 className="searchInput"
-                placeholder="Search…"
+                placeholder="Search"
                 value={searchInput}
                 onChange={(e) => setSearchInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
               />
               {searchInput && (
-                <button className="clearBtn" onClick={handleClear}>✕</button>
+                <button className="clearBtn" onClick={handleClear}></button>
               )}
               <button className="searchBtn" onClick={handleSearch}>
                 <svg width="13" height="13" viewBox="0 0 13 13" fill="none" stroke="currentColor" strokeWidth="1.5">
@@ -876,16 +971,17 @@ export default function Result() {
         {/* Item List */}
         <div className="itemList">
           {filtered.length === 0 && (
-            <div className="emptyMsg">ไม่พบรายการที่ตรงกับเงื่อนไข</div>
+            <div className="emptyMsg">No matching items found</div>
           )}
           {filtered.map((item) => {
             const sev    = SEVERITY_CONFIG[item.severity];
             const isOpen = expanded === item.key;
+            const locationGuide = buildSettingLocationGuide(item, { hostname, targetName });
             return (
               <div key={item.key} className={`resultRow ${isOpen ? 'open' : ''}`}>
                 <div className="rowSummary" onClick={() => setExpanded(isOpen ? null : item.key)}>
 
-                  {/* Col 1 — Your Config */}
+                  {/* Col 1  Your Config */}
                   <div>
                     <div className="itemChip yourConf">
                       <span
@@ -899,21 +995,21 @@ export default function Result() {
                     </div>
                     {item.actual && (
                       <div className="actualChip">
-                        {item.actual.length > 60 ? item.actual.slice(0, 60) + '…' : item.actual}
+                        {item.actual.length > 60 ? item.actual.slice(0, 60) + '' : item.actual}
                       </div>
                     )}
                   </div>
 
-                  {/* Col 2 — Baseline */}
+                  {/* Col 2  Baseline */}
                   <div>
-                    <div className="itemChip baseline">{item.target || '—'}</div>
+                    <div className="itemChip baseline">{item.target || ''}</div>
                   </div>
 
-                  {/* Col 3 — Solution */}
+                  {/* Col 3  Solution */}
                   <div>
                     <div className={`solutionChip ${item.status}`}>
                       {item.status === 'pass' ? 'Compliant'
-                     : item.status === 'fail' ? 'Fix Available ▾'
+                     : item.status === 'fail' ? 'Fix Available '
                      : 'N/A'}
                     </div>
                   </div>
@@ -931,17 +1027,76 @@ export default function Result() {
                       </div>
                       <div className="detailBlock">
                         <div className="detailLabel">Required Value</div>
-                        <div className="detailValue pass">{item.target || '—'}</div>
+                        <div className="detailValue pass">{item.target || ''}</div>
                       </div>
                       <div className="detailBlock full">
                         <div className="detailLabel">Solution</div>
                         <div className="detailValue">{item.solution.text}</div>
                         {item.solution.link && (
                           <a className="msLink" href={item.solution.link} target="_blank" rel="noreferrer">
-                            📖 Microsoft Documentation ↗
+                             Microsoft Documentation 
                           </a>
                         )}
                       </div>
+                      {item.status === 'fail' && locationGuide.available && (
+                        <div className="detailBlock full settingLocationPanel">
+                          <div className="detailHeaderRow">
+                            <div>
+                              <div className="detailLabel">Setting Location</div>
+                              <div className="settingLocationHint">
+                                Windows policy tools usually cannot deep-link to an exact setting. Use this location to navigate or search for the setting.
+                              </div>
+                            </div>
+                            <div className="locationActions">
+                              {locationGuide.registryEntries.length > 0 && (
+                                <button
+                                  type="button"
+                                  className="copyLocationBtn"
+                                  onClick={() => handleCopyLocation(`${item.key}:registry`, locationGuide.registryEntries.map((entry) => (
+                                    entry.valueName ? `${entry.keyPath}!${entry.valueName}` : entry.keyPath
+                                  )).join('\n'))}
+                                >
+                                  {copiedLocation === `${item.key}:registry` ? 'Copied' : 'Copy Registry Path'}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                className="copyLocationBtn primary"
+                                onClick={() => handleCopyLocation(`${item.key}:location`, locationGuide.copyText)}
+                              >
+                                {copiedLocation === `${item.key}:location` ? 'Copied' : 'Copy Location'}
+                              </button>
+                            </div>
+                          </div>
+
+                          <div className="settingLocationGrid">
+                            <div className="settingLocationItem">
+                              <span>Open Tool</span>
+                              <strong>{locationGuide.openTool}</strong>
+                            </div>
+                            {locationGuide.policyPath && (
+                              <div className="settingLocationItem wide">
+                                <span>Security Policy Location</span>
+                                <strong>{locationGuide.policyPath}</strong>
+                              </div>
+                            )}
+                            {locationGuide.registryEntries.map((entry, index) => (
+                              <React.Fragment key={`${entry.keyPath}-${entry.valueName}-${index}`}>
+                                <div className="settingLocationItem wide">
+                                  <span>{locationGuide.registryEntries.length > 1 ? `Registry Key ${index + 1}` : 'Registry Key'}</span>
+                                  <strong>{entry.keyPath}</strong>
+                                </div>
+                                {entry.valueName && (
+                                  <div className="settingLocationItem">
+                                    <span>{locationGuide.registryEntries.length > 1 ? `Registry Value ${index + 1}` : 'Registry Value'}</span>
+                                    <strong>{entry.valueName}</strong>
+                                  </div>
+                                )}
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -972,3 +1127,5 @@ export default function Result() {
     </Layout>
   );
 }
+
+

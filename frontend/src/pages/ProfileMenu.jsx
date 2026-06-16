@@ -1,14 +1,15 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { clearAuth } from '../auth';
+import { clearAuth, useCurrentUser } from '../auth';
 import './ProfileMenu.css';
 
 export default function ProfileMenu() {
   const navigate = useNavigate();
   const menuRef = useRef(null);
   const [open, setOpen] = useState(false);
-  const username = localStorage.getItem('username') || 'User';
-  const role = localStorage.getItem('role') || 'viewer';
+  const { user } = useCurrentUser();
+  const username = user?.username || localStorage.getItem('username') || 'User';
+  const role = user?.role || 'viewer';
   const avatarChar = username.charAt(0).toUpperCase() || 'A';
 
   useEffect(() => {
@@ -61,3 +62,4 @@ export default function ProfileMenu() {
     </div>
   );
 }
+
