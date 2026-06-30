@@ -107,8 +107,8 @@ export default function ChangePassword() {
           </svg>
         </div>
 
-        <h1 className="cp-title">Change Password</h1>
-        <p className="cp-subtitle">Update password for {localStorage.getItem('username') || ''}</p>
+        <h1 className="cp-title">Change password</h1>
+        <p className="cp-subtitle">Update local account password for {localStorage.getItem('username') || 'current user'}.</p>
 
         {/* Messages */}
         {error && (
@@ -134,7 +134,7 @@ export default function ChangePassword() {
 
           {/* Current password */}
           <div className="cp-field">
-            <label className="cp-label">Current Password</label>
+            <label className="cp-label">Current password</label>
             <div className="cp-input-wrap">
               <input
                 className="cp-input"
@@ -167,7 +167,7 @@ export default function ChangePassword() {
 
           {/* New password */}
           <div className="cp-field">
-            <label className="cp-label">New Password</label>
+            <label className="cp-label">New password</label>
             <div className="cp-input-wrap">
               <input
                 className="cp-input"
@@ -218,7 +218,7 @@ export default function ChangePassword() {
 
           {/* Confirm password */}
           <div className="cp-field">
-            <label className="cp-label">Confirm New Password</label>
+            <label className="cp-label">Confirm new password</label>
             <div className="cp-input-wrap">
               <input
                 className="cp-input"
@@ -262,13 +262,13 @@ export default function ChangePassword() {
             {loading ? (
               <><span className="cp-spin" /> Saving...</>
             ) : (
-              'Change Password'
+              'Change password'
             )}
           </button>
         </form>
 
         <button className="cp-back" onClick={() => navigate(-1)}>
-           Back
+          Back
         </button>
       </div>
     </div>

@@ -1,6 +1,8 @@
-﻿{
-    "data_path":  "C:\\MicrosoftScanEngine\\data",
-    "backend_url":  "http://192.168.105.11:8000",
-    "agent_token":  "FYXoQHsTY_Nz9YGKoVZaxAlpq1hh-k7XvlB7PIknG5g",
-    "poll_interval":  10
+{
+  "backend_url": "http://192.168.105.11:8000",
+  "agent_token": "f9iW5maHYED7HKFaM20ISz78_3TIwF_drjC4yjNS7qQ",
+  "poll_interval": 10,
+  "data_path": "C:\\MicrosoftScanEngine\\data",
+  "package_path": "C:\\MicrosoftScanEngine\\packages",
+  "scanner_auto_update": true
 }

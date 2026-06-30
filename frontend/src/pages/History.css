@@ -1,404 +1,651 @@
-@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@500;600&family=DM+Sans:wght@300;400;500&family=DM+Mono:wght@400;500&display=swap');
-
-/* ── Variables (shared) ──────────────────────────────────── */
-:root {
-  --cream:      #f5f0e8;
-  --cream-dark: #ede7d9;
-  --cream-mid:  #e6deca;
-  --paper:      #faf7f2;
-  --amber:      #c8813a;
-  --amber-lt:   #dfa060;
-  --amber-pale: #f2e4d0;
-  --ink:        #2b2318;
-  --ink-mid:    #5a4f3f;
-  --ink-lt:     #9a8f7e;
-  --ink-faint:  #c4b9a8;
-  --green:      #5a8a5e;
-  --red:        #b5483a;
-  --sidebar-w:  200px;
-}
-
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-body {
-  font-family: 'DM Sans', sans-serif;
-  background: var(--cream);
-  color: var(--ink);
-  min-height: 100vh;
-}
-
-/* ── Layout ──────────────────────────────────────────────── */
-.root { display: flex; min-height: 100vh; }
-
-/* ── Sidebar ─────────────────────────────────────────────── */
-.sidebar {
-  width: var(--sidebar-w);
-  background: var(--ink);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 28px 20px 24px;
-  position: fixed;
-  top: 0; left: 0;
-  height: 100vh;
-  z-index: 10;
-}
-
-.sideTop { display: flex; flex-direction: column; gap: 40px; }
-.logo    { display: flex; align-items: center; gap: 10px; }
-
-.logoText {
-  font-family: 'Playfair Display', serif;
-  font-size: 15px;
-  font-weight: 500;
-  color: var(--cream);
-  letter-spacing: 0.01em;
-}
-
-.sideNav { display: flex; flex-direction: column; gap: 2px; }
-
-.sideLink {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: transparent;
-  border: none;
-  color: var(--ink-faint);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 13px;
-  font-weight: 400;
-  padding: 8px 10px;
-  border-radius: 6px;
-  cursor: pointer;
-  text-align: left;
-  transition: color 0.15s, background 0.15s;
-}
-.sideLink:hover  { color: var(--cream); background: rgba(255,255,255,0.05); }
-.sideLink.active { color: var(--amber-lt); font-weight: 500; }
-
-.sideLinkDot {
-  width: 4px; height: 4px;
-  border-radius: 50%;
-  background: currentColor;
-  flex-shrink: 0;
-  opacity: 0;
-  transition: opacity 0.15s;
-}
-.sideLink.active .sideLinkDot,
-.sideLink:hover  .sideLinkDot { opacity: 1; }
-
-.logoutBtn {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: transparent;
-  border: none;
-  color: var(--ink-faint);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 12px;
-  cursor: pointer;
-  padding: 6px 10px;
-  border-radius: 6px;
-  transition: color 0.15s;
-}
-.logoutBtn:hover { color: var(--cream); }
-
-/* ── Main ────────────────────────────────────────────────── */
-.main {
-  margin-left: var(--sidebar-w);
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  padding: 0 52px 52px;
-  min-height: 100vh;
-}
-
-/* ── Topbar ──────────────────────────────────────────────── */
-.topbar {
+.historyError {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 20px 0;
-  border-bottom: 1px solid var(--cream-mid);
-  margin-bottom: 40px;
-}
-
-.topbarDate { font-size: 12px; color: var(--ink-lt); font-weight: 300; }
-.topbarActions { display: flex; align-items: center; gap: 12px; }
-
-.avatar {
-  width: 34px; height: 34px;
-  border-radius: 50%;
-  background: var(--amber-pale);
-  border: 1px solid var(--amber);
-  color: var(--amber);
-  display: flex; align-items: center; justify-content: center;
-  font-size: 13px; font-weight: 500;
-}
-
-/* ── Page Head ───────────────────────────────────────────── */
-.pageHead { margin-bottom: 28px; }
-
-.pageTitle {
-  font-family: 'Playfair Display', serif;
-  font-size: 38px;
-  font-weight: 600;
-  color: var(--ink);
-  letter-spacing: -0.02em;
-  line-height: 1.1;
-  margin-bottom: 6px;
-}
-
-.pageDesc { font-size: 13px; color: var(--ink-lt); font-weight: 300; }
-
-/* ── Error Banner ────────────────────────────────────────── */
-.errBanner {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: #fdf0ee;
-  border: 1px solid #e8c5c0;
-  color: var(--red);
-  padding: 10px 16px;
-  border-radius: 8px;
-  font-size: 13px;
-  margin-bottom: 24px;
-  animation: fadeUp 0.2s ease;
-}
-
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-
-/* ── History Card ────────────────────────────────────────── */
-.historyCard {
-  background: var(--paper);
-  border: 1px solid var(--cream-mid);
-  border-radius: 12px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-}
-
-/* ── Empty / Loading ─────────────────────────────────────── */
-.historyEmpty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 72px 0;
-  font-size: 13px;
-  color: var(--ink-faint);
-  font-weight: 300;
-  gap: 10px;
-}
-
-/* ── Spinner ─────────────────────────────────────────────── */
-.spin {
-  display: inline-block;
-  width: 13px; height: 13px;
-  border: 1.5px solid var(--cream-mid);
-  border-top-color: var(--amber);
-  border-radius: 50%;
-  animation: rot 0.7s linear infinite;
-  flex-shrink: 0;
-}
-@keyframes rot { to { transform: rotate(360deg); } }
-
-/* ── Table ───────────────────────────────────────────────── */
-.historyTable {
-  width: 100%;
-  border-collapse: collapse;
-}
-
-.historyTable thead tr {
-  background: var(--cream-dark);
-  border-bottom: 1px solid var(--cream-mid);
-}
-
-.historyTable thead th {
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid #fecdca;
+  border-radius: 6px;
+  background: #fef3f2;
+  color: #b42318;
   font-size: 11px;
-  font-weight: 500;
-  color: var(--ink-lt);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  padding: 10px 14px;
-  text-align: left;
-  white-space: nowrap;
 }
 
-.historyTable thead th.center { text-align: center; }
-
-.historyTable tbody tr {
-  border-bottom: 1px solid var(--cream-mid);
-  transition: background 0.12s;
-}
-.historyTable tbody tr:last-child { border-bottom: none; }
-.historyTable tbody tr:hover { background: var(--cream-dark); }
-
-.historyTable tbody td {
-  padding: 10px 14px;
-  font-size: 12px;
-  color: var(--ink-mid);
-  vertical-align: middle;
-}
-
-.historyTable tbody td.center { text-align: center; }
-
-/* Mono cells */
-.monoCell {
-  font-family: 'DM Mono', monospace;
-  font-size: 12px;
-}
-
-/* Score */
-.scoreCell {
-  font-family: 'DM Mono', monospace;
-  font-size: 13px;
-  font-weight: 500;
-  text-align: center;
-}
-
-/* Pass / Fail counts */
-.passCell {
-  font-family: 'DM Mono', monospace;
-  font-size: 12px;
-  color: var(--green);
-  text-align: center;
-}
-.failCell {
-  font-family: 'DM Mono', monospace;
-  font-size: 12px;
-  color: var(--red);
-  text-align: center;
-}
-
-/* Target — truncate long names */
-.targetCell {
-  max-width: 200px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* ── Row Actions ─────────────────────────────────────────── */
-.historyActions {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-  align-items: center;
-}
-
-.viewBtn {
-  background: var(--amber-pale);
-  border: 1px solid rgba(200,129,58,0.35);
-  color: var(--amber);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 12px;
-  font-weight: 500;
-  border-radius: 6px;
-  padding: 5px 14px;
-  cursor: pointer;
-  transition: all 0.15s;
-  white-space: nowrap;
-}
-.viewBtn:hover {
-  background: var(--amber);
-  color: #fff;
-  border-color: var(--amber);
-}
-
-.deleteBtn {
+.historyError button {
+  border: 0;
   background: transparent;
-  border: 1px solid #e8c5c0;
-  color: var(--red);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 12px;
-  font-weight: 400;
-  border-radius: 6px;
-  padding: 5px 14px;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
   cursor: pointer;
-  transition: all 0.15s;
+}
+
+.historyConsole {
+  margin-bottom: 20px;
+}
+
+.historyToolbar {
+  min-height: 64px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--report-border);
+}
+
+.historyToolbar > div:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.historyToolbar strong {
+  color: var(--report-ink);
+  font-size: 14px;
+}
+
+.historyToolbar span {
+  color: var(--report-muted);
+  font-size: 10px;
+}
+
+.historyFilters {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.historyFilters select,
+.historyFilters input {
+  min-height: 34px;
+  border: 1px solid var(--report-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--report-ink);
+  font: inherit;
+  font-size: 11px;
+  outline: none;
+}
+
+.historyFilters select {
+  min-width: 130px;
+  padding: 6px 9px;
+}
+
+.historyFilters input {
+  width: min(300px, 32vw);
+  padding: 6px 10px;
+}
+
+.historyFilters select:focus,
+.historyFilters input:focus {
+  border-color: var(--report-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.historyFilters button {
+  min-height: 32px;
+  border: 0;
+  background: transparent;
+  color: var(--report-blue);
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.historyState {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 7px;
+  padding: 30px;
+  color: var(--report-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.historyState strong {
+  color: var(--report-ink);
+  font-size: 16px;
+}
+
+.historyTableWrap {
+  overflow-x: auto;
+}
+
+.historyDataRow {
+  min-width: 1040px;
+  display: grid;
+  grid-template-columns: 130px minmax(190px, 1.2fr) 70px minmax(170px, 0.95fr) 58px 50px 50px 238px;
+  align-items: center;
+  gap: 12px;
+  min-height: 70px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--report-border);
+  background: #fff;
+}
+
+.historyDataRow:last-child {
+  border-bottom: 0;
+}
+
+.historyDataRow:not(.historyDataHead):hover {
+  background: #f8fafc;
+}
+
+.historyDataHead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  min-height: 40px;
+  background: #f8fafc;
+  color: var(--report-muted);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.historyScanCell,
+.historyTargetCell {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.historyScanCell strong,
+.historyTargetCell strong {
+  overflow: hidden;
+  color: var(--report-ink);
+  font-size: 11px;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
-.deleteBtn:hover:not(:disabled) {
-  background: #fdf0ee;
-  border-color: var(--red);
-}
-.deleteBtn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-/* ── Footer ──────────────────────────────────────────────── */
-.historyFooter {
+.historyScanCell span,
+.historyTargetCell span {
+  overflow: hidden;
+  color: var(--report-muted);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.historyBaseline {
+  display: -webkit-box;
+  overflow: hidden;
+  color: #475467;
+  font-size: 10px;
+  line-height: 1.35;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.historyNumber {
+  font-family: 'DM Mono', monospace;
+  font-size: 11px;
+}
+
+.historyNumber.pass {
+  color: var(--report-pass);
+}
+
+.historyNumber.fail {
+  color: var(--report-fail);
+}
+
+.historyRowActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.historyPrimaryButton,
+.historySecondaryButton,
+.historyDangerButton {
+  min-height: 30px;
+  padding: 5px 9px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.historyPrimaryButton {
+  border: 1px solid var(--report-blue);
+  background: var(--report-blue);
+  color: #fff;
+}
+
+.historyPrimaryButton:hover {
+  background: var(--report-blue-dark);
+}
+
+.historySecondaryButton {
+  border: 1px solid var(--report-border);
+  background: #fff;
+  color: #344054;
+}
+
+.historySecondaryButton:hover {
+  border-color: var(--report-blue);
+  color: var(--report-blue);
+}
+
+.historyDangerButton {
+  border: 1px solid #fecdca;
+  background: #fff;
+  color: #b42318;
+}
+
+.historyDangerButton:hover {
+  background: #fef3f2;
+}
+
+.historyDangerButton.solid {
+  background: #d92d20;
+  color: #fff;
+}
+
+.historyPrimaryButton:disabled,
+.historySecondaryButton:disabled,
+.historyDangerButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.historyChildren {
+  min-width: 1040px;
+  border-bottom: 1px solid var(--report-border);
+  background: #f8fafc;
+}
+
+.historyChildRow {
+  display: grid;
+  grid-template-columns: 54px minmax(230px, 1.2fr) minmax(220px, 1fr) 70px 80px 80px 110px;
+  align-items: center;
+  gap: 12px;
+  min-height: 58px;
+  padding: 8px 16px 8px 34px;
+  border-top: 1px solid #e9edf3;
+}
+
+.historyChildBranch {
+  color: var(--report-blue);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.historyChildEmpty {
+  padding: 16px 34px;
+  color: var(--report-muted);
+  font-size: 11px;
+}
+
+.historyComparisonPanel {
+  margin-bottom: 16px;
+}
+
+.historyComparisonHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px;
+  border-bottom: 1px solid var(--report-border);
+}
+
+.historyComparisonHead > div {
+  display: grid;
+  gap: 3px;
+}
+
+.historyComparisonHead > div > span,
+.historyModalHead > div > span {
+  color: var(--report-blue);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.historyComparisonHead h2,
+.historyModalHead h2 {
+  margin: 0;
+  color: var(--report-ink);
+  font-size: 17px;
+}
+
+.historyComparisonHead p,
+.historyModalHead p {
+  margin: 0;
+  color: var(--report-muted);
+  font-size: 10px;
+}
+
+.historyCompareMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 14px 16px;
+}
+
+.historyCompareMetrics > div {
+  min-height: 78px;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  padding: 11px;
+  border: 1px solid var(--report-border);
+  border-radius: 6px;
+  background: #f8fafc;
+}
+
+.historyCompareMetrics span,
+.historyCompareMetrics small {
+  color: var(--report-muted);
+  font-size: 10px;
+}
+
+.historyCompareMetrics strong {
+  color: var(--report-ink);
+  font-size: 19px;
+}
+
+.historyCompareMetrics strong i {
+  color: var(--report-muted);
+  font-size: 10px;
+  font-style: normal;
+}
+
+.historyCompareMetrics .positive {
+  color: var(--report-pass);
+}
+
+.historyCompareMetrics .negative {
+  color: var(--report-fail);
+}
+
+.historyCompareWarning,
+.historyDeleteWarning {
+  margin: 0 16px 14px;
+  padding: 10px 12px;
+  border: 1px solid #fedf89;
+  border-radius: 6px;
+  background: #fffaeb;
+  color: #b54708;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.historyComparisonLists {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 16px 16px;
+}
+
+.historyComparisonList {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--report-border);
+  border-top: 3px solid #98a2b3;
+  border-radius: 6px;
+}
+
+.historyComparisonList.fixed { border-top-color: var(--report-pass); }
+.historyComparisonList.new { border-top-color: var(--report-fail); }
+.historyComparisonList.still { border-top-color: var(--report-warn); }
+
+.historyComparisonList header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  padding: 14px 16px;
-  border-top: 1px solid var(--cream-mid);
-  background: var(--cream-dark);
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--report-border);
+  background: #f8fafc;
+  font-size: 11px;
 }
 
-.backBtn {
-  background: var(--paper);
-  border: 1px solid var(--cream-mid);
-  color: var(--ink-mid);
-  font-family: 'DM Sans', sans-serif;
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: 8px;
-  padding: 9px 22px;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.backBtn:hover {
-  border-color: var(--amber);
-  color: var(--amber);
-  background: var(--amber-pale);
+.historyComparisonList header span {
+  color: var(--report-muted);
 }
 
-.finishBtn {
-  background: var(--amber);
-  border: none;
-  color: #fff;
-  font-family: 'DM Sans', sans-serif;
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: 8px;
-  padding: 9px 22px;
-  cursor: pointer;
-  transition: all 0.18s;
-  box-shadow: 0 2px 10px rgba(200,129,58,0.25);
-}
-.finishBtn:hover {
-  background: var(--amber-lt);
-  box-shadow: 0 4px 18px rgba(200,129,58,0.35);
-  transform: translateY(-1px);
-}
-.finishBtn:active { transform: translateY(0); }
-
-.historyCompareGrid {
-  display: grid;
-  gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  margin-top: 12px;
+.historyComparisonBody {
+  max-height: 330px;
+  overflow-y: auto;
 }
 
-.historyCompareGrid div {
-  background: var(--cream-dark);
-  border: 1px solid var(--cream-mid);
-  border-radius: 8px;
+.historyComparisonFinding {
+  width: 100%;
   display: flex;
-  flex-direction: column;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 0;
+  border-bottom: 1px solid var(--report-border);
+  background: #fff;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.historyComparisonFinding:hover {
+  background: var(--report-blue-soft);
+}
+
+.historyComparisonFinding div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.historyComparisonFinding strong {
+  color: var(--report-ink);
+  font-size: 10px;
+  line-height: 1.35;
+}
+
+.historyComparisonFinding span,
+.historyComparisonFinding code,
+.historyComparisonBody > p {
+  color: var(--report-muted);
+  font-size: 9px;
+}
+
+.historyComparisonFinding code {
+  max-width: 105px;
+  overflow-wrap: anywhere;
+  text-align: right;
+}
+
+.historyComparisonBody > p,
+.historyComparisonEmpty {
+  padding: 14px 12px;
+  color: var(--report-muted);
+  font-size: 10px;
+}
+
+.historyModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(15, 23, 42, 0.58);
+}
+
+.historyModal {
+  width: min(620px, 100%);
+  overflow: hidden;
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 20px 60px rgba(15, 23, 42, 0.24);
+}
+
+.historyModalHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--report-border);
+}
+
+.historyModalHead > div {
+  display: grid;
+  gap: 3px;
+}
+
+.historyModalHead > button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--report-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--report-muted);
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.historyModalBody {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+}
+
+.historyCompareField {
+  display: grid;
+  gap: 6px;
+  color: #475467;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.historyCompareField select {
+  min-height: 38px;
+  padding: 7px 10px;
+  border: 1px solid var(--report-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--report-ink);
+  font: inherit;
+  font-size: 10px;
+}
+
+.historyComparePreview {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.historyComparePreview > div {
+  display: grid;
   gap: 4px;
   padding: 12px;
+  border: 1px solid var(--report-border);
+  border-radius: 6px;
+  background: #f8fafc;
 }
 
-.historyCompareGrid span {
-  color: var(--ink-faint);
-  font-size: 11px;
+.historyComparePreview span {
+  color: var(--report-muted);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
 }
 
-.historyCompareGrid strong {
-  color: var(--ink);
-  font-family: 'DM Mono', monospace;
-  font-size: 20px;
+.historyComparePreview strong {
+  color: var(--report-ink);
+  font-size: 14px;
+}
+
+.historyModalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px;
+  border-top: 1px solid var(--report-border);
+  background: #f8fafc;
+}
+
+.historyDeleteModal {
+  width: min(520px, 100%);
+}
+
+.historyDeleteModal dl {
+  display: grid;
+  gap: 8px;
+}
+
+.historyDeleteModal dl > div {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr);
+  gap: 12px;
+  font-size: 10px;
+}
+
+.historyDeleteModal dt {
+  color: var(--report-muted);
+}
+
+.historyDeleteModal dd {
+  margin: 0;
+  color: var(--report-ink);
+  overflow-wrap: anywhere;
+}
+
+.historyDeleteModal .historyDeleteWarning {
+  margin: 0;
+}
+
+@media (max-width: 980px) {
+  .historyComparisonLists {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 760px) {
+  .historyToolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .historyFilters {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .historyFilters input,
+  .historyFilters select {
+    width: 100%;
+  }
+
+  .historyCompareMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .historyComparisonHead {
+    align-items: stretch;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 480px) {
+  .historyCompareMetrics,
+  .historyComparePreview {
+    grid-template-columns: 1fr;
+  }
+
+  .historyModalActions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
 }

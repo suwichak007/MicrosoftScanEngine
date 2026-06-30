@@ -129,7 +129,7 @@ const IconSpinner = () => (
 );
 
 //  Main Component 
-export default function ExportButton({ scanId, label = 'Export', variant = 'full' }) {
+export default function ExportButton({ scanId, label = 'Export', variant = 'full', appearance = 'default' }) {
   const [open,        setOpen]        = useState(false);
   const [loading,     setLoading]     = useState(null); // 'pdf' | 'xlsx' | null
   const [hover,       setHover]       = useState(false);
@@ -194,8 +194,22 @@ export default function ExportButton({ scanId, label = 'Export', variant = 'full
 
   const btnStyle = {
     ...S.btn,
+    ...(appearance === 'report' ? {
+      minHeight: '34px',
+      padding: '7px 12px',
+      borderRadius: '6px',
+      border: '1px solid #dfe4ec',
+      background: '#fff',
+      color: '#172033',
+      fontSize: '11px',
+      fontWeight: 700,
+    } : {}),
     ...(variant === 'icon' ? S.btnIcon : {}),
-    ...(hover && !isLoading ? S.btnHover : {}),
+    ...(hover && !isLoading
+      ? appearance === 'report'
+        ? { background: '#eff6ff', borderColor: '#2563eb', color: '#2563eb' }
+        : S.btnHover
+      : {}),
     ...(isLoading ? S.btnLoading : {}),
   };
 

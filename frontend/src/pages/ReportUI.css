@@ -1,0 +1,355 @@
+:root {
+  --report-blue: #2563eb;
+  --report-blue-dark: #1d4ed8;
+  --report-blue-soft: #eff6ff;
+  --report-bg: #f5f7fb;
+  --report-panel: #ffffff;
+  --report-border: #dfe4ec;
+  --report-ink: #172033;
+  --report-muted: #667085;
+  --report-sidebar: #111827;
+  --report-pass: #15803d;
+  --report-fail: #c2413b;
+  --report-warn: #b45309;
+}
+
+.reportShell {
+  min-height: 100vh;
+  background: var(--report-bg);
+  color: var(--report-ink);
+}
+
+.reportSidebar {
+  position: fixed;
+  inset: 0 auto 0 0;
+  z-index: 30;
+  width: 208px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 22px 14px;
+  background: var(--report-sidebar);
+}
+
+.reportBrand {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px 22px;
+  border: 0;
+  background: transparent;
+  color: #f8fafc;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.reportBrandMark {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 6px;
+  background: var(--report-blue);
+  color: #fff;
+  font-size: 13px;
+}
+
+.reportNav {
+  display: grid;
+  gap: 3px;
+}
+
+.reportNav button,
+.reportLogout {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #aeb7c6;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.reportNav button:hover,
+.reportNav button.active {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+
+.reportNav button.active {
+  box-shadow: inset 3px 0 var(--report-blue);
+}
+
+.reportNavMark {
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  background: currentColor;
+}
+
+.reportLogout {
+  color: #9ca3af;
+}
+
+.reportMain {
+  min-height: 100vh;
+  margin-left: 208px;
+  padding: 0 34px 42px;
+}
+
+.reportTopbar {
+  min-height: 58px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--report-border);
+  color: var(--report-muted);
+  font-size: 12px;
+}
+
+.reportTopbar .avatar.profileAvatar {
+  border-color: #bfd4ff;
+  background: var(--report-blue-soft);
+  color: var(--report-blue);
+}
+
+.reportHero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 28px;
+  align-items: center;
+  padding: 26px 0 20px;
+}
+
+.reportEyebrow {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--report-blue);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.reportHero h1 {
+  margin: 0;
+  color: var(--report-ink);
+  font-size: 28px;
+  line-height: 1.2;
+}
+
+.reportHeroMain > p {
+  max-width: 720px;
+  margin: 7px 0 0;
+  color: var(--report-muted);
+  font-size: 13px;
+}
+
+.reportContextRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 22px;
+  margin-top: 16px;
+}
+
+.reportContextRow span {
+  display: grid;
+  gap: 2px;
+}
+
+.reportContextRow small {
+  color: var(--report-muted);
+  font-size: 9px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.reportContextRow strong {
+  max-width: 320px;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.reportHeroSide {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.reportScore {
+  width: 116px;
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background:
+    radial-gradient(closest-side, #fff 78%, transparent 79% 100%),
+    conic-gradient(var(--report-blue) calc(var(--report-score) * 1%), #e5e9f0 0);
+}
+
+.reportScore > div {
+  display: grid;
+  gap: 2px;
+  text-align: center;
+}
+
+.reportScore strong {
+  font-size: 25px;
+}
+
+.reportScore span {
+  color: var(--report-muted);
+  font-size: 9px;
+}
+
+.reportActions {
+  display: grid;
+  gap: 7px;
+}
+
+.reportActions button,
+.reportActions a {
+  min-width: 104px;
+}
+
+.reportAction,
+.reportActions .exportBtn {
+  min-height: 34px;
+  padding: 7px 12px;
+  border: 1px solid var(--report-border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--report-ink);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.reportAction:hover {
+  border-color: var(--report-blue);
+  color: var(--report-blue);
+}
+
+.reportAction.primary {
+  border-color: var(--report-blue);
+  background: var(--report-blue);
+  color: #fff;
+}
+
+.reportMetricGrid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.reportMetric {
+  min-width: 0;
+  min-height: 94px;
+  display: grid;
+  align-content: center;
+  gap: 3px;
+  padding: 14px;
+  border: 1px solid var(--report-border);
+  border-left: 3px solid #98a2b3;
+  border-radius: 7px;
+  background: var(--report-panel);
+}
+
+.reportMetric span,
+.reportMetric small {
+  color: var(--report-muted);
+  font-size: 11px;
+}
+
+.reportMetric strong {
+  overflow-wrap: anywhere;
+  font-size: 22px;
+}
+
+.reportMetric.pass { border-left-color: var(--report-pass); }
+.reportMetric.fail,
+.reportMetric.critical { border-left-color: var(--report-fail); }
+.reportMetric.warn { border-left-color: var(--report-warn); }
+.reportMetric.info { border-left-color: var(--report-blue); }
+
+.reportPanel {
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  background: var(--report-panel);
+  overflow: hidden;
+}
+
+.reportPanelHead {
+  min-height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--report-border);
+}
+
+.reportPanelHead h2 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.reportPanelHead p {
+  margin: 3px 0 0;
+  color: var(--report-muted);
+  font-size: 11px;
+}
+
+.reportBadge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  padding: 2px 8px;
+  border: 1px solid var(--report-border);
+  border-radius: 999px;
+  background: #f8fafc;
+  color: var(--report-muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.reportBadge.pass { border-color: #bbdfc5; background: #effaf2; color: var(--report-pass); }
+.reportBadge.fail { border-color: #efc4c0; background: #fff2f0; color: var(--report-fail); }
+.reportBadge.warn { border-color: #f1d29b; background: #fff8e8; color: var(--report-warn); }
+.reportBadge.info { border-color: #bfd4ff; background: var(--report-blue-soft); color: var(--report-blue-dark); }
+
+@media (max-width: 1050px) {
+  .reportMetricGrid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+
+@media (max-width: 760px) {
+  .reportSidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+    padding: 10px;
+  }
+  .reportBrand { padding-bottom: 10px; }
+  .reportNav { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .reportNav button { justify-content: center; }
+  .reportLogout { display: none; }
+  .reportMain { margin-left: 0; padding: 0 16px 30px; }
+  .reportHero { grid-template-columns: 1fr; }
+  .reportHeroSide { justify-content: space-between; }
+  .reportMetricGrid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 480px) {
+  .reportNav { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .reportHeroSide { align-items: flex-start; flex-direction: column; }
+  .reportMetricGrid { grid-template-columns: 1fr; }
+}

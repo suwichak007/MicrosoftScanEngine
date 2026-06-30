@@ -27,7 +27,7 @@ function Login() {
         const errorData = await response.json();
         setError(errorData.detail || 'Login failed');
       }
-    } catch (err) {
+    } catch {
       setError('Cannot connect to server');
     }
   };
@@ -46,8 +46,8 @@ function Login() {
           <span className="login-brand-name">SecureScan</span>
         </div>
 
-        <h1 className="login-title">Welcome back</h1>
-        <p className="login-subtitle">Sign in to continue to your dashboard</p>
+        <h1 className="login-title">Sign in</h1>
+        <p className="login-subtitle">Access scan reports, agent operations, and compliance remediation workflows.</p>
 
         {error && (
           <div className="login-err">
@@ -60,8 +60,8 @@ function Login() {
 
         <form onSubmit={handleLogin}>
           <div className="login-field">
-            <label className="login-label">Username / Email</label>
-            <input className="login-input" type="text" placeholder="you@example.com"
+            <label className="login-label">Username</label>
+            <input className="login-input" type="text" placeholder="Boat or user@example.com"
               value={username} onChange={(e) => setUsername(e.target.value)} required />
           </div>
           <div className="login-field">
@@ -69,7 +69,7 @@ function Login() {
             <input className="login-input" type="password" placeholder="Password"
               value={password} onChange={(e) => setPassword(e.target.value)} required />
           </div>
-          <button type="submit" className="login-btn">Sign In</button>
+          <button type="submit" className="login-btn">Sign in</button>
         </form>
 
         <div className="login-footer">

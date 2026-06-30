@@ -1,10 +1,29 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+﻿import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import ExportButton from './ExportButton';
 import './Summary.css';
-import { authHeaders, clearAuth, useIsAdmin } from '../auth';
+import { authHeaders, clearAuth } from '../auth';
 import { apiUrl } from '../config/api';
-import ProfileMenu from './ProfileMenu';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import {
+  MetricCard,
+  MetricGrid,
+  ReportHeader,
+  ReportShell,
+  ReportTopbar,
+} from './ReportUI';
+import { formatReportDate } from './reportUtils';
 
 //  Severity helpers 
 const CRITICAL_KEYWORDS = ['remote desktop','lsa protection','credential','ntlm','kerberos','bitlocker'];
@@ -43,6 +62,32 @@ const SEV_CONFIG = {
   low:      { label: 'Low',      color: 'var(--sev-low)',      bg: 'var(--sev-low-bg)',      bd: 'var(--sev-low-bd)' },
 };
 
+const SEVERITY_CHART_COLORS = {
+  critical: '#c2413b',
+  high: '#d97706',
+  medium: '#2563eb',
+  low: '#64748b',
+};
+
+const NIST_LABELS = {
+  AC: { name: 'Access Control', detail: 'User rights, logon access, remote access, and permission boundaries' },
+  AU: { name: 'Audit & Accountability', detail: 'Audit policy, event logging, and traceability settings' },
+  CM: { name: 'Configuration Management', detail: 'Security baseline, hardening policy, services, and system configuration' },
+  IA: { name: 'Identity & Authentication', detail: 'Password, credential, Kerberos, and authentication settings' },
+  SC: { name: 'System & Communications Protection', detail: 'Firewall, SMB, RDP, TLS, and network protection settings' },
+  SI: { name: 'System & Information Integrity', detail: 'Defender, malware protection, and endpoint integrity settings' },
+};
+
+const CIS_LABELS = {
+  3: { name: 'Data Protection', detail: 'Encryption, TLS, and protection of sensitive data paths' },
+  4: { name: 'Secure Configuration', detail: 'Secure configuration of enterprise assets and software' },
+  5: { name: 'Account Management', detail: 'Account lifecycle, password, lockout, and credential controls' },
+  6: { name: 'Access Control Management', detail: 'Access rights, privileged access, and authentication controls' },
+  8: { name: 'Audit Log Management', detail: 'Logging, audit policy, and event collection controls' },
+  10: { name: 'Malware Defenses', detail: 'Antivirus, Defender, and endpoint protection controls' },
+  12: { name: 'Network Infrastructure Management', detail: 'Firewall, remote access, and network exposure controls' },
+};
+
 //  LLM Phase config 
 const PHASE_INFO = {
   loading_model: { icon: '', label: 'Loading model', color: 'var(--ink-lt)' },
@@ -53,64 +98,13 @@ const PHASE_INFO = {
 };
 
 //  Layout 
-function Layout({ children, navigate }) {
-  const admin = useIsAdmin();
-
-  return (
-    <div className="root">
-      <aside className="sidebar">
-        <div className="sideTop">
-          <div className="logo">
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <circle cx="11" cy="11" r="10" stroke="#c8813a" strokeWidth="1.5" />
-              <circle cx="11" cy="11" r="5"  stroke="#c8813a" strokeWidth="1.5" />
-              <circle cx="11" cy="11" r="1.5" fill="#c8813a" />
-            </svg>
-            <span className="logoText">SecureScan</span>
-          </div>
-          <nav className="sideNav">
-            <button className="sideLink" onClick={() => navigate('/home')}>
-              <span className="sideLinkDot" />Home
-            </button>
-            <button className="sideLink" onClick={() => navigate('/history')}>
-              <span className="sideLinkDot" />History
-            </button>
-            {admin && (
-              <>
-                <button className="sideLink" onClick={() => navigate('/admin/agents')}>
-                  <span className="sideLinkDot" />Agents
-                </button>
-                <button className="sideLink" onClick={() => navigate('/admin/users')}>
-                  <span className="sideLinkDot" />Users
-                </button>
-              </>
-            )}
-          </nav>
-        </div>
-        <button className="logoutBtn" onClick={() => { clearAuth(); navigate('/login'); }}>
-          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M5 2H2v10h3M9 10l3-3-3-3M12 7H5" strokeLinecap="round" strokeLinejoin="round" />
-          </svg>
-          Log out
-        </button>
-      </aside>
-      <main className="main">{children}</main>
-    </div>
-  );
+function Layout({ children }) {
+  return <ReportShell active="History">{children}</ReportShell>;
 }
 
 //  Topbar 
 function Topbar() {
-  return (
-    <header className="topbar">
-      <p className="topbarDate">
-        {new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-      </p>
-      <div className="topbarActions">
-        <ProfileMenu />
-      </div>
-    </header>
-  );
+  return <ReportTopbar />;
 }
 
 //  Score Ring 
@@ -250,6 +244,7 @@ function normalizeReportItems(scanData) {
         actual: item.current_value || '',
         remediation: item.remediation || '',
         policyPath: item.policy_path || item.registry_path || '',
+        frameworks: item.frameworks || { nist: [], cis: [] },
       };
     });
   }
@@ -257,22 +252,75 @@ function normalizeReportItems(scanData) {
   return Object.entries(scanData?.details || {})
     .filter(([key]) => !String(key).startsWith('_'))
     .map(([key, value]) => {
+    const isObject = value && typeof value === 'object' && !Array.isArray(value);
     const sectionMatch = key.match(/^\[([^\]]+)\]/);
-    const section = sectionMatch ? sectionMatch[1] : 'General';
-    const name = key.replace(/^\[[^\]]+\]\s*/, '');
-    const { target, actual } = parseTargetActual(value);
+    const section = isObject ? (value.category || value.section || 'General') : (sectionMatch ? sectionMatch[1] : 'General');
+    const name = isObject ? (value.check_name || value.name || key) : key.replace(/^\[[^\]]+\]\s*/, '');
+    const { target, actual } = isObject ? { target: '', actual: '' } : parseTargetActual(value);
     return {
       key,
       name,
       section,
-      severity: normalizeSeverity('', key),
-      status: normalizeStatus(value),
-      target,
-      actual,
-      remediation: '',
-      policyPath: '',
+      severity: normalizeSeverity(isObject ? value.severity : '', `${section} ${name} ${key}`),
+      status: normalizeStatus(isObject ? value.status : value),
+      target: isObject ? (value.expected_value || value.target || '') : target,
+      actual: isObject ? (value.current_value || value.actual || '') : actual,
+      remediation: isObject ? (value.remediation || '') : '',
+      policyPath: isObject ? (value.policy_path || value.registry_path || '') : '',
+      frameworks: isObject ? (value.frameworks || { nist: [], cis: [] }) : { nist: [], cis: [] },
     };
   });
+}
+
+function buildFrameworkImpact(failItems) {
+  const impact = { nist: new Map(), cis: new Map() };
+  failItems.forEach((item) => {
+    ['nist', 'cis'].forEach((family) => {
+      (item.frameworks?.[family] || []).forEach((code) => {
+        const key = String(code);
+        const current = impact[family].get(key) || { code: key, failed: 0, critical: 0, high: 0 };
+        current.failed += 1;
+        if (item.severity === 'critical') current.critical += 1;
+        if (item.severity === 'high') current.high += 1;
+        impact[family].set(key, current);
+      });
+    });
+  });
+  const sortImpact = (rows) => Array.from(rows.values())
+    .sort((a, b) => (b.failed - a.failed) || (b.critical - a.critical) || a.code.localeCompare(b.code))
+    .slice(0, 6);
+  return { nist: sortImpact(impact.nist), cis: sortImpact(impact.cis) };
+}
+
+function FrameworkImpactRows({ title, countLabel, rows, labels, totalAssessed }) {
+  const denominator = Math.max(Number(totalAssessed || 0), 1);
+  return (
+    <div className="frameworkGroup">
+      <div className="frameworkGroupHead">
+        <strong>{title}</strong>
+        <span>{rows.length} {countLabel}</span>
+      </div>
+      {rows.map((item) => {
+        const meta = labels[item.code] || { name: item.code, detail: 'Mapped baseline control area' };
+        const pct = Math.round((item.failed / denominator) * 100);
+        return (
+          <div className="frameworkImpactRow" key={`${title}-${item.code}`}>
+            <div className="frameworkImpactTop">
+              <span className="frameworkCode">{item.code}</span>
+              <div className="frameworkText">
+                <strong>{meta.name}</strong>
+                <span>{meta.detail}</span>
+              </div>
+              <b>{item.failed} fail · {pct}%</b>
+            </div>
+            <div className="categoryTrack">
+              <div className="categoryFill" style={{ width: `${Math.max(4, Math.min(100, pct))}%` }} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
 }
 
 function buildRecommendations(failItems, counts, categoryBreakdown) {
@@ -358,11 +406,13 @@ function buildReportSummary(scanData) {
     topCategory: categoryBreakdown[0]?.section || 'None',
     topControls: failItems.slice(0, 10),
     recommendations: buildRecommendations(failItems, severityCounts, categoryBreakdown),
+    frameworkImpact: buildFrameworkImpact(failItems),
     context: {
       target: scanData?.targetName || scanData?.target_name || scanData?.hostname || 'Unknown target',
       hostname: scanData?.hostname || scanData?.targetName || '-',
       version: scanData?.version || '-',
       scanId: scanData?.scan_id || '-',
+      scanDate: scanData?.scan_date || '',
       score: Number(scanData?.score || 0),
       scoreBreakdown: scanData?.score_breakdown || scanData?.details?._score_breakdown || null,
     },
@@ -387,12 +437,52 @@ export default function Summary() {
   const [phaseMsg,     setPhaseMsg]     = useState('');
   const [loading,      setLoading]      = useState(false);
   const [llmError,     setLlmError]     = useState('');
+  const [aiOpen,       setAiOpen]       = useState(false);
+  const [postureChange, setPostureChange] = useState(null);
   const report = useMemo(() => buildReportSummary(scanData || {}), [scanData]);
+  const severityChartData = useMemo(() => (
+    Object.entries(report.severityCounts)
+      .map(([name, value]) => ({ name: name.charAt(0).toUpperCase() + name.slice(1), value, key: name }))
+      .filter((item) => item.value > 0)
+  ), [report.severityCounts]);
+  const categoryChartData = useMemo(() => (
+    report.categoryBreakdown.slice(0, 6).map((item) => ({
+      name: item.section.length > 22 ? `${item.section.slice(0, 22)}...` : item.section,
+      failed: item.count,
+    }))
+  ), [report.categoryBreakdown]);
 
   const failItems = report.failItems;
   const counts = report.severityCounts;
   const passCount = report.passCount;
   const totalCount = report.totalCount;
+
+  useEffect(() => {
+    const scanId = Number(scanData?.scan_id || 0);
+    if (!scanId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const candidateRes = await fetch(apiUrl(`/api/scan/history/${scanId}/compare-candidates`), { headers: authHeaders() });
+        if (!candidateRes.ok) return;
+        const candidates = await candidateRes.json();
+        if (!Array.isArray(candidates) || !candidates.length) return;
+        const base = candidates.find((item) => item.same_baseline) || candidates[0];
+        if (!base) return;
+        const compareRes = await fetch(
+          apiUrl(`/api/scan/history/${scanId}/compare/${base.id}`),
+          { headers: authHeaders() },
+        );
+        if (!compareRes.ok) return;
+        const data = await compareRes.json();
+        if (!cancelled) setPostureChange(data);
+      } catch {
+        // Posture change is supplemental and must not block the report.
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [scanData?.scan_id]);
+
   //  SSE streaming 
   useEffect(() => {
     if (!scanData) return;
@@ -518,27 +608,83 @@ export default function Summary() {
     <Layout navigate={navigate}>
       <Topbar />
 
-      <div className="sumHeader">
+      <ReportHeader
+        eyebrow="Executive security summary"
+        title={report.context.target}
+        subtitle="Prioritized compliance posture, risk concentration, and recommended remediation actions."
+        score={report.context.score}
+        context={[
+          { label: 'Baseline', value: report.context.version },
+          { label: 'Scan ID', value: report.context.scanId },
+          { label: 'Scanned', value: report.context.scanDate ? formatReportDate(report.context.scanDate) : 'Current report' },
+          {
+            label: 'Posture change',
+            value: postureChange
+              ? `${postureChange.score_delta > 0 ? '+' : ''}${postureChange.score_delta} points vs #${postureChange.base_scan_id}`
+              : 'No compatible earlier scan',
+          },
+        ]}
+        actions={(
+          <>
+            <button
+              className="reportAction secondary"
+              onClick={() => navigate(scanData?.scan_id ? `/history?compare=${scanData.scan_id}` : '/history')}
+            >
+              Compare
+            </button>
+            <ExportButton scanId={scanData?.scan_id} appearance="report" />
+            <button
+              className="reportAction primary"
+              onClick={() => navigate(scanData?.scan_id ? `/scan/${scanData.scan_id}/report` : -1)}
+            >
+              Findings
+            </button>
+          </>
+        )}
+      />
+
+      <MetricGrid>
+        <MetricCard label="Assessed checks" value={report.passCount + report.failCount} hint={`${report.passCount} passed`} tone="info" />
+        <MetricCard label="Failed checks" value={report.failCount} hint={`of ${totalCount} total`} tone="fail" />
+        <MetricCard label="Critical / High" value={counts.critical + counts.high} hint="Risk priority" tone="critical" />
+        <MetricCard label="Manual review" value={report.manualCount} hint="Excluded from score" tone="warn" />
+        <MetricCard
+          label="Posture change"
+          value={postureChange ? `${postureChange.score_delta > 0 ? '+' : ''}${postureChange.score_delta}` : '-'}
+          hint={postureChange ? `${postureChange.counts.fixed} fixed · ${postureChange.counts.newly_failed} new` : 'No previous scan'}
+          tone={postureChange?.score_delta >= 0 ? 'pass' : 'fail'}
+        />
+      </MetricGrid>
+
+      <div className="sumHeader legacySummaryIntro">
         <div>
           <h1 className="sumTitle">Security Summary Report</h1>
           <p className="sumSubtitle">Decision-ready risk summary, failed categories, and recommended next actions</p>
         </div>
         <div className="sumHeaderActions">
-          <button className="sumBackBtn" onClick={() => navigate('/history')}>Compare</button>
+          <button
+            className="sumBackBtn"
+            onClick={() => navigate(
+              scanData?.scan_id ? `/history?compare=${scanData.scan_id}` : '/history',
+            )}
+          >
+            Compare
+          </button>
           <ExportButton scanId={scanData?.scan_id} />
         </div>
       </div>
 
-      <div className="sumScoreBar">
+      <div className="sumScoreBar legacySummaryIntro">
         <ScoreRing score={report.context.score} />
         <div className="sumScoreMeta">
           <div className="sumTarget">{report.context.target}</div>
           <div className="sumVersion">{report.context.version}</div>
-          <div className="sumVersion">NIST/CIS-informed compliance score</div>
+          <div className="sumVersion">Compliance Score</div>
           {report.context.scoreBreakdown && (
             <div className="sumVersion">
-              Assessed weight {report.context.scoreBreakdown.passed_weight}/{report.context.scoreBreakdown.assessed_weight}
+              Assessed pass rate {report.context.scoreBreakdown.passed_assessed_count ?? report.context.scoreBreakdown.passed_weight}/{report.context.scoreBreakdown.total_assessed_count ?? report.context.scoreBreakdown.assessed_weight}
               {report.context.scoreBreakdown.excluded_manual_count ? ` · ${report.context.scoreBreakdown.excluded_manual_count} manual excluded` : ''}
+              {report.context.scoreBreakdown.excluded_na_count ? ` · ${report.context.scoreBreakdown.excluded_na_count} N/A excluded` : ''}
             </div>
           )}
           <div className="sumBadgeRow">
@@ -560,7 +706,7 @@ export default function Summary() {
         </div>
       </div>
 
-      <div className="sumMetricGrid">
+      <div className="sumMetricGrid legacySummaryIntro">
         <div className="sumMetricCard">
           <span className="sumMetricLabel">Failed Checks</span>
           <strong className="sumMetricValue">{report.failCount}</strong>
@@ -583,6 +729,73 @@ export default function Summary() {
         </div>
       </div>
 
+      <section className="summaryVisualGrid">
+        <div className="summaryVisualPanel">
+          <div className="summaryVisualHead">
+            <div>
+              <h2>Risk severity</h2>
+              <p>Failed checks grouped by risk priority</p>
+            </div>
+            <span>{report.failCount} failed</span>
+          </div>
+          <div className="summaryChartWrap">
+            {severityChartData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={severityChartData}
+                    dataKey="value"
+                    nameKey="name"
+                    innerRadius={48}
+                    outerRadius={72}
+                    paddingAngle={2}
+                  >
+                    {severityChartData.map((item) => (
+                      <Cell key={item.key} fill={SEVERITY_CHART_COLORS[item.key] || '#64748b'} />
+                    ))}
+                  </Pie>
+                  <Tooltip />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="sumSoftEmpty">No failed checks</div>
+            )}
+          </div>
+          <div className="severityLegend">
+            {severityChartData.map((item) => (
+              <span key={item.key}>
+                <i style={{ background: SEVERITY_CHART_COLORS[item.key] }} />
+                {item.name} <b>{item.value}</b>
+              </span>
+            ))}
+          </div>
+        </div>
+
+        <div className="summaryVisualPanel categoryChartPanel">
+          <div className="summaryVisualHead">
+            <div>
+              <h2>Most affected categories</h2>
+              <p>Top categories by failed control count</p>
+            </div>
+          </div>
+          <div className="summaryChartWrap category">
+            {categoryChartData.length ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={categoryChartData} layout="vertical" margin={{ left: 18, right: 14 }}>
+                  <CartesianGrid strokeDasharray="3 3" horizontal={false} />
+                  <XAxis type="number" allowDecimals={false} />
+                  <YAxis type="category" dataKey="name" width={145} tick={{ fontSize: 10 }} />
+                  <Tooltip />
+                  <Bar dataKey="failed" fill="#2563eb" radius={[0, 3, 3, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="sumSoftEmpty">No failed categories</div>
+            )}
+          </div>
+        </div>
+      </section>
+
       <section className="sumReportGrid">
         <div className="sumPanel fixPanel">
           <div className="sumPanelHead">
@@ -595,7 +808,17 @@ export default function Summary() {
             ) : report.topControls.map((item) => {
               const sev = SEV_CONFIG[item.severity] || SEV_CONFIG.low;
               return (
-                <div className="fixItem" key={item.key} style={{ borderLeftColor: sev.color }}>
+                <button
+                  type="button"
+                  className="fixItem"
+                  key={item.key}
+                  style={{ borderLeftColor: sev.color }}
+                  onClick={() => navigate(
+                    scanData?.scan_id
+                      ? `/scan/${scanData.scan_id}/report?check=${encodeURIComponent(item.key)}`
+                      : '/result',
+                  )}
+                >
                   <div className="fixTop">
                     <span className="dcSev" style={{ color: sev.color, background: sev.bg, border: `1px solid ${sev.bd}` }}>{sev.label}</span>
                     <span className="fixSection">{item.section}</span>
@@ -606,7 +829,7 @@ export default function Summary() {
                     <span><b>Actual:</b> {item.actual || '-'}</span>
                   </div>
                   {item.policyPath && <div className="fixPath">{item.policyPath}</div>}
-                </div>
+                </button>
               );
             })}
           </div>
@@ -652,6 +875,38 @@ export default function Summary() {
 
           <div className="sumPanel">
             <div className="sumPanelHead">
+              <h2>Framework Impact</h2>
+              <span>Failed check mapping</span>
+            </div>
+            <div className="frameworkIntro">
+              Percent is based on total assessed checks. One failed check can map to more than one area.
+            </div>
+            <div className="categoryList">
+              {report.frameworkImpact.nist.length === 0 && report.frameworkImpact.cis.length === 0 ? (
+                <div className="sumSoftEmpty">No mapped failed controls found</div>
+              ) : (
+                <>
+                  <FrameworkImpactRows
+                    title="NIST"
+                    countLabel="areas"
+                    rows={report.frameworkImpact.nist}
+                    labels={NIST_LABELS}
+                    totalAssessed={report.context.scoreBreakdown?.total_assessed_count || report.passCount + report.failCount}
+                  />
+                  <FrameworkImpactRows
+                    title="CIS"
+                    countLabel="safeguards"
+                    rows={report.frameworkImpact.cis}
+                    labels={CIS_LABELS}
+                    totalAssessed={report.context.scoreBreakdown?.total_assessed_count || report.passCount + report.failCount}
+                  />
+                </>
+              )}
+            </div>
+          </div>
+
+          <div className="sumPanel">
+            <div className="sumPanelHead">
               <h2>Report Context</h2>
             </div>
             <div className="contextGrid compact">
@@ -665,6 +920,16 @@ export default function Summary() {
       </section>
 
       <div className="sumCard aiCard">
+        <button type="button" className="aiCollapseButton" onClick={() => setAiOpen((open) => !open)}>
+          <span>
+            <small>Supporting analysis</small>
+            <strong>AI Analysis</strong>
+          </span>
+          <span className={`aiCollapseState ${loading ? 'loading' : ''}`}>
+            {loading ? 'Analyzing' : llmData ? 'Ready' : 'Unavailable'} · {aiOpen ? 'Hide' : 'Show'}
+          </span>
+        </button>
+        {aiOpen && (
         <section className="sumSection aiSection">
           <div className="sumSectionHeader aiHeader">
             <div>
@@ -722,6 +987,7 @@ export default function Summary() {
             </div>
           </div>
         </section>
+        )}
       </div>
 
       {/*  Footer  */}
@@ -731,6 +997,7 @@ export default function Summary() {
     </Layout>
   );
 }
+
 
 
 

@@ -30,11 +30,11 @@ function Register() {
       const data = await response.json();
       if (response.ok) {
         setSuccess('Registration successful. Redirecting to login...');
-        setTimeout(() => navigate('/'), 1500);
+        setTimeout(() => navigate('/login'), 1500);
       } else {
         setError(data.detail || 'Register failed');
       }
-    } catch (err) {
+    } catch {
       setError('Cannot connect to server');
     }
   };
@@ -54,7 +54,7 @@ function Register() {
         </div>
 
         <h1 className="register-title">Create account</h1>
-        <p className="register-subtitle">Join SecureScan to start monitoring your network</p>
+        <p className="register-subtitle">New accounts start as viewer access until an admin changes the role.</p>
 
         {error && (
           <div className="register-err">
@@ -76,11 +76,11 @@ function Register() {
 
         <form onSubmit={handleRegister}>
           <div className="register-field">
-            <label className="register-label">Username / Email</label>
+            <label className="register-label">Username</label>
             <input
               className="register-input"
               type="text"
-              placeholder="you@example.com"
+              placeholder="Boat or user@example.com"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
@@ -112,7 +112,7 @@ function Register() {
             />
           </div>
 
-          <button type="submit" className="register-btn">Create Account </button>
+          <button type="submit" className="register-btn">Create account</button>
         </form>
 
         <div className="register-footer">

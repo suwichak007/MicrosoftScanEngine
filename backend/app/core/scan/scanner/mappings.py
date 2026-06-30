@@ -1,5 +1,7 @@
 SID_MAP = {
     "*S-1-1-0": "Everyone",
+    "*S-1-5-9": "Enterprise Domain Controllers",
+    "*S-1-5-11": "Authenticated Users",
     "*S-1-5-32-544": "Administrators",
     "*S-1-5-32-545": "Users",
     "*S-1-5-32-546": "Guests",
@@ -18,6 +20,7 @@ USER_RIGHTS_MAP = {
     "Access this computer from the network": "SeNetworkLogonRight",
     "Act as part of the operating system": "SeTcbPrivilege",
     "Allow log on locally": "SeInteractiveLogonRight",
+    "Allow log on through Remote Desktop Services": "SeRemoteInteractiveLogonRight",
     "Back up files and directories": "SeBackupPrivilege",
     "Bypass traverse checking": "SeChangeNotifyPrivilege",
     "Change the system time": "SeSystemtimePrivilege",
@@ -74,6 +77,19 @@ SPECIAL_VALUE_MAP = {
     "audit all": "1",
     # AuditReceivingNTLMTraffic: 2 = Enable auditing for all accounts
     "enable auditing for all accounts": "2",
+    "p-node (recommended)": "2",
+    "highest protection, source routing is completely disabled": "2",
+    "block all": "0",
+    "authenticated": "1",
+    "do not execute any autorun commands": "1",
+    "all drives": "255",
+    "use tls 1.1 and tls 1.2": "2560",
+    "disable java": "0",
+    "high safety": "65536",
+    "prompt": "1",
+    "anonymous logon": "0",
+    "high level": "3",
+    "on, but disallow access above lock": "1",
 }
 
 FIREWALL_PROFILE_MAP = {

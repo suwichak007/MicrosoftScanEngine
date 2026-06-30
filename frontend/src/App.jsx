@@ -1,16 +1,19 @@
-import React from 'react';
+import React, { lazy, Suspense } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import Login from './pages/Login';
 import Home from './pages/Home';
+import Scan from './pages/Scan';
 import Register from './pages/Register';
 import Result from './pages/Result';
-import SubnetResult from './pages/SubnetResult';
 import History from './pages/History';
-import Summary from './pages/Summary';
 import AdminUsers from './pages/Adminusers';
 import AgentManagement from './pages/AgentManagement';
+import ActivityLog from './pages/ActivityLog';
 import ChangePassword from './pages/ChangePassword';  // ← ชื่อ import ต้องตรงกับชื่อไฟล์ (PascalCase)
 import { ProtectedRoute } from './auth';
+
+const Summary = lazy(() => import('./pages/Summary'));
+const SubnetResult = lazy(() => import('./pages/SubnetResult'));
 
 const protectedPage = (element, role) => (
   <ProtectedRoute role={role}>{element}</ProtectedRoute>
@@ -36,17 +39,27 @@ function App() {
         <Route path="/history"   element={protectedPage(<History />)} />
         <Route path="/History"   element={protectedPage(<History />)} />
 
-        <Route path="/summary"   element={protectedPage(<Summary />)} />
-        <Route path="/Summary"   element={protectedPage(<Summary />)} />
+        <Route
+          path="/summary"
+          element={protectedPage(<Suspense fallback={<div>Loading report...</div>}><Summary /></Suspense>)}
+        />
+        <Route
+          path="/Summary"
+          element={protectedPage(<Suspense fallback={<div>Loading report...</div>}><Summary /></Suspense>)}
+        />
 
         <Route path="/admin/users" element={protectedPage(<AdminUsers />, 'admin')} />
         <Route path="/admin/agents" element={protectedPage(<AgentManagement />, 'admin')} />
+        <Route path="/admin/activity" element={protectedPage(<ActivityLog />, 'admin')} />
 
         {/* Requirement route aliases */}
-        <Route path="/scan/new"          element={protectedPage(<Home />)} />
+        <Route path="/scan/new"          element={protectedPage(<Scan />)} />
         <Route path="/scan/:id/progress" element={protectedPage(<Result />)} />
         <Route path="/scan/:id/report"   element={protectedPage(<Result />)} />
-        <Route path="/scan/:id/subnet"   element={protectedPage(<SubnetResult />)} />
+        <Route
+          path="/scan/:id/subnet"
+          element={protectedPage(<Suspense fallback={<div>Loading fleet report...</div>}><SubnetResult /></Suspense>)}
+        />
 
 
         <Route path="*" element={<Navigate to="/" />} />

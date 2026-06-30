@@ -24,6 +24,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from app.core.database import SessionLocal
+from app.core.activity_routes import log_activity
 from app.core.security import get_current_user, get_password_hash
 from app.core.scan.scanner.baseline_config import list_available_versions, _load_json
 from app.core.severity_mapping import get_mapping_from_db
@@ -91,6 +92,7 @@ class ScheduleIn(BaseModel):
 class BaselineConfirmIn(BaseModel):
     upload_id: str
     target_columns: dict[str, list[str]] = {}
+    target_roles: dict[str, dict[str, list[str]]] = {}
 
 
 def _safe_filename(name: str) -> str:
@@ -122,6 +124,8 @@ def _store_converted_baseline(
     definition: dict,
     source_path: Path,
     source_filename: str,
+    db: Session | None = None,
+    actor: User | None = None,
 ) -> dict:
     BASELINE_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     BASELINE_UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -139,7 +143,7 @@ def _store_converted_baseline(
     shutil.move(str(source_path), str(saved_path))
     _load_json.cache_clear()
 
-    return {
+    result = {
         "ok": True,
         "baseline_id": definition.get("baseline_id", ""),
         "baseline_name": definition.get("baseline_name", ""),
@@ -148,6 +152,16 @@ def _store_converted_baseline(
         "check_count": check_count,
         "generated_files": [json_path.name, yaml_path.name],
     }
+    if db is not None:
+        log_activity(
+            db,
+            actor=actor,
+            action="baseline_uploaded",
+            target_type="baseline",
+            target_id=result["baseline_id"] or json_path.name,
+            detail=result,
+        )
+    return result
 
 
 def _parse_time(value: str | None, frequency: str) -> tuple[int, int]:
@@ -237,7 +251,7 @@ def _apply_schedule(row: ScanSchedule, body: ScheduleIn, user_id: int | None = N
     row.agent_id = body.agent_id.strip() if body.scan_type == "agent" else ""
     row.subnet = body.subnet.strip() if body.scan_type == "agent-subnet" else ""
     row.version = body.version.strip() or "auto"
-    row.role = body.role.strip() or "auto"
+    row.role = "auto"
     row.frequency = body.frequency
     row.time = body.time.strip()
     row.day_of_week = body.day_of_week if body.frequency == "weekly" else None
@@ -318,10 +332,11 @@ def confirm_baseline_upload(
         definition = convert_workbook(
             temp_path,
             target_column_overrides=body.target_columns,
+            target_role_overrides=body.target_roles,
             severity_mapping=get_mapping_from_db(db),
             source_filename=source_filename,
         )
-        return _store_converted_baseline(definition, temp_path, source_filename)
+        return _store_converted_baseline(definition, temp_path, source_filename, db=db, actor=admin)
     except HTTPException:
         if temp_path.exists():
             temp_path.unlink()
@@ -370,7 +385,7 @@ async def upload_baseline(
         shutil.move(str(temp_path), str(saved_path))
         _load_json.cache_clear()
 
-        return {
+        result = {
             "ok": True,
             "baseline_id": definition.get("baseline_id", ""),
             "baseline_name": definition.get("baseline_name", ""),
@@ -379,6 +394,15 @@ async def upload_baseline(
             "check_count": check_count,
             "generated_files": [json_path.name, yaml_path.name],
         }
+        log_activity(
+            db,
+            actor=admin,
+            action="baseline_uploaded",
+            target_type="baseline",
+            target_id=result["baseline_id"] or json_path.name,
+            detail=result,
+        )
+        return result
     except HTTPException:
         if temp_path.exists():
             temp_path.unlink()
@@ -436,6 +460,14 @@ def delete_baseline(
     if active:
         active.is_active = False
         db.commit()
+    log_activity(
+        db,
+        actor=admin,
+        action="baseline_deleted",
+        target_type="baseline",
+        target_id=safe_name,
+        detail={"removed": removed},
+    )
     return {"ok": True, "filename": safe_name, "removed": removed}
 
 
@@ -459,6 +491,14 @@ def create_schedule(
     db.add(row)
     db.commit()
     db.refresh(row)
+    log_activity(
+        db,
+        actor=admin,
+        action="schedule_created",
+        target_type="schedule",
+        target_id=row.id,
+        detail=_schedule_to_dict(row),
+    )
     return _schedule_to_dict(row)
 
 
@@ -475,6 +515,14 @@ def update_schedule(
     _apply_schedule(row, body)
     db.commit()
     db.refresh(row)
+    log_activity(
+        db,
+        actor=admin,
+        action="schedule_updated",
+        target_type="schedule",
+        target_id=row.id,
+        detail=_schedule_to_dict(row),
+    )
     return _schedule_to_dict(row)
 
 
@@ -487,8 +535,17 @@ def delete_schedule(
     row = db.query(ScanSchedule).filter(ScanSchedule.id == schedule_id).first()
     if not row:
         raise HTTPException(status_code=404, detail="schedule not found")
+    detail = _schedule_to_dict(row)
     db.delete(row)
     db.commit()
+    log_activity(
+        db,
+        actor=admin,
+        action="schedule_deleted",
+        target_type="schedule",
+        target_id=schedule_id,
+        detail=detail,
+    )
     return {"ok": True, "id": schedule_id}
 
 
@@ -526,8 +583,17 @@ def update_role(
         if owner_count <= 1:
             raise HTTPException(status_code=400, detail="Cannot remove the last active owner")
 
+    old_role = user.role
     user.role = body.role
     db.commit()
+    log_activity(
+        db,
+        actor=admin,
+        action="user_role_changed",
+        target_type="user",
+        target_id=user.id,
+        detail={"username": user.username, "old_role": old_role, "new_role": body.role},
+    )
     return {"ok": True, "user_id": user_id, "role": body.role}
 
 
@@ -548,9 +614,21 @@ def reset_password(
 
     if not user.hashed_password:
         raise HTTPException(status_code=400, detail="LDAP user password must be managed in LDAP/AD")
+    if user.role == "owner":
+        raise HTTPException(status_code=403, detail="Owner password cannot be reset from User Management")
+    if user.role == "admin" and admin.role != "owner":
+        raise HTTPException(status_code=403, detail="Only owner can reset admin passwords")
 
     user.hashed_password = get_password_hash(body.new_password)
     db.commit()
+    log_activity(
+        db,
+        actor=admin,
+        action="user_password_reset",
+        target_type="user",
+        target_id=user.id,
+        detail={"username": user.username, "role": user.role},
+    )
     return {"ok": True, "user_id": user_id}
 
 
@@ -569,6 +647,24 @@ def delete_user(
     if user.id == admin.id:
         raise HTTPException(status_code=400, detail="ไม่สามารถลบตัวเองได้")
 
+    if user.role == "owner":
+        raise HTTPException(status_code=403, detail="Owner accounts cannot be deleted")
+    if user.role == "admin" and admin.role != "owner":
+        raise HTTPException(status_code=403, detail="Only owner can delete admin accounts")
+    if user.role == "admin":
+        privileged_count = db.query(User).filter(User.role.in_(("admin", "owner")), User.is_active == True).count()
+        if privileged_count <= 1:
+            raise HTTPException(status_code=400, detail="Cannot remove the last active admin or owner")
+
+    detail = {"username": user.username, "role": user.role}
     db.delete(user)
     db.commit()
+    log_activity(
+        db,
+        actor=admin,
+        action="user_deleted",
+        target_type="user",
+        target_id=user_id,
+        detail=detail,
+    )
     return {"ok": True, "user_id": user_id}

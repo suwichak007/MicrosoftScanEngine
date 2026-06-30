@@ -193,6 +193,198 @@ body {
   font-weight: 300;
 }
 
+.homeOverviewHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+}
+
+.latestPanel,
+.emptyState {
+  background: var(--paper);
+  border: 1px solid var(--cream-mid);
+  border-radius: 12px;
+  padding: 28px;
+  box-shadow: 0 10px 30px rgba(43, 35, 24, 0.05);
+}
+
+.emptyState {
+  min-height: 360px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 14px;
+}
+
+.emptyIcon {
+  width: 66px;
+  height: 66px;
+  border-radius: 50%;
+  background: var(--amber-pale);
+  color: var(--amber);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+
+.emptyState h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.emptyState p {
+  max-width: 420px;
+  font-size: 14px;
+  color: var(--ink-lt);
+  line-height: 1.6;
+  margin-bottom: 8px;
+}
+
+.latestTop {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  margin-bottom: 28px;
+}
+
+.eyebrow {
+  display: inline-block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--amber);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  margin-bottom: 8px;
+}
+
+.latestTop h2 {
+  font-size: 26px;
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 6px;
+  overflow-wrap: anywhere;
+}
+
+.latestTop p {
+  font-size: 13px;
+  color: var(--ink-lt);
+}
+
+.latestActions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.latestHero {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  gap: 24px;
+  align-items: stretch;
+  margin-bottom: 22px;
+}
+
+.scoreDial {
+  --score: 0;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at center, var(--paper) 0 58%, transparent 59%),
+    conic-gradient(var(--amber) calc(var(--score) * 1%), var(--cream-mid) 0);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.scoreDialInner {
+  width: 132px;
+  height: 132px;
+  border-radius: 50%;
+  background: #fffaf4;
+  border: 1px solid var(--cream-mid);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 4px;
+}
+
+.scoreDialInner strong {
+  font-family: 'DM Mono', monospace;
+  font-size: 38px;
+  line-height: 1;
+  color: var(--ink);
+}
+
+.scoreDialInner span {
+  width: min-content;
+  min-width: 86px;
+  font-size: 11px;
+  color: var(--ink-lt);
+  line-height: 1.25;
+}
+
+.latestContext {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.latestContext div,
+.metricTile {
+  background: var(--cream);
+  border: 1px solid var(--cream-mid);
+  border-radius: 10px;
+  padding: 16px;
+  min-width: 0;
+}
+
+.latestContext span,
+.metricTile span {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ink-lt);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin-bottom: 8px;
+}
+
+.latestContext strong {
+  display: block;
+  font-family: 'DM Mono', monospace;
+  font-size: 13px;
+  color: var(--ink);
+  overflow-wrap: anywhere;
+}
+
+.latestMetrics {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.metricTile strong {
+  font-family: 'DM Mono', monospace;
+  font-size: 28px;
+  color: var(--ink);
+}
+
+.metricTile.pass strong { color: var(--green); }
+.metricTile.fail strong { color: var(--red); }
+.metricTile.risk strong { color: var(--amber); }
+
 /* ── Error Banner ────────────────────────────────────────── */
 .errBanner {
   display: flex;
@@ -563,4 +755,71 @@ body {
 
 .userMenuItemDanger:hover {
   background: #fdf0ee;
+}
+
+@media (max-width: 980px) {
+  .main {
+    padding: 0 28px 40px;
+  }
+
+  .homeOverviewHead,
+  .latestTop {
+    flex-direction: column;
+  }
+
+  .latestActions {
+    justify-content: flex-start;
+  }
+
+  .latestHero {
+    grid-template-columns: 1fr;
+  }
+
+  .latestContext,
+  .latestMetrics {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .sidebar {
+    position: static;
+    width: 100%;
+    height: auto;
+    gap: 18px;
+  }
+
+  .root {
+    flex-direction: column;
+  }
+
+  .main {
+    margin-left: 0;
+    padding: 0 18px 32px;
+  }
+
+  .sideTop {
+    gap: 18px;
+  }
+
+  .sideNav {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .latestPanel,
+  .emptyState {
+    padding: 20px;
+  }
+
+  .latestContext,
+  .latestMetrics,
+  .fieldRow {
+    grid-template-columns: 1fr;
+  }
+
+  .scoreDial {
+    width: 160px;
+    height: 160px;
+  }
 }

@@ -1,79 +1,94 @@
-/* eslint-disable react-hooks/set-state-in-effect */
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import './Result.css';
-import { authHeaders, clearAuth, useIsAdmin } from '../auth';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
+import { authHeaders, clearAuth } from '../auth';
 import { apiUrl } from '../config/api';
-import ProfileMenu from './ProfileMenu';
+import {
+  MetricCard,
+  MetricGrid,
+  PanelHeader,
+  ReportHeader,
+  ReportPanel,
+  ReportShell,
+  ReportTopbar,
+  StatusBadge,
+} from './ReportUI';
+import { formatReportDate } from './reportUtils';
+import './SubnetResult.css';
 
-function Layout({ children, navigate }) {
-  const admin = useIsAdmin();
-
-  return (
-    <div className="root">
-      <aside className="sidebar">
-        <div className="sideTop">
-          <div className="logo">
-            <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-              <circle cx="11" cy="11" r="10" stroke="#c8813a" strokeWidth="1.5" />
-              <circle cx="11" cy="11" r="5" stroke="#c8813a" strokeWidth="1.5" />
-              <circle cx="11" cy="11" r="1.5" fill="#c8813a" />
-            </svg>
-            <span className="logoText">SecureScan</span>
-          </div>
-          <nav className="sideNav">
-            <button className="sideLink" onClick={() => navigate('/home')}><span className="sideLinkDot" />Home</button>
-            <button className="sideLink" onClick={() => navigate('/history')}><span className="sideLinkDot" />History</button>
-            {admin && (
-              <>
-                <button className="sideLink" onClick={() => navigate('/admin/agents')}><span className="sideLinkDot" />Agents</button>
-                <button className="sideLink" onClick={() => navigate('/admin/users')}><span className="sideLinkDot" />Users</button>
-              </>
-            )}
-          </nav>
-        </div>
-        <button className="logoutBtn" onClick={() => { clearAuth(); navigate('/login'); }}>
-          Log out
-        </button>
-      </aside>
-      <main className="main">{children}</main>
-    </div>
-  );
-}
-
-function Topbar() {
-  return (
-    <header className="topbar">
-      <p className="topbarDate">
-        {new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-      </p>
-      <div className="topbarActions"><ProfileMenu /></div>
-    </header>
-  );
-}
+const SEVERITY_COLORS = {
+  critical: '#c2413b',
+  high: '#dc6b2f',
+  medium: '#d6a11d',
+  low: '#64748b',
+};
 
 function normalizeFindingStatus(status, target = '', actual = '', raw = '') {
-  const text = String(status || raw || '').toLowerCase();
-  if (text.includes('pass')) return 'pass';
-  if (text.includes('manual') || text.includes('n/a')) return 'manual';
-  if (text.includes('fail')) return 'fail';
+  const statusText = String(status || '').trim().toLowerCase();
+  if (statusText) {
+    if (/^(pass|passed|compliant)\b/.test(statusText)) return 'pass';
+    if (/^(fail|failed|non-compliant|noncompliant)\b/.test(statusText)) return 'fail';
+    if (/^(manual|n\/a|na|skip|skipped)\b/.test(statusText)) return 'manual';
+  }
+
+  const rawText = String(raw || '').toLowerCase();
+  const explicitStatus = rawText.match(/["']?status["']?\s*[:=]\s*["']?(pass|passed|fail|failed|manual|n\/a|na|skip|skipped|compliant|non-compliant|noncompliant)\b/);
+  if (explicitStatus) return normalizeFindingStatus(explicitStatus[1], target, actual, '');
+  if (/\bmanual\b|\bn\/a\b|\bskipped?\b/.test(rawText)) return 'manual';
+  if (/\bfailed?\b|\bnon-compliant\b|\bnoncompliant\b/.test(rawText)) return 'fail';
+  if (/\bpassed?\b|\bcompliant\b/.test(rawText)) return 'pass';
   if (target && actual && String(target).trim().toLowerCase() === String(actual).trim().toLowerCase()) return 'pass';
   return 'fail';
 }
 
+function normalizePolicyPart(value) {
+  return String(value || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function policyIdentity(item) {
+  const settingIdentity = [
+    item.policyPath,
+    item.registryPath,
+    item.name,
+    item.section,
+  ].map(normalizePolicyPart).filter(Boolean).join('|');
+
+  if (settingIdentity) return settingIdentity;
+
+  return [
+    item.checkId,
+    item.sourceKey,
+    item.name,
+    item.section,
+  ].map(normalizePolicyPart).filter(Boolean).join('|');
+}
+
 function parseScanItems(details, findings) {
   if (Array.isArray(findings) && findings.length > 0) {
-    return findings
-      .map((item) => ({
-        key: item.source_key || item.check_id || item.check_name,
-        checkId: item.check_id || '',
-        name: item.check_name || item.source_key || 'Unknown check',
-        section: item.category || 'General',
-        severity: String(item.severity || 'Low').toLowerCase(),
-        target: item.expected_value || '',
-        actual: item.current_value || '',
-        status: normalizeFindingStatus(item.status, item.expected_value, item.current_value, item.raw_result),
-      }));
+    return findings.map((item) => ({
+      key: item.source_key || item.check_id || item.check_name,
+      sourceKey: item.source_key || '',
+      checkId: item.check_id || '',
+      name: item.check_name || item.source_key || 'Unknown check',
+      section: item.category || 'General',
+      severity: String(item.severity || 'Low').toLowerCase(),
+      policyPath: item.policy_path || '',
+      registryPath: item.registry_path || '',
+      target: item.expected_value || '',
+      actual: item.current_value || '',
+      status: normalizeFindingStatus(item.status, item.expected_value, item.current_value, item.raw_result),
+    }));
   }
 
   return Object.entries(details || {})
@@ -85,15 +100,32 @@ function parseScanItems(details, findings) {
       const actual = (raw.match(/Actual:\s*(.+?)(?:\s*\)\s*$|\s*$)/) || [])[1]?.trim().replace(/\)\s*$/, '') || '';
       return {
         key,
+        sourceKey: key,
         checkId: '',
         name: key.replace(/^\[[^\]]+\]\s*/, ''),
         section: sectionMatch ? sectionMatch[1] : 'General',
         severity: 'low',
+        policyPath: '',
+        registryPath: '',
         target,
         actual,
         status: normalizeFindingStatus(raw, target, actual, raw),
       };
     });
+}
+
+function hostLabel(host) {
+  return host.hostname || host.host || host.target_name || host.agent_id || 'Unknown host';
+}
+
+function scoreTone(score) {
+  if (score >= 70) return 'pass';
+  if (score >= 40) return 'warn';
+  return 'fail';
+}
+
+function ChartEmpty({ children }) {
+  return <div className="fleetEmpty">{children}</div>;
 }
 
 export default function SubnetResult() {
@@ -106,87 +138,92 @@ export default function SubnetResult() {
   const [detailModal, setDetailModal] = useState(null);
 
   useEffect(() => {
-    setLoading(true);
-    setErrorMsg('');
-    fetch(apiUrl(`/api/scan/history/${id}`), {
-      headers: authHeaders(),
-    })
-      .then((res) => {
-        if (res.status === 401) {
+    let cancelled = false;
+
+    async function loadReport() {
+      setLoading(true);
+      setErrorMsg('');
+      try {
+        const reportRes = await fetch(apiUrl(`/api/scan/history/${id}`), { headers: authHeaders() });
+        if (reportRes.status === 401) {
           clearAuth();
           navigate('/login');
-          return Promise.reject('Not authenticated');
+          return;
         }
-        if (!res.ok) return res.json().then((e) => Promise.reject(e.detail || 'Subnet report not found'));
-        return res.json();
-      })
-      .then((data) => {
-        const details = data.details || {};
-        const results = Array.isArray(details.results) ? details.results : [];
+        const report = await reportRes.json();
+        if (!reportRes.ok) throw new Error(report.detail || 'Subnet report not found');
+
+        const childRes = await fetch(apiUrl(`/api/scan/history/${id}/children`), { headers: authHeaders() });
+        if (childRes.status === 401) {
+          clearAuth();
+          navigate('/login');
+          return;
+        }
+        const childRows = childRes.ok ? await childRes.json() : [];
+        if (cancelled) return;
+
+        const details = report.details || {};
         setScanData({
-          id: data.id,
-          subnet: details.subnet || data.hostname || data.target_name,
-          targetName: data.target_name,
-          version: data.version || '',
-          score: data.score || 0,
-          score_breakdown: data.score_breakdown || null,
-          method: details.method || 'subnet',
-          results,
-          success_count: results.filter((r) => r.status === 'done').length,
-          failed_count: results.filter((r) => r.status === 'error').length,
+          ...report,
+          subnet: details.subnet || report.hostname || report.target_name || 'Subnet',
+          method: details.method || 'agent subnet',
+          results: Array.isArray(details.results) ? details.results : [],
         });
-        return fetch(apiUrl(`/api/scan/history/${id}/children`), {
-          headers: authHeaders(),
-        });
-      })
-      .then((res) => {
-        if (!res) return [];
-        if (res.status === 401) {
-          clearAuth();
-          navigate('/login');
-          return Promise.reject('Not authenticated');
-        }
-        if (!res.ok) return [];
-        return res.json();
-      })
-      .then((rows) => {
-        setChildren(Array.isArray(rows) ? rows : []);
-      })
-      .catch((err) => setErrorMsg(typeof err === 'string' ? err : 'Unable to load subnet result'))
-      .finally(() => setLoading(false));
+        setChildren(Array.isArray(childRows) ? childRows : []);
+      } catch (error) {
+        if (!cancelled) setErrorMsg(error.message || 'Unable to load subnet result');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    loadReport();
+    return () => { cancelled = true; };
   }, [id, navigate]);
 
-  const scoreColor = (score) => {
-    if (score >= 70) return 'var(--green)';
-    if (score >= 40) return 'var(--amber)';
-    return 'var(--red)';
-  };
-
   const overview = useMemo(() => {
-    const hostRows = children.map((child) => {
+    const parentResults = scanData?.results || [];
+    const parentByHost = new Map(
+      parentResults.map((row) => [hostLabel(row).toLowerCase(), row]),
+    );
+    const childHosts = children.map((child) => {
       const items = parseScanItems(child.details, child.findings);
-      const fails = items.filter((item) => item.status === 'fail');
-      const passes = items.filter((item) => item.status === 'pass');
+      const failItems = items.filter((item) => item.status === 'fail');
+      const passItems = items.filter((item) => item.status === 'pass');
+      const parentRow = parentByHost.get(hostLabel(child).toLowerCase()) || {};
       return {
+        ...parentRow,
         ...child,
+        state: 'done',
         scanItems: items,
-        failItems: fails,
-        passItems: passes,
-        failCount: Number.isFinite(child.fail_count) && child.fail_count > 0 ? child.fail_count : fails.length,
-        passCount: Number.isFinite(child.pass_count) && child.pass_count > 0 ? child.pass_count : passes.length,
+        failItems,
+        passItems,
+        failCount: Number.isFinite(Number(child.fail_count)) ? Number(child.fail_count) : failItems.length,
+        passCount: Number.isFinite(Number(child.pass_count)) ? Number(child.pass_count) : passItems.length,
       };
     });
-    const completedHosts = hostRows.filter((host) => (host.scanItems || []).length > 0);
-    const worstHosts = [...hostRows]
-      .sort((a, b) => (b.failCount - a.failCount) || ((a.score || 0) - (b.score || 0)))
-      .slice(0, 5);
+
+    const childNames = new Set(childHosts.map((host) => hostLabel(host).toLowerCase()));
+    const unresolvedHosts = parentResults
+      .filter((row) => !childNames.has(hostLabel(row).toLowerCase()))
+      .map((row) => ({
+        ...row,
+        state: row.status === 'done' ? 'done' : 'error',
+        scanItems: [],
+        failItems: [],
+        passItems: [],
+        failCount: Number(row.fail_count || 0),
+        passCount: Number(row.pass_count || 0),
+      }));
+    const hostRows = [...childHosts, ...unresolvedHosts];
+    const completedHosts = childHosts.filter((host) => host.scanItems.length > 0);
     const failedPolicyMap = new Map();
     const passedPolicyMap = new Map();
     const categoryMap = new Map();
-    const severityCounts = { critical: 0, high: 0, medium: 0, low: 0 };
+    const derivedSeverity = { critical: 0, high: 0, medium: 0, low: 0 };
 
-    const upsertPolicy = (map, item, hostName) => {
-      const key = item.checkId || item.key || item.name;
+    const upsertPolicy = (map, item, hostname) => {
+      const key = policyIdentity(item) || item.key || item.name;
       if (!map.has(key)) {
         map.set(key, {
           key,
@@ -196,356 +233,354 @@ export default function SubnetResult() {
           hosts: new Set(),
         });
       }
-      map.get(key).hosts.add(hostName);
+      map.get(key).hosts.add(hostname);
     };
 
-    hostRows.forEach((host) => {
-      const hostName = host.hostname || host.host || host.target_name || 'Unknown host';
-      host.failItems.forEach((item) => {
-        upsertPolicy(failedPolicyMap, item, hostName);
-        const section = item.section || 'General';
-        categoryMap.set(section, (categoryMap.get(section) || 0) + 1);
-        const sev = ['critical', 'high', 'medium', 'low'].includes(item.severity) ? item.severity : 'low';
-        severityCounts[sev] += 1;
+    const itemPriority = { fail: 3, manual: 2, pass: 1 };
+    const uniquePolicyStatuses = (items) => {
+      const byPolicy = new Map();
+      items.forEach((item) => {
+        const key = policyIdentity(item) || item.key || item.name;
+        const previous = byPolicy.get(key);
+        if (!previous || (itemPriority[item.status] || 0) > (itemPriority[previous.status] || 0)) {
+          byPolicy.set(key, item);
+        }
       });
-      host.passItems.forEach((item) => upsertPolicy(passedPolicyMap, item, hostName));
+      return Array.from(byPolicy.values());
+    };
+
+    completedHosts.forEach((host) => {
+      const hostname = hostLabel(host);
+      uniquePolicyStatuses(host.scanItems).forEach((item) => {
+        if (item.status === 'pass') {
+          upsertPolicy(passedPolicyMap, item, hostname);
+          return;
+        }
+        if (item.status !== 'fail') return;
+        upsertPolicy(failedPolicyMap, item, hostname);
+        categoryMap.set(item.section || 'General', (categoryMap.get(item.section || 'General') || 0) + 1);
+        const severity = Object.hasOwn(derivedSeverity, item.severity) ? item.severity : 'low';
+        derivedSeverity[severity] += 1;
+      });
     });
+
     const repeatedPolicies = Array.from(failedPolicyMap.values())
       .map((item) => ({ ...item, hosts: Array.from(item.hosts) }))
       .filter((item) => item.hosts.length > 1)
-      .sort((a, b) => b.hosts.length - a.hosts.length);
-    const commonFails = repeatedPolicies
-      .slice(0, 8);
+      .sort((a, b) => b.hosts.length - a.hosts.length || a.name.localeCompare(b.name));
     const passedEverywhere = Array.from(passedPolicyMap.values())
       .map((item) => ({ ...item, hosts: Array.from(item.hosts) }))
       .filter((item) => completedHosts.length > 0 && item.hosts.length === completedHosts.length)
       .sort((a, b) => a.section.localeCompare(b.section) || a.name.localeCompare(b.name));
-    const commonPasses = passedEverywhere.slice(0, 8);
     const categoryBreakdown = Array.from(categoryMap.entries())
-      .map(([section, count]) => ({ section, count }))
+      .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 8);
-    const maxCategoryCount = Math.max(1, ...categoryBreakdown.map((item) => item.count));
-    const totalFails = hostRows.reduce((sum, host) => sum + host.failCount, 0);
-    const totalPasses = hostRows.reduce((sum, host) => sum + host.passCount, 0);
-    const cleanHosts = hostRows.filter((host) => host.failCount === 0).length;
+    const authoritativeSeverity = scanData?.score_breakdown?.severity_failed;
+    const severityCounts = authoritativeSeverity
+      ? {
+          critical: Number(authoritativeSeverity.critical || 0),
+          high: Number(authoritativeSeverity.high || 0),
+          medium: Number(authoritativeSeverity.medium || 0),
+          low: Number(authoritativeSeverity.low || 0),
+        }
+      : derivedSeverity;
+    const severityData = Object.entries(severityCounts)
+      .map(([name, value]) => ({ name: name[0].toUpperCase() + name.slice(1), key: name, value }))
+      .filter((item) => item.value > 0);
+    const ranking = [...childHosts]
+      .sort((a, b) => Number(a.score || 0) - Number(b.score || 0))
+      .map((host) => ({
+        name: hostLabel(host),
+        score: Number(host.score || 0),
+        failures: host.failCount,
+      }));
+
     return {
       hostRows,
       completedHostCount: completedHosts.length,
-      worstHosts,
+      attentionHosts: childHosts.filter((host) => host.failCount > 0).length + unresolvedHosts.length,
+      errorHostCount: unresolvedHosts.filter((host) => host.state === 'error').length,
       repeatedPolicies,
-      commonFails,
-      passedEverywhere,
-      commonPasses,
-      passedEverywhereCount: passedEverywhere.length,
+      commonFails: repeatedPolicies.slice(0, 8),
       repeatedPolicyCount: repeatedPolicies.length,
+      passedEverywhere,
+      commonPasses: passedEverywhere.slice(0, 8),
+      passedEverywhereCount: passedEverywhere.length,
       categoryBreakdown,
-      maxCategoryCount,
       severityCounts,
-      totalFails,
-      totalPasses,
-      cleanHosts,
+      severityData,
+      ranking,
+      worstHosts: [...childHosts]
+        .sort((a, b) => b.failCount - a.failCount || Number(a.score || 0) - Number(b.score || 0))
+        .slice(0, 6),
     };
-  }, [children]);
+  }, [children, scanData]);
 
   const openPolicyModal = (type) => {
-    if (type === 'fail') {
-      setDetailModal({
-        title: 'All Repeated Failed Policies',
-        subtitle: `${overview.repeatedPolicyCount} policies failed on multiple hosts`,
-        badgeClass: 'fail',
-        rows: overview.repeatedPolicies,
-        empty: 'No repeated failed policies found',
-      });
-      return;
-    }
+    const failed = type === 'fail';
     setDetailModal({
-      title: 'All Checks Passed On Every Host',
-      subtitle: `${overview.passedEverywhereCount} checks passed on ${overview.completedHostCount} scanned hosts`,
-      badgeClass: 'pass',
-      rows: overview.passedEverywhere,
-      empty: 'No checks passed on every scanned host yet',
+      title: failed ? 'Repeated Failed Policies' : 'Checks Passed On Every Host',
+      subtitle: failed
+        ? `${overview.repeatedPolicyCount} policies failed on more than one host`
+        : `${overview.passedEverywhereCount} checks passed on all ${overview.completedHostCount} completed hosts`,
+      tone: failed ? 'fail' : 'pass',
+      rows: failed ? overview.repeatedPolicies : overview.passedEverywhere,
+      empty: failed ? 'No repeated failed policies found' : 'No checks passed on every host',
     });
   };
 
-  return (
-    <Layout navigate={navigate}>
-      <Topbar />
-      <div className="pageHead">
-        <h1 className="pageTitle">Subnet Scan Result</h1>
-        <p className="pageDesc">{scanData?.subnet || 'Subnet'}  {scanData?.version || ''}</p>
-      </div>
+  const totalHosts = Math.max(Number(scanData?.host_count || 0), overview.hostRows.length);
+  const totalPassed = Number(scanData?.pass_count || 0);
+  const totalFailed = Number(scanData?.fail_count || 0);
+  const failedHosts = Number(scanData?.failed_host_count ?? 0) + overview.errorHostCount;
+  const criticalHigh = Number(scanData?.critical_count || overview.severityCounts.critical)
+    + Number(scanData?.high_count || overview.severityCounts.high);
+  const assessed = scanData?.score_breakdown?.total_assessed_count
+    ?? scanData?.score_breakdown?.assessed_weight
+    ?? totalPassed + totalFailed;
 
-      {loading && <div className="emptyMsg">Loading...</div>}
-      {errorMsg && <div className="errBanner">{errorMsg}</div>}
+  return (
+    <ReportShell active="History">
+      <ReportTopbar />
+
+      {loading && <div className="fleetState">Loading subnet report...</div>}
+      {!loading && errorMsg && <div className="fleetState error">{errorMsg}</div>}
 
       {!loading && scanData && (
         <>
-          <div className="scoreSummary" style={{ marginBottom: 24 }}>
-            <div className="scoreCircleWrap">
-              <div className="scoreText" style={{ color: scoreColor(scanData.score) }}>{scanData.score}%</div>
-            </div>
-            <div className="scoreDetail">
-              <div className="scoreLabel">{scanData.subnet}</div>
-              <div className="scoreVersion">{scanData.version}</div>
-              <div className="scoreVersion">NIST/CIS-informed fleet compliance score</div>
-              {scanData.score_breakdown && (
-                <div className="scoreVersion">
-                  Assessed weight {scanData.score_breakdown.passed_weight}/{scanData.score_breakdown.assessed_weight}
-                  {scanData.score_breakdown.excluded_manual_count ? ` · ${scanData.score_breakdown.excluded_manual_count} manual excluded` : ''}
+          <ReportHeader
+            eyebrow="Fleet security report"
+            title={scanData.subnet}
+            subtitle="Review compliance posture across scanned hosts and drill into the controls driving fleet risk."
+            score={scanData.score}
+            scoreLabel="Fleet compliance"
+            context={[
+              { label: 'Baseline', value: scanData.version || 'Auto-selected per host' },
+              { label: 'Scan ID', value: `#${scanData.id}` },
+              { label: 'Scanned', value: formatReportDate(scanData.scan_date) },
+              { label: 'Hosts', value: `${totalHosts} discovered / ${overview.completedHostCount} completed` },
+              { label: 'Assessed', value: assessed ? `${totalPassed}/${assessed}` : '' },
+            ]}
+            actions={(
+              <>
+                <button type="button" className="reportAction" onClick={() => navigate('/history')}>History</button>
+                <button type="button" className="reportAction primary" onClick={() => navigate('/scan/new')}>New Scan</button>
+              </>
+            )}
+          />
+
+          <MetricGrid>
+            <MetricCard label="Total hosts" value={totalHosts} hint={`${overview.completedHostCount} completed`} tone="info" />
+            <MetricCard label="Hosts requiring attention" value={failedHosts} hint={`${overview.errorHostCount} unavailable/error`} tone="fail" />
+            <MetricCard label="Passed checks" value={totalPassed} hint="Across completed hosts" tone="pass" />
+            <MetricCard label="Failed checks" value={totalFailed} hint={`${criticalHigh} Critical or High`} tone="critical" />
+            <MetricCard label="Passed everywhere" value={overview.passedEverywhereCount} hint="Common fleet strengths" tone="pass" />
+          </MetricGrid>
+
+          <div className="fleetChartGrid">
+            <ReportPanel className="fleetChartPanel">
+              <PanelHeader title="Failure Severity" subtitle={`${totalFailed} failed checks across the fleet`} />
+              {overview.severityData.length ? (
+                <div className="fleetSeverityBody">
+                  <div className="fleetChartCanvas">
+                    <ResponsiveContainer width="100%" height={220}>
+                      <PieChart>
+                        <Pie data={overview.severityData} dataKey="value" nameKey="name" innerRadius={54} outerRadius={82} paddingAngle={2}>
+                          {overview.severityData.map((item) => <Cell key={item.key} fill={SEVERITY_COLORS[item.key]} />)}
+                        </Pie>
+                        <Tooltip />
+                      </PieChart>
+                    </ResponsiveContainer>
+                    <div className="fleetDonutLabel"><strong>{criticalHigh}</strong><span>Critical + High</span></div>
+                  </div>
+                  <div className="fleetLegend">
+                    {overview.severityData.map((item) => (
+                      <div key={item.key}>
+                        <i style={{ background: SEVERITY_COLORS[item.key] }} />
+                        <span>{item.name}</span>
+                        <strong>{item.value}</strong>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              )}
-              <div className="scoreCounts" style={{ marginTop: 8 }}>
-                <span className="countBadge pass"> {scanData.success_count} successful</span>
-                <span className="countBadge fail"> {scanData.failed_count} failed</span>
-              </div>
-            </div>
+              ) : <ChartEmpty>No failed severity data available</ChartEmpty>}
+            </ReportPanel>
+
+            <ReportPanel className="fleetChartPanel fleetCategoryPanel">
+              <PanelHeader title="Failed Checks By Category" subtitle="Largest control areas contributing to fleet failures" />
+              {overview.categoryBreakdown.length ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={overview.categoryBreakdown} layout="vertical" margin={{ top: 8, right: 24, left: 12, bottom: 4 }}>
+                    <CartesianGrid stroke="#eef1f5" horizontal={false} />
+                    <XAxis type="number" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#667085' }} />
+                    <YAxis dataKey="name" type="category" width={138} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#475467' }} />
+                    <Tooltip />
+                    <Bar dataKey="count" name="Failed checks" fill="#2563eb" radius={[0, 4, 4, 0]} barSize={14} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <ChartEmpty>No failed category data available</ChartEmpty>}
+            </ReportPanel>
+
+            <ReportPanel className="fleetChartPanel fleetRankingPanel">
+              <PanelHeader title="Host Compliance Ranking" subtitle="Lowest compliance scores appear first" />
+              {overview.ranking.length ? (
+                <ResponsiveContainer width="100%" height={280}>
+                  <BarChart data={overview.ranking} layout="vertical" margin={{ top: 8, right: 24, left: 12, bottom: 4 }}>
+                    <CartesianGrid stroke="#eef1f5" horizontal={false} />
+                    <XAxis type="number" domain={[0, 100]} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#667085' }} />
+                    <YAxis dataKey="name" type="category" width={132} axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: '#475467' }} />
+                    <Tooltip formatter={(value, name, item) => [`${value}% (${item.payload.failures} failed)`, 'Compliance']} />
+                    <Bar dataKey="score" name="Compliance" radius={[0, 4, 4, 0]} barSize={16}>
+                      {overview.ranking.map((host) => (
+                        <Cell
+                          key={host.name}
+                          fill={host.score >= 70 ? '#15803d' : host.score >= 40 ? '#b45309' : '#c2413b'}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : <ChartEmpty>No completed host scans available</ChartEmpty>}
+            </ReportPanel>
           </div>
 
-          <div className="subnetOverviewGrid">
-            <div className="subnetMetricCard danger">
-              <div className="subnetMetricVisual">
-                <span>{overview.severityCounts.critical + overview.severityCounts.high}</span>
-              </div>
-              <span className="subnetMetricValue">{overview.totalFails}</span>
-              <span className="subnetMetricLabel">Total failed checks</span>
-              <div className="subnetMetricFoot">Critical + High: {overview.severityCounts.critical + overview.severityCounts.high}</div>
-            </div>
-            <div className="subnetMetricCard warning">
-              <div className="subnetMetricBar">
-                <i style={{ width: `${Math.min(100, overview.completedHostCount ? (overview.repeatedPolicyCount / Math.max(overview.totalFails, 1)) * 100 : 0)}%` }} />
-              </div>
-              <span className="subnetMetricValue">{overview.repeatedPolicyCount}</span>
-              <span className="subnetMetricLabel">Failed on multiple hosts</span>
-              <button className="subnetInlineBtn" onClick={() => openPolicyModal('fail')} disabled={overview.repeatedPolicyCount === 0}>
-                View all
-              </button>
-            </div>
-            <div className="subnetMetricCard success">
-              <div className="subnetMetricBar good">
-                <i style={{ width: `${Math.min(100, overview.totalPasses ? (overview.passedEverywhereCount / Math.max(overview.totalPasses, 1)) * 100 : 0)}%` }} />
-              </div>
-              <span className="subnetMetricValue">{overview.passedEverywhereCount}</span>
-              <span className="subnetMetricLabel">Passed on every scanned host</span>
-              <button className="subnetInlineBtn" onClick={() => openPolicyModal('pass')} disabled={overview.passedEverywhereCount === 0}>
-                View all
-              </button>
-            </div>
-            <div className="subnetMetricCard neutral">
-              <div className="subnetHostDots" aria-hidden="true">
-                {overview.hostRows.slice(0, 16).map((host) => (
-                  <span key={host.scan_id || host.id || host.hostname} className={host.failCount === 0 ? 'clean' : 'dirty'} />
-                ))}
-              </div>
-              <span className="subnetMetricValue">{overview.cleanHosts}</span>
-              <span className="subnetMetricLabel">Hosts with no failed checks</span>
-              <div className="subnetMetricFoot">Scanned hosts: {overview.completedHostCount}</div>
-            </div>
-          </div>
-
-          <div className="subnetSeverityStrip">
-            <span>Critical: {overview.severityCounts.critical}</span>
-            <span>High: {overview.severityCounts.high}</span>
-            <span>Medium: {overview.severityCounts.medium}</span>
-            <span>Low: {overview.severityCounts.low}</span>
-            <span>Pass total: {overview.totalPasses}</span>
-          </div>
-
-          <div className="subnetInsightGrid">
-            <section className="resultCard subnetInsightCard">
-              <div className="subnetInsightHead">
-                <h2>Hosts With Most Failures</h2>
-                <span>{overview.worstHosts.length} hosts</span>
-              </div>
-              <div className="subnetInsightList">
-                {overview.worstHosts.length === 0 && <div className="emptyMsg">No completed child scan details yet</div>}
+          <div className="fleetInsightGrid">
+            <ReportPanel>
+              <PanelHeader title="Hosts Requiring Attention" subtitle="Prioritized by failed checks and compliance score" />
+              <div className="fleetList">
+                {!overview.worstHosts.length && <ChartEmpty>No completed host scans available</ChartEmpty>}
                 {overview.worstHosts.map((host) => (
-                  <div className="subnetInsightRow" key={host.scan_id || host.id}>
-                    <div>
-                      <div className="itemName">{host.hostname || host.host || host.target_name}</div>
-                      <div className="sectionTag">{host.version || scanData.version}</div>
+                  <div className="fleetHostRow" key={host.scan_id || host.id || hostLabel(host)}>
+                    <div className="fleetHostIdentity">
+                      <strong>{hostLabel(host)}</strong>
+                      <span>{host.version || scanData.version}</span>
                     </div>
-                    <div className="subnetInsightScore">
-                      <span style={{ color: scoreColor(host.score || 0) }}>{host.score || 0}%</span>
+                    <div className="fleetHostCounts">
+                      <span>{host.passCount} pass</span>
                       <strong>{host.failCount} fail</strong>
                     </div>
+                    <StatusBadge tone={scoreTone(Number(host.score || 0))}>{Number(host.score || 0)}%</StatusBadge>
                     {host.scan_id && (
-                      <button className="connBtn smallBtn" onClick={() => navigate(`/scan/${host.scan_id}/report`)}>
-                        View
+                      <button type="button" className="fleetLinkButton" onClick={() => navigate(`/scan/${host.scan_id}/report`)}>
+                        View Report
                       </button>
                     )}
                   </div>
                 ))}
               </div>
-            </section>
+            </ReportPanel>
 
-            <section className="resultCard subnetInsightCard">
-              <div className="subnetInsightHead">
-                <h2>Most Common Failed Policies</h2>
-                <div className="subnetHeadActions">
-                  <span>
-                    {overview.repeatedPolicyCount > overview.commonFails.length
-                      ? `Top ${overview.commonFails.length} of ${overview.repeatedPolicyCount}`
-                      : `${overview.repeatedPolicyCount} policies`}
-                  </span>
-                  <button className="subnetInlineBtn compact" onClick={() => openPolicyModal('fail')} disabled={overview.repeatedPolicyCount === 0}>
-                    View all
-                  </button>
-                </div>
-              </div>
-              <div className="subnetInsightList">
-                {overview.commonFails.length === 0 && <div className="emptyMsg">No repeated failed policies found</div>}
+            <ReportPanel>
+              <PanelHeader
+                title="Repeated Failed Policies"
+                subtitle={`${overview.repeatedPolicyCount} controls failed on multiple hosts`}
+                action={<button type="button" className="fleetTextButton" onClick={() => openPolicyModal('fail')} disabled={!overview.repeatedPolicyCount}>View all</button>}
+              />
+              <div className="fleetList">
+                {!overview.commonFails.length && <ChartEmpty>No repeated failed policies found</ChartEmpty>}
                 {overview.commonFails.map((item) => (
-                  <div className="subnetPolicyRow" key={item.key}>
+                  <div className="fleetPolicyRow" key={item.key}>
                     <div>
-                      <div className="itemName">{item.name}</div>
-                      <div className="sectionTag">{item.section}</div>
+                      <strong>{item.name}</strong>
+                      <span>{item.section}</span>
                     </div>
-                    <span className="countBadge fail">{item.hosts.length} hosts</span>
+                    <StatusBadge tone={item.severity === 'critical' ? 'fail' : 'warn'}>{item.severity}</StatusBadge>
+                    <b>{item.hosts.length}/{overview.completedHostCount} hosts</b>
                   </div>
                 ))}
               </div>
-            </section>
+            </ReportPanel>
           </div>
 
-          <div className="subnetInsightGrid">
-            <section className="resultCard subnetInsightCard">
-              <div className="subnetInsightHead">
-                <h2>Failed Category Breakdown</h2>
-                <span>{overview.categoryBreakdown.length} categories</span>
-              </div>
-              <div className="subnetCategoryList">
-                {overview.categoryBreakdown.length === 0 && <div className="emptyMsg">No failed categories found</div>}
-                {overview.categoryBreakdown.map((item) => (
-                  <div className="subnetCategoryRow" key={item.section}>
-                    <div className="subnetCategoryTop">
-                      <strong>{item.section}</strong>
-                      <span>{item.count} failed checks</span>
-                    </div>
-                    <div className="subnetCategoryTrack">
-                      <div
-                        className="subnetCategoryFill"
-                        style={{ width: `${Math.max(5, (item.count / overview.maxCategoryCount) * 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </section>
-
-            <section className="resultCard subnetInsightCard">
-              <div className="subnetInsightHead">
-                <h2>Passed On Every Host</h2>
-                <div className="subnetHeadActions">
-                  <span>
-                    {overview.passedEverywhereCount > overview.commonPasses.length
-                      ? `Top ${overview.commonPasses.length} of ${overview.passedEverywhereCount}`
-                      : `${overview.passedEverywhereCount} checks`}
-                  </span>
-                  <button className="subnetInlineBtn compact" onClick={() => openPolicyModal('pass')} disabled={overview.passedEverywhereCount === 0}>
-                    View all
-                  </button>
+          <ReportPanel className="fleetPassPanel">
+            <PanelHeader
+              title="Passed On Every Host"
+              subtitle="Controls consistently compliant across all completed host scans"
+              action={<button type="button" className="fleetTextButton" onClick={() => openPolicyModal('pass')} disabled={!overview.passedEverywhereCount}>View all</button>}
+            />
+            <div className="fleetPassGrid">
+              {!overview.commonPasses.length && <ChartEmpty>No controls passed on every host</ChartEmpty>}
+              {overview.commonPasses.map((item) => (
+                <div className="fleetPassItem" key={item.key}>
+                  <span>{item.section}</span>
+                  <strong>{item.name}</strong>
+                  <StatusBadge tone="pass">{item.hosts.length} hosts</StatusBadge>
                 </div>
-              </div>
-              <div className="subnetInsightList">
-                {overview.commonPasses.length === 0 && <div className="emptyMsg">No checks passed on every scanned host yet</div>}
-                {overview.commonPasses.map((item) => (
-                  <div className="subnetPolicyRow" key={item.key}>
-                    <div>
-                      <div className="itemName">{item.name}</div>
-                      <div className="sectionTag">{item.section}</div>
-                    </div>
-                    <span className="countBadge pass">{item.hosts.length} hosts</span>
-                  </div>
-                ))}
-              </div>
-            </section>
-          </div>
-
-          <div className="resultCard">
-            <div className="colHeaders" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
-              <div>Host</div>
-              <div>Score</div>
-              <div>Status</div>
-              <div>Detail</div>
+              ))}
             </div>
-            <div className="itemList">
-              {scanData.results.length === 0 && <div className="emptyMsg">No subnet result items found</div>}
-              {scanData.results.map((r, index) => (
-                <div key={`${r.host || r.agent_id || index}`} className="resultRow">
-                  <div className="rowSummary" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr' }}>
-                    <div>
-                      <div className="itemName">{r.hostname || r.host || r.agent_id || 'Unknown host'}</div>
-                      <div className="sectionTag">
-                        {r.agent_id || r.host || ''}
-                        {Array.isArray(r.ip_addresses) && r.ip_addresses.length > 0 ? ` ? ${r.ip_addresses.join(', ')}` : ''}
-                      </div>
-                    </div>
-                    <div>
-                      <span style={{
-                        fontFamily: 'DM Mono, monospace',
-                        fontSize: 14,
-                        fontWeight: 500,
-                        color: scoreColor(r.score || 0),
-                      }}>
-                        {r.status === 'done' ? `${r.score || 0}%` : '-'}
-                      </span>
-                    </div>
-                    <div>
-                      <span className={`badge ${r.status === 'done' ? 'on' : 'off'}`}>
-                        {r.status === 'done' ? 'Done' : 'Error'}
-                      </span>
-                      {r.error && <div className="sectionTag" style={{ color: 'var(--red)', marginTop: 4 }}>{r.error}</div>}
-                    </div>
-                    <div>
-                      {r.scan_id && (
-                        <button
-                          className="connBtn"
-                          style={{ padding: '4px 12px', fontSize: 12 }}
-                          onClick={() => navigate(`/scan/${r.scan_id}/report`)}
-                        >
-                          View 
-                        </button>
-                      )}
-                    </div>
+          </ReportPanel>
+
+          <ReportPanel className="fleetHostTablePanel">
+            <PanelHeader title="All Scanned Hosts" subtitle="Open a child report to review findings and remediation for a specific machine" />
+            <div className="fleetTableWrap">
+              <div className="fleetHostTable fleetHostTableHead">
+                <span>Host</span>
+                <span>Score</span>
+                <span>Passed</span>
+                <span>Failed</span>
+                <span>Status</span>
+                <span>Action</span>
+              </div>
+              {!overview.hostRows.length && <ChartEmpty>No subnet hosts were recorded</ChartEmpty>}
+              {overview.hostRows.map((host, index) => (
+                <div className="fleetHostTable" key={host.scan_id || host.id || `${hostLabel(host)}-${index}`}>
+                  <div className="fleetHostIdentity">
+                    <strong>{hostLabel(host)}</strong>
+                    <span>
+                      {host.agent_id || host.host || ''}
+                      {Array.isArray(host.ip_addresses) && host.ip_addresses.length ? ` | ${host.ip_addresses.join(', ')}` : ''}
+                    </span>
+                  </div>
+                  <StatusBadge tone={host.state === 'error' ? 'fail' : scoreTone(Number(host.score || 0))}>
+                    {host.state === 'error' ? '-' : `${Number(host.score || 0)}%`}
+                  </StatusBadge>
+                  <span className="fleetNumber pass">{host.passCount || 0}</span>
+                  <span className="fleetNumber fail">{host.failCount || 0}</span>
+                  <div>
+                    <StatusBadge tone={host.state === 'error' ? 'fail' : 'pass'}>{host.state === 'error' ? 'Error' : 'Completed'}</StatusBadge>
+                    {host.error && <small className="fleetHostError">{host.error}</small>}
+                  </div>
+                  <div>
+                    {host.scan_id
+                      ? <button type="button" className="fleetLinkButton" onClick={() => navigate(`/scan/${host.scan_id}/report`)}>View Report</button>
+                      : <span className="fleetUnavailable">Unavailable</span>}
                   </div>
                 </div>
               ))}
             </div>
-            <div className="resultFooter">
-              <button className="statButton" onClick={() => navigate('/history')}>History</button>
-              <button className="finishButton" onClick={() => navigate('/home')}>Finish</button>
-            </div>
-          </div>
+          </ReportPanel>
         </>
       )}
+
       {detailModal && (
-        <div className="subnetModalBackdrop" role="presentation" onClick={() => setDetailModal(null)}>
-          <div className="subnetModal" role="dialog" aria-modal="true" onClick={(e) => e.stopPropagation()}>
-            <div className="subnetModalHead">
+        <div className="fleetModalBackdrop" role="presentation" onClick={() => setDetailModal(null)}>
+          <div className="fleetModal" role="dialog" aria-modal="true" aria-labelledby="fleet-modal-title" onClick={(event) => event.stopPropagation()}>
+            <div className="fleetModalHead">
               <div>
-                <h2>{detailModal.title}</h2>
+                <h2 id="fleet-modal-title">{detailModal.title}</h2>
                 <p>{detailModal.subtitle}</p>
               </div>
-              <button className="subnetModalClose" onClick={() => setDetailModal(null)}>Close</button>
+              <button type="button" onClick={() => setDetailModal(null)} aria-label="Close">x</button>
             </div>
-            <div className="subnetModalList">
-              {detailModal.rows.length === 0 && <div className="emptyMsg">{detailModal.empty}</div>}
+            <div className="fleetModalList">
+              {!detailModal.rows.length && <ChartEmpty>{detailModal.empty}</ChartEmpty>}
               {detailModal.rows.map((item) => (
-                <div className="subnetModalRow" key={item.key}>
+                <div className="fleetModalRow" key={item.key}>
                   <div>
-                    <div className="itemName">{item.name}</div>
-                    <div className="sectionTag">{item.section}</div>
+                    <strong>{item.name}</strong>
+                    <span>{item.section}</span>
                   </div>
-                  <span className={`countBadge ${detailModal.badgeClass}`}>{item.hosts.length} hosts</span>
+                  <StatusBadge tone={detailModal.tone}>
+                    {detailModal.tone === 'pass' ? 'Passed' : item.severity || 'Failed'}
+                  </StatusBadge>
+                  <b>{item.hosts.length} hosts</b>
                 </div>
               ))}
             </div>
           </div>
         </div>
       )}
-    </Layout>
+    </ReportShell>
   );
 }
-
-

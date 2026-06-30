@@ -251,8 +251,7 @@
 }
 
 .baselineColumnChoices {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
   gap: 7px;
 }
 
@@ -260,13 +259,33 @@
   align-items: center;
   background: var(--cream-dark);
   border: 1px solid var(--cream-mid);
-  border-radius: 999px;
+  border-radius: 7px;
   color: var(--ink-mid);
-  cursor: pointer;
-  display: inline-flex;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 190px;
   gap: 6px;
   max-width: 100%;
   padding: 6px 9px;
+}
+
+.baselineColumnChoice label {
+  align-items: center;
+  cursor: pointer;
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.baselineColumnChoice select {
+  background: #fff;
+  border: 1px solid var(--cream-mid);
+  border-radius: 6px;
+  color: var(--ink-mid);
+  font-family: 'DM Sans', sans-serif;
+  font-size: 11px;
+  min-width: 0;
+  padding: 6px 8px;
+  width: 100%;
 }
 
 .baselineColumnChoice.selected {
@@ -288,6 +307,12 @@
   color: var(--amber);
   font-size: 10px;
   font-weight: 700;
+}
+
+@media (max-width: 620px) {
+  .baselineColumnChoice {
+    grid-template-columns: 1fr;
+  }
 }
 
 .baselineColumnMapper {
@@ -752,5 +777,374 @@
   .scheduleItem {
     align-items: flex-start;
     flex-direction: column;
+  }
+}
+
+/* Production operations console refresh */
+.agentManagement {
+  display: grid;
+  gap: 16px;
+}
+
+.agentManagement .errBanner {
+  align-items: center;
+  background: #fff2f0;
+  border: 1px solid #efc4c0;
+  border-radius: 7px;
+  color: var(--report-fail);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.agentManagement .agentCard {
+  background: var(--report-panel);
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.agentManagement .agentCardHead {
+  background: #fff;
+  border-bottom: 1px solid var(--report-border);
+  min-height: 60px;
+  padding: 13px 16px;
+}
+
+.agentManagement .agentCardHead h2 {
+  color: var(--report-ink);
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0;
+}
+
+.agentManagement .agentCardHead code {
+  color: var(--report-muted);
+}
+
+.agentManagement .muted,
+.agentManagement .baselineEmpty,
+.agentManagement .agentEmpty {
+  color: var(--report-muted);
+}
+
+.agentManagement .agentStrong {
+  color: var(--report-ink);
+  font-weight: 700;
+}
+
+.agentManagement .schedulePanel,
+.agentManagement .baselineUploadPanel {
+  padding: 16px;
+}
+
+.agentManagement .scheduleForm {
+  background: #f8fafc;
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  gap: 12px;
+  margin-bottom: 16px;
+  padding: 14px;
+}
+
+.agentManagement .scheduleInput,
+.agentManagement .scheduleAutoRole,
+.agentManagement .baselineColumnChoice select {
+  background: #fff;
+  border: 1px solid var(--report-border);
+  border-radius: 6px;
+  color: var(--report-ink);
+  font-family: inherit;
+}
+
+.agentManagement .scheduleInput:focus,
+.agentManagement .baselineColumnChoice select:focus {
+  border-color: var(--report-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  outline: none;
+}
+
+.agentManagement .scheduleAutoRole span,
+.agentManagement .scheduleToggle,
+.agentManagement .baselineColumnHead span {
+  color: var(--report-muted);
+}
+
+.agentManagement .scheduleAutoRole strong {
+  color: var(--report-blue-dark);
+}
+
+.agentManagement .scheduleItem,
+.agentManagement .baselineItem {
+  background: #fff;
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.agentManagement .scheduleItem:hover,
+.agentManagement .baselineItem:hover {
+  border-color: #bfd4ff;
+  box-shadow: 0 8px 22px rgba(37, 99, 235, 0.08);
+}
+
+.agentManagement .baselineUploadControls {
+  background: #f8fafc;
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  padding: 12px;
+}
+
+.agentManagement .baselineFilePicker {
+  background: #fff;
+  border: 1px dashed #9db8f5;
+  border-radius: 6px;
+  color: var(--report-ink);
+}
+
+.agentManagement .baselineNotice {
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+}
+
+.agentManagement .baselineNotice strong {
+  color: var(--report-ink);
+}
+
+.agentManagement .baselineNotice span {
+  color: var(--report-muted);
+}
+
+.agentManagement .baselineNotice.success {
+  background: #effaf2;
+  border-color: #bbdfc5;
+}
+
+.agentManagement .baselineNotice.error {
+  background: #fff2f0;
+  border-color: #efc4c0;
+}
+
+.agentManagement .baselineNotice.info {
+  background: var(--report-blue-soft);
+  border-color: #bfd4ff;
+}
+
+.agentManagement .baselineColumnPanel,
+.agentManagement .baselineSheet {
+  background: #f8fafc;
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+}
+
+.agentManagement .baselineSheet {
+  background: #fff;
+}
+
+.agentManagement .baselineColumnHead strong,
+.agentManagement .baselineSheetTitle span {
+  color: var(--report-ink);
+}
+
+.agentManagement .baselineColumnHead code,
+.agentManagement .baselineSheetTitle em,
+.agentManagement .baselineMeta {
+  color: var(--report-muted);
+}
+
+.agentManagement .baselineColumnChoice {
+  background: #fff;
+  border: 1px solid var(--report-border);
+  color: var(--report-ink);
+}
+
+.agentManagement .baselineColumnChoice.selected {
+  background: var(--report-blue-soft);
+  border-color: #bfd4ff;
+}
+
+.agentManagement .baselineColumnChoice small {
+  color: var(--report-blue-dark);
+}
+
+.agentManagement .agentTableWrap {
+  overflow-x: auto;
+}
+
+.agentManagement .agentTable {
+  min-width: 1280px;
+}
+
+.agentManagement .agentTable thead tr {
+  background: #f8fafc;
+  border-bottom: 1px solid var(--report-border);
+}
+
+.agentManagement .agentTable th {
+  color: var(--report-muted);
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.agentManagement .agentTable tbody tr {
+  border-bottom: 1px solid var(--report-border);
+}
+
+.agentManagement .agentTable tbody tr:hover {
+  background: #f8fafc;
+}
+
+.agentManagement .agentTable td {
+  color: var(--report-muted);
+  font-size: 12px;
+}
+
+.agentManagement .agentStatus,
+.agentManagement .agentHealth,
+.agentManagement .agentJobBadge,
+.agentManagement .ipChip {
+  border-radius: 999px;
+  font-weight: 800;
+}
+
+.agentManagement .agentStatus.online,
+.agentManagement .agentHealth.ready {
+  background: #effaf2;
+  color: var(--report-pass);
+}
+
+.agentManagement .agentStatus.offline,
+.agentManagement .agentHealth.offline,
+.agentManagement .agentHealth.missing_os_metadata,
+.agentManagement .agentHealth.baseline_unresolved,
+.agentManagement .agentHealth.scan_error,
+.agentManagement .agentHealth.unknown {
+  background: #fff2f0;
+  color: var(--report-fail);
+}
+
+.agentManagement .agentJobBadge {
+  background: #f8fafc;
+  color: var(--report-muted);
+}
+
+.agentManagement .agentJobBadge.pending,
+.agentManagement .agentJobBadge.running {
+  background: #fff8e8;
+  color: var(--report-warn);
+}
+
+.agentManagement .ipChip {
+  background: #f8fafc;
+  border: 1px solid var(--report-border);
+  color: var(--report-ink);
+}
+
+.agentManagement .agentBaselineError {
+  color: var(--report-fail);
+}
+
+.agentManagement .agentPrimaryBtn,
+.agentManagement .agentSecondaryBtn,
+.agentManagement .agentRefreshBtn {
+  border-radius: 6px;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.agentManagement .agentPrimaryBtn {
+  background: var(--report-blue);
+  border: 1px solid var(--report-blue);
+  color: #fff;
+  min-height: 34px;
+  padding: 7px 12px;
+}
+
+.agentManagement .agentSecondaryBtn,
+.agentManagement .agentRefreshBtn {
+  background: #fff;
+  border: 1px solid var(--report-border);
+  color: var(--report-ink);
+  min-height: 30px;
+  padding: 6px 10px;
+}
+
+.agentManagement .agentPrimaryBtn:hover:not(:disabled),
+.agentManagement .agentSecondaryBtn:hover:not(:disabled),
+.agentManagement .agentRefreshBtn:hover:not(:disabled) {
+  border-color: var(--report-blue);
+  color: var(--report-blue);
+  opacity: 1;
+}
+
+.agentManagement .agentPrimaryBtn:hover:not(:disabled) {
+  background: var(--report-blue-dark);
+  color: #fff;
+}
+
+.agentManagement .baselineDeleteBtn {
+  background: #fff2f0;
+  border: 1px solid #efc4c0;
+  border-radius: 6px;
+  color: var(--report-fail);
+  font-family: inherit;
+  font-weight: 800;
+}
+
+.agentManagement .baselineDeleteBtn:hover {
+  background: var(--report-fail);
+  color: #fff;
+}
+
+.baselineModalBackdrop {
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.baselineModal {
+  background: var(--report-panel);
+  border: 1px solid var(--report-border);
+  border-radius: 10px;
+}
+
+.baselineModal h2 {
+  color: var(--report-ink);
+}
+
+.baselineModal p,
+.baselineModalFacts span {
+  color: var(--report-muted);
+}
+
+.baselineModalFacts {
+  background: #f8fafc;
+  border: 1px solid var(--report-border);
+}
+
+@media (max-width: 760px) {
+  .agentManagement .reportHeroSide {
+    width: 100%;
+  }
+
+  .agentManagement .reportActions {
+    width: 100%;
+  }
+
+  .agentManagement .reportActions button {
+    width: 100%;
+  }
+
+  .agentManagement .baselineUploadControls,
+  .agentManagement .agentActions,
+  .baselineModalActions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .agentManagement .baselineFilePicker {
+    max-width: none;
+    width: 100%;
   }
 }

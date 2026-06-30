@@ -1,0 +1,417 @@
+.userManagement {
+  display: grid;
+  gap: 16px;
+}
+
+.userErrorBanner {
+  align-items: center;
+  background: #fff2f0;
+  border: 1px solid #efc4c0;
+  border-radius: 7px;
+  color: var(--report-fail);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.userErrorBanner span {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 800;
+  height: 18px;
+  justify-content: center;
+  width: 18px;
+}
+
+.userPanel {
+  background: var(--report-panel);
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.userPanelHead {
+  align-items: center;
+  border-bottom: 1px solid var(--report-border);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  min-height: 60px;
+  padding: 13px 16px;
+}
+
+.userPanelHead h2 {
+  color: var(--report-ink);
+  font-size: 15px;
+  margin: 0;
+}
+
+.userPanelHead p {
+  color: var(--report-muted);
+  font-size: 11px;
+  margin: 3px 0 0;
+}
+
+.userPanelHead > span {
+  color: var(--report-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.userTableWrap {
+  overflow-x: auto;
+}
+
+.userTable {
+  border-collapse: collapse;
+  min-width: 920px;
+  width: 100%;
+}
+
+.userTable thead tr {
+  background: #f8fafc;
+  border-bottom: 1px solid var(--report-border);
+}
+
+.userTable th {
+  color: var(--report-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 10px 14px;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.userTable th.center {
+  text-align: center;
+}
+
+.userTable tbody tr {
+  border-bottom: 1px solid var(--report-border);
+}
+
+.userTable tbody tr:hover {
+  background: #f8fafc;
+}
+
+.userTable td {
+  color: var(--report-muted);
+  font-size: 12px;
+  padding: 12px 14px;
+  vertical-align: middle;
+}
+
+.monoCell {
+  color: var(--report-muted);
+  font-family: "DM Mono", Consolas, monospace;
+}
+
+.userIdentity {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.userIdentity strong {
+  color: var(--report-ink);
+}
+
+.userIdentity span {
+  background: #f8fafc;
+  border: 1px solid var(--report-border);
+  border-radius: 999px;
+  color: var(--report-muted);
+  font-size: 10px;
+  font-weight: 800;
+  padding: 2px 7px;
+}
+
+.userRoleBadge,
+.userStatus,
+.userProtected {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.userRoleBadge.owner {
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.userRoleBadge.admin {
+  background: #fff8e8;
+  color: var(--report-warn);
+}
+
+.userRoleBadge.viewer {
+  background: var(--report-blue-soft);
+  color: var(--report-blue-dark);
+}
+
+.userStatus.active {
+  background: #effaf2;
+  color: var(--report-pass);
+}
+
+.userStatus.inactive {
+  background: #fff2f0;
+  color: var(--report-fail);
+}
+
+.userProtected {
+  background: #f8fafc;
+  border: 1px solid var(--report-border);
+  color: var(--report-muted);
+}
+
+.userAccessSummary {
+  max-width: 300px;
+}
+
+.userActionGroup {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  justify-content: center;
+}
+
+.userBtn {
+  align-items: center;
+  border-radius: 6px;
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.userBtn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.userBtn.primary {
+  background: var(--report-blue);
+  border: 1px solid var(--report-blue);
+  color: #fff;
+}
+
+.userBtn.primary:hover:not(:disabled) {
+  background: var(--report-blue-dark);
+}
+
+.userBtn.secondary {
+  background: #fff;
+  border: 1px solid var(--report-border);
+  color: var(--report-ink);
+}
+
+.userBtn.secondary:hover:not(:disabled) {
+  border-color: var(--report-blue);
+  color: var(--report-blue);
+}
+
+.userBtn.danger,
+.userBtn.dangerGhost {
+  border: 1px solid #efc4c0;
+}
+
+.userBtn.danger {
+  background: var(--report-fail);
+  color: #fff;
+}
+
+.userBtn.dangerGhost {
+  background: #fff2f0;
+  color: var(--report-fail);
+}
+
+.userBtn.dangerGhost:hover:not(:disabled) {
+  background: var(--report-fail);
+  color: #fff;
+}
+
+.userEmpty {
+  align-items: center;
+  color: var(--report-muted);
+  display: flex;
+  flex-direction: column;
+  font-size: 13px;
+  gap: 12px;
+  justify-content: center;
+  min-height: 180px;
+  padding: 42px 16px;
+}
+
+.userSpin {
+  animation: userSpin 0.7s linear infinite;
+  border: 2px solid #e5e7eb;
+  border-radius: 50%;
+  border-top-color: var(--report-blue);
+  display: inline-block;
+  height: 16px;
+  width: 16px;
+}
+
+@keyframes userSpin {
+  to { transform: rotate(360deg); }
+}
+
+.userModalBackdrop {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.48);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 2000;
+}
+
+.userModal {
+  background: var(--report-panel);
+  border: 1px solid var(--report-border);
+  border-radius: 10px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.2);
+  max-width: 100%;
+  padding: 18px;
+  width: var(--user-modal-width, 420px);
+}
+
+.userModal h2 {
+  color: var(--report-ink);
+  font-size: 18px;
+  margin: 0 0 8px;
+}
+
+.userModal p {
+  color: var(--report-muted);
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 14px;
+}
+
+.userField {
+  display: grid;
+  gap: 6px;
+}
+
+.userField span {
+  color: var(--report-muted);
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.userField input {
+  background: #fff;
+  border: 1px solid var(--report-border);
+  border-radius: 7px;
+  color: var(--report-ink);
+  font: inherit;
+  min-height: 38px;
+  padding: 8px 10px;
+}
+
+.userField input:focus {
+  border-color: var(--report-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  outline: none;
+}
+
+.userInlineError {
+  background: #fff2f0;
+  border: 1px solid #efc4c0;
+  border-radius: 7px;
+  color: var(--report-fail);
+  font-size: 12px;
+  margin-bottom: 10px;
+  padding: 8px 10px;
+}
+
+.userWarning {
+  background: #fff8e8;
+  border: 1px solid #f1d29b;
+  border-radius: 8px;
+  color: var(--report-warn);
+  font-size: 12px;
+  line-height: 1.45;
+  margin-bottom: 14px;
+  padding: 10px 12px;
+}
+
+.userModalActions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+.roleOptionGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.roleOption {
+  background: #fff;
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  cursor: pointer;
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  text-align: left;
+}
+
+.roleOption strong {
+  color: var(--report-ink);
+  font-size: 13px;
+}
+
+.roleOption span {
+  color: var(--report-muted);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.roleOption.selected {
+  background: var(--report-blue-soft);
+  border-color: #bfd4ff;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.08);
+}
+
+@media (max-width: 760px) {
+  .userPanelHead,
+  .userModalActions,
+  .userActionGroup {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .roleOptionGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .userBtn {
+    width: 100%;
+  }
+}

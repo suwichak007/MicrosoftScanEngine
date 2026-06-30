@@ -12,9 +12,14 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from app.core.job_store import _jobs
 from app.core.database import SessionLocal
+from app.core.activity_routes import log_activity
 from app.models.scan import ScanResult
 from app.models.agent import AgentToken
 from app.models.agent_job import AgentJob
+from app.core.scan.scanner.framework_mapping import (
+    calculate_cis_style_score,
+    normalize_score_breakdown,
+)
 
 router = APIRouter(prefix="/agent", tags=["agent"])
 
@@ -28,10 +33,7 @@ SCANNER_SOURCE_DIR = Path(__file__).resolve().parent / "scan" / "scanner"
 def _score_breakdown_from_details(details: dict | None) -> dict | None:
     if not isinstance(details, dict):
         return None
-    breakdown = details.get("_score_breakdown")
-    if isinstance(breakdown, dict) and breakdown.get("model") == "nist_cis_informed_v1":
-        return breakdown
-    return None
+    return normalize_score_breakdown(details.get("_score_breakdown"))
 
 
 def _calculate_compliance_score(details: dict | None) -> tuple[int, dict | None]:
@@ -39,41 +41,10 @@ def _calculate_compliance_score(details: dict | None) -> tuple[int, dict | None]
         return 0, None
     existing = _score_breakdown_from_details(details)
     if existing:
-        assessed = int(existing.get("assessed_weight", 0) or 0)
-        passed = int(existing.get("passed_weight", 0) or 0)
+        assessed = int(existing.get("total_assessed_count", 0) or 0)
+        passed = int(existing.get("passed_assessed_count", 0) or 0)
         return (int((passed / assessed) * 100) if assessed else 0), existing
-
-    weights = {"critical": 10, "high": 7, "medium": 4, "low": 1}
-    passed_weight = assessed_weight = excluded_manual = 0
-    severity_totals = {key: 0 for key in weights}
-    severity_failed = {key: 0 for key in weights}
-    for key, result in details.items():
-        if str(key).startswith("_") or not isinstance(result, dict):
-            continue
-        status = str(result.get("status", "")).lower()
-        if status.startswith("manual") or "manual" in status or status in {"n/a", "na", "skipped", "__skip__"}:
-            excluded_manual += 1
-            continue
-        severity = str(result.get("severity", "low")).lower()
-        severity = severity if severity in weights else "low"
-        weight = weights[severity]
-        assessed_weight += weight
-        severity_totals[severity] += 1
-        if status == "pass":
-            passed_weight += weight
-        elif status.startswith("fail"):
-            severity_failed[severity] += 1
-
-    breakdown = {
-        "model": "nist_cis_informed_v1",
-        "passed_weight": passed_weight,
-        "assessed_weight": assessed_weight,
-        "excluded_manual_count": excluded_manual,
-        "severity_weights": weights,
-        "severity_totals": severity_totals,
-        "severity_failed": severity_failed,
-    }
-    return int((passed_weight / assessed_weight) * 100) if assessed_weight else 0, breakdown
+    return calculate_cis_style_score(details)
 
 
 def _items_scanned(details: dict | None) -> int:
@@ -173,6 +144,7 @@ def get_agent_id(
     x_agent_token: str = Header(...),
     x_agent_hostname: str | None = Header(None),
     x_agent_version: str | None = Header(None),
+    x_agent_detected_role: str | None = Header(None),
     x_agent_ip_addresses: str | None = Header(None),
     x_agent_os_name: str | None = Header(None),
     x_agent_os_version: str | None = Header(None),
@@ -190,6 +162,8 @@ def get_agent_id(
         row.hostname = x_agent_hostname
     if x_agent_version:
         row.agent_version = x_agent_version
+    if x_agent_detected_role in ("Member Server", "Domain Controller"):
+        row.detected_role = x_agent_detected_role
     if x_agent_ip_addresses:
         row.ip_addresses = [
             item.strip()
@@ -332,10 +306,11 @@ def job_result(
         return {"ok": True}
 
     version = (db_job.version if db_job else None) or getattr(job, "version", "")
-    role = (db_job.role if db_job else None) or getattr(job, "role", "Member Server")
+    configured_role = (db_job.role if db_job else None) or getattr(job, "role", "")
     user_id = (db_job.user_id if db_job else None) or getattr(job, "user_id", None)
     parent_scan_id = (db_job.parent_scan_id if db_job else None) or getattr(job, "parent_scan_id", None)
     payload = (db_job.payload if db_job else {}) or {}
+    job_type = payload.get("job_type", "scan")
     baseline_match_type = payload.get("baseline_match_type", getattr(job, "baseline_match_type", ""))
     baseline_warning = payload.get("baseline_warning", getattr(job, "baseline_warning", ""))
 
@@ -362,9 +337,54 @@ def job_result(
             db.commit()
         finally:
             db.close()
+    elif job_type in ("autofix", "rollback"):
+        now = datetime.datetime.now()
+        details = body.details or {}
+        result_payload = {
+            "job_id": body.job_id,
+            "job_type": job_type,
+            "scan_id": payload.get("scan_id"),
+            "agent_id": agent_id,
+            "requested_by": payload.get("requested_by") or user_id,
+            "created_at": db_job.created_at.isoformat() if db_job and db_job.created_at else "",
+            "completed_at": now.isoformat(),
+            "details": details,
+            "autofix_results": details.get("autofix_results", []),
+        }
+        if job:
+            job.status = "done"
+            job.progress = 100
+            job.message = f"{job_type} done"
+            job.result = result_payload
+        try:
+            agent = db.query(AgentToken).filter(AgentToken.agent_id == agent_id).first()
+            if agent:
+                agent.last_error = ""
+                agent.last_error_at = None
+            if db_job:
+                db_job.status = "done"
+                db_job.result = result_payload
+                db_job.error = ""
+                db_job.completed_at = now
+                db_job.updated_at = db_job.completed_at
+            log_activity(
+                db,
+                action=f"{job_type}_completed",
+                target_type="scan",
+                target_id=payload.get("scan_id") or "",
+                detail={
+                    "job_id": body.job_id,
+                    "agent_id": agent_id,
+                    "result_count": len(details.get("autofix_results", [])),
+                },
+            )
+            db.commit()
+        finally:
+            db.close()
     else:
-        from app.core.baseline_metadata import enrich_scan_details, summarize_findings
+        from app.core.baseline_metadata import enrich_scan_details, resolve_scan_role, summarize_findings
 
+        role = resolve_scan_role(body.details, configured_role=configured_role)
         findings        = enrich_scan_details(body.details, version=version, role=role)
         finding_summary = summarize_findings(findings)
         compliance_score, score_breakdown = _calculate_compliance_score(body.details)
@@ -385,6 +405,7 @@ def job_result(
             "baseline_warning": baseline_warning,
             "target_name":   agent_id,
             "agent_id":      agent_id,
+            "detected_role":  role,
         }
         if job:
             job.status   = "done"
@@ -398,6 +419,7 @@ def job_result(
             if agent:
                 agent.last_error = ""
                 agent.last_error_at = None
+                agent.detected_role = role
             scan_record = ScanResult(
                 target_name = f"{hostname} ({version})" if version else hostname,
                 score       = final_score,
@@ -470,6 +492,7 @@ def list_agents(db: Session = Depends(get_db)):
             "os_build": r.os_build or "",
             "os_release": r.os_release or "",
             "os_family": r.os_family or "",
+            "detected_role": r.detected_role or "",
             "last_error": r.last_error or "",
             "last_error_at": r.last_error_at.isoformat() if r.last_error_at else None,
             "registered": r.registered.isoformat() if r.registered else None,

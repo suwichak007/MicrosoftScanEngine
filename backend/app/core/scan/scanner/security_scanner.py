@@ -15,6 +15,7 @@ from .mappings import (
     SPECIAL_VALUE_MAP,
     USER_RIGHTS_MAP,
 )
+from .framework_mapping import calculate_cis_style_score, frameworks_for_result
 
 SUBPROCESS_TIMEOUT = 30
 
@@ -48,6 +49,7 @@ class SecurityScanner:
         self._security_map: dict[str, str] = {}
         self._mp_pref:     dict[str, Any] = {}
         self._applocker_xml: str = ""
+        self._last_observed_value: str = ""
 
     # ------------------------------------------------------------------
     # Command runner
@@ -248,6 +250,7 @@ class SecurityScanner:
     # ------------------------------------------------------------------
 
     def _dispatch(self, check: dict) -> str:
+        self._last_observed_value = ""
         stype          = check["source"]["sheet_type"]
         check_name     = check["check_name"]
         policy_path    = check["policy_path"]
@@ -346,11 +349,13 @@ class SecurityScanner:
                     return "Manual Check Required (winreg not available)"
 
             if "RestrictRemoteSAM" in key_name:
+                self._last_observed_value = str(actual_val)
                 if str(actual_val).strip() == str(expected).strip():
                     return self.mark_pass()
                 return f"Fail (Target: {expected}, Actual: {actual_val})"
 
             if key_name in ("NTLMMinClientSec", "NTLMMinServerSec"):
+                self._last_observed_value = str(actual_val)
                 try:
                     if int(actual_val) == int(self._normalize(expected).replace("537395200", "537395200")):
                         return self.mark_pass()
@@ -358,11 +363,13 @@ class SecurityScanner:
                     pass
                 return f"Fail (Target: {expected}, Actual: {actual_val})"
 
+            self._last_observed_value = str(actual_val)
             if self._normalize(actual_val) == self._normalize(expected):
                 return self.mark_pass()
             return f"Fail (Target: {expected}, Actual: {actual_val})"
 
         except FileNotFoundError:
+            self._last_observed_value = "Not Configured"
             # ถ้า baseline ต้องการให้ key ไม่มีอยู่ (Disabled/0) → Pass
             if self._normalize(expected) in ("0", "disabled", "off", "false", "no"):
                 return self.mark_pass()
@@ -387,6 +394,7 @@ class SecurityScanner:
                 return self._check_registry(reg_info, expected)
             if policy_name == "Network access: Allow anonymous SID/Name translation":
                 actual = self._security_map.get("LSAAnonymousNameLookup")
+                self._last_observed_value = "Not Configured" if actual is None else str(actual)
                 if actual is None:
                     return f"Fail (Not Configured, Target: {expected})"
                 if self._normalize(actual) == self._normalize(expected):
@@ -407,6 +415,7 @@ class SecurityScanner:
         if not key:
             return "Manual Check Required"
         raw = self._security_map.get(key)
+        self._last_observed_value = "Not Configured" if raw is None else str(raw)
         if raw is None:
             return f"Fail (Not Configured, Target: {expected})"
         if self._normalize(raw) == self._normalize(expected):
@@ -422,13 +431,19 @@ class SecurityScanner:
         exp_str = str(expected).strip()
 
         if exp_str.lower() == "no one (blank)":
+            self._last_observed_value = (
+                "No One (blank)" if raw is None or str(raw).strip() == ""
+                else self._resolve_sids(raw)
+            )
             if raw is None or str(raw).strip() == "":
                 return self.mark_pass()
             return f"Fail (Target: empty, Actual: {self._resolve_sids(raw)})"
 
         if raw is None:
+            self._last_observed_value = "Not Configured"
             return "Fail (Not Configured)"
 
+        self._last_observed_value = self._resolve_sids(raw)
         actual_resolved = self._resolve_sids(raw).lower()
         expected_parts  = [t.strip().lower() for t in re.split(r"[;,]", exp_str) if t.strip()]
         if all(any(ep in part for part in actual_resolved.split("; ")) for ep in expected_parts):
@@ -442,6 +457,49 @@ class SecurityScanner:
         parts = [p.strip() for p in str(sid_string).split(",") if p.strip()]
         return "; ".join(self.sid_map.get(p, p) for p in parts)
 
+    def _observed_value(self, check: dict) -> str:
+        """Return a value already collected during prefetch for report display."""
+        stype = check.get("source", {}).get("sheet_type")
+        policy_path = check.get("policy_path", "")
+        check_name = check.get("check_name", "")
+
+        if stype == "security_template":
+            if policy_path in ("Password Policy", "Account Lockout"):
+                from .mappings import SECEDIT_KEY_MAP
+                key = SECEDIT_KEY_MAP.get(check_name)
+                return str(self._security_map.get(key, "")) if key else ""
+            if policy_path == "User Rights Assignments":
+                key = self.user_rights_map.get(check_name)
+                raw = self._security_map.get(key) if key else None
+                return self._resolve_sids(raw) if raw is not None else ""
+
+        if stype == "advanced_audit":
+            from .mappings import AUDIT_SUBCATEGORY_MAP
+            subcategory = AUDIT_SUBCATEGORY_MAP.get(
+                check_name, check_name.replace("Audit ", "").strip()
+            )
+            return str(self._audit_cache.get(subcategory.lower(), ""))
+
+        if stype == "services":
+            return str(self._svc_cache.get(check_name, ""))
+
+        return ""
+
+    def _format_current_value(self, check: dict, status: str, value: str) -> str:
+        """Add the policy label when a raw value is equivalent to the target."""
+        current = str(value or "").strip()
+        expected = str(check.get("expected_value") or "").strip()
+        if (
+            status == "Pass"
+            and current
+            and expected
+            and not current.startswith("Not Configured")
+            and current.lower() != expected.lower()
+            and self._normalize(current) == self._normalize(expected)
+        ):
+            return f"{expected} ({current})"
+        return current
+
     # ------------------------------------------------------------------
     # Advanced Audit
     # ------------------------------------------------------------------
@@ -452,6 +510,7 @@ class SecurityScanner:
             policy_name, policy_name.replace("Audit ", "").strip()
         )
         actual = self._audit_cache.get(subcategory.lower())
+        self._last_observed_value = "Not Configured" if actual is None else str(actual)
         target = str(expected).strip().replace(",", " and")
         if actual is None:
             if target.lower() == "no auditing":
@@ -493,6 +552,7 @@ class SecurityScanner:
             if setting_type == "state":
                 match  = re.search(r"state\s+(on|off)", output_lower)
                 actual = match.group(1) if match else "unknown"
+                self._last_observed_value = actual.upper()
                 if actual == expected_str:
                     return self.mark_pass()
                 return f"Fail (Target: {expected}, Actual: {actual.upper()})"
@@ -503,6 +563,7 @@ class SecurityScanner:
                     inbound  = "block" if "block" in match.group(1) else "allow"
                     outbound = "allow" if "allow" in match.group(2) else "block"
                     actual   = inbound if param == "inbound" else outbound
+                    self._last_observed_value = actual
                     if actual == expected_str:
                         return self.mark_pass()
                     return f"Fail (Target: {expected}, Actual: {actual})"
@@ -518,6 +579,7 @@ class SecurityScanner:
                 match   = re.search(pattern, output_lower)
                 if match:
                     actual = match.group(1).strip().rstrip(".")
+                    self._last_observed_value = actual
                     if self._norm_yn(actual) == self._norm_yn(expected_str):
                         return self.mark_pass()
                     return f"Fail (Target: {expected}, Actual: {actual})"
@@ -534,6 +596,7 @@ class SecurityScanner:
                     match = re.search(pat, output_lower)
                     if match:
                         actual = match.group(1)
+                        self._last_observed_value = actual
                         if param == "maxfilesize":
                             if actual == str(int(expected)):
                                 return self.mark_pass()
@@ -554,6 +617,7 @@ class SecurityScanner:
 
     def _check_service(self, row_type: str, service_name: str, expected: str) -> str:
         actual = self._svc_cache.get(service_name)
+        self._last_observed_value = "Not Configured" if actual in (None, "NOT_FOUND") else str(actual)
         if actual is None or actual == "NOT_FOUND":
             if str(expected).lower() in ("disabled", "manual"):
                 return self.mark_pass()
@@ -649,7 +713,10 @@ class SecurityScanner:
             if progress_callback is not None:
                 progress_callback(done, total_checks, check)
 
-            current_value = ""
+            current_value = self._last_observed_value or self._observed_value(check)
+            if status == "Pass" and current_value == "Not Configured":
+                current_value = "Not Configured (treated as compliant)"
+            current_value = self._format_current_value(check, status, current_value)
             if status.startswith("Fail"):
                 m = re.search(r"Actual:\s*(.+?)(?:\s*\)\s*$|\s*$)", status)
                 if m:
@@ -667,6 +734,8 @@ class SecurityScanner:
                 "policy_path":   check["policy_path"],
                 "expected_value": check["expected_value"],
                 "applies_to":    check.get("applies_to", []),
+                "source":        check.get("source", {}),
+                "frameworks":    frameworks_for_result(check),
                 "status":        status,
                 "current_value": current_value,
             }
@@ -682,54 +751,26 @@ class SecurityScanner:
         return score, self.results
 
     # ------------------------------------------------------------------
-    # NIST/CIS-informed compliance score
+    # CIS-style compliance score
     # ------------------------------------------------------------------
 
     def _calculate_compliance_score(self) -> tuple[int, dict]:
         """
-        NIST/CIS-informed compliance score.
+        CIS-style compliance score.
 
-        Critical/High controls carry more weight than Medium/Low controls.
-        Manual checks are excluded from the denominator because they were not
-        automatically assessed.
+        The primary score is assessed pass rate. Manual/N/A/skipped checks are
+        excluded, and severity is kept only for risk prioritization.
         """
-        weights = {
-            "critical": 10,
-            "high": 7,
-            "medium": 4,
-            "low": 1,
-        }
-        earned = 0
-        possible = 0
-        excluded_manual = 0
-        severity_totals = {key: 0 for key in weights}
-        severity_failed = {key: 0 for key in weights}
-
-        for result in self.results.values():
-            status = str(result.get("status", "")).lower()
-            if status.startswith("manual") or "manual" in status or status in {"n/a", "na", "skipped", "__skip__"}:
-                excluded_manual += 1
-                continue
-
-            severity = str(result.get("severity", "low")).lower()
-            weight = weights.get(severity, 1)
-            severity_key = severity if severity in weights else "low"
-            severity_totals[severity_key] += 1
-            possible += weight
-            if status == "pass":
-                earned += weight
-            elif status.startswith("fail"):
-                severity_failed[severity_key] += 1
-
-        score = int((earned / possible) * 100) if possible > 0 else 0
-        return score, {
-            "model": "nist_cis_informed_v1",
-            "passed_weight": earned,
-            "assessed_weight": possible,
-            "excluded_manual_count": excluded_manual,
-            "severity_weights": weights,
-            "severity_totals": severity_totals,
-            "severity_failed": severity_failed,
+        score, breakdown = calculate_cis_style_score(self.results)
+        return score, breakdown or {
+            "model": "cis_style_compliance_v1",
+            "passed_assessed_count": 0,
+            "failed_assessed_count": 0,
+            "total_assessed_count": 0,
+            "excluded_manual_count": 0,
+            "excluded_na_count": 0,
+            "severity_failed": {"critical": 0, "high": 0, "medium": 0, "low": 0},
+            "framework_breakdown": {"nist": {}, "cis": {}},
         }
 
     # ------------------------------------------------------------------
@@ -783,7 +824,7 @@ class SecurityScanner:
         print(f"\n{'='*60}")
         print(f"  Security Baseline Scan")
         print(f"{'='*60}")
-        print(f"  NIST/CIS-informed Compliance Score : {score}%")
+        print(f"  Compliance Score : {score}%")
         print(f"  Total Checks : {self.total}")
         print(f"  Passed       : {len(pass_list)}")
         print(f"  Failed       : {len(fail_list)}")

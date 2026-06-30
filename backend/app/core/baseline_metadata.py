@@ -14,6 +14,40 @@ from __future__ import annotations
 from typing import Any
 
 
+VALID_SERVER_ROLES = {"Member Server", "Domain Controller"}
+
+
+def resolve_scan_role(
+    details: dict[str, Any] | None,
+    configured_role: str = "",
+    target_name: str = "",
+) -> str:
+    """Resolve the effective role, preferring metadata reported by the agent."""
+    rows = details if isinstance(details, dict) else {}
+    detected = str(rows.get("_detected_role") or "").strip()
+    if detected in VALID_SERVER_ROLES:
+        return detected
+
+    # Older agents omit _detected_role, but their filtered findings can still
+    # identify a DC when an exclusively Domain Controller check is present.
+    for key, value in rows.items():
+        if str(key).startswith("_") or not isinstance(value, dict):
+            continue
+        applies_to = value.get("applies_to") or []
+        if isinstance(applies_to, str):
+            applies_to = [applies_to]
+        normalized = {str(item).strip().lower() for item in applies_to}
+        if "domain controller" in normalized and "member server" not in normalized:
+            return "Domain Controller"
+
+    configured = str(configured_role or "").strip()
+    if configured in VALID_SERVER_ROLES:
+        return configured
+    if "domain controller" in str(target_name or "").lower():
+        return "Domain Controller"
+    return "Member Server"
+
+
 def enrich_scan_details(
     details: dict[str, Any] | None,
     version: str = "",   # เก็บไว้เพื่อ backward compat แต่ไม่ใช้แล้ว
@@ -69,6 +103,8 @@ def enrich_scan_details(
             "remediation":   res.get("remediation",
                                      "ตรวจสอบการตั้งค่าใน Group Policy หรือ Local Security Policy"),
             "applies_to":    res.get("applies_to", []),
+            "source":        res.get("source", {}),
+            "frameworks":     res.get("frameworks", {"nist": [], "cis": []}),
             "raw_result":    status,
         })
 
@@ -114,6 +150,8 @@ def _from_legacy_string(key: str, raw_value: str) -> dict[str, Any]:
         "status":        status,
         "remediation":   "ตรวจสอบการตั้งค่าใน Group Policy หรือ Local Security Policy",
         "applies_to":    [],
+        "source":        {},
+        "frameworks":    {"nist": [], "cis": []},
         "raw_result":    raw_value,
     }
 

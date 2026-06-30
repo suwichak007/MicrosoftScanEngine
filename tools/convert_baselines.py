@@ -1,4 +1,4 @@
-# generate_baseline_json.py (v2 - fixed)
+﻿# generate_baseline_json.py (v2 - fixed)
 # Convert Excel baseline workbooks to JSON check definitions
 # Run once: python tools/generate_baseline_json.py
 
@@ -26,6 +26,7 @@ if str(BACKEND_DIR) not in sys.path:
     sys.path.insert(0, str(BACKEND_DIR))
 
 from app.core.scan.scanner.baseline_config import auto_detect_baseline
+from app.core.scan.scanner.framework_mapping import map_frameworks
 from app.core.severity_mapping import classify_severity, default_mapping_payload
 
 # ---------------------------------------------------------------------------
@@ -114,6 +115,11 @@ def _col_to_role(col: str) -> str:
     return col
 
 
+def _detected_roles(col: str) -> list[str]:
+    role = _col_to_role(col)
+    return [role] if role in ("Member Server", "Domain Controller") else []
+
+
 def _os_prefix(version_id: str) -> str:
     low = version_id.lower()
     for keyword, prefix in _OS_PREFIX_MAP:
@@ -174,58 +180,58 @@ def _severity(
 
 def _remediation(category: str, policy_path: str, check_name: str,
                   registry_path: str, expected_value: str) -> str:
-    """คำแนะนำการแก้ไขเป็นภาษาไทย"""
-    loc = policy_path or registry_path or "การตั้งค่าความปลอดภัย"
+    """à¸„à¸³à¹à¸™à¸°à¸™à¸³à¸à¸²à¸£à¹à¸à¹‰à¹„à¸‚à¹€à¸›à¹‡à¸™à¸ à¸²à¸©à¸²à¹„à¸—à¸¢"""
+    loc = policy_path or registry_path or "à¸à¸²à¸£à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸²à¸„à¸§à¸²à¸¡à¸›à¸¥à¸­à¸”à¸ à¸±à¸¢"
 
     if registry_path:
         return (
-            f"ตั้งค่า '{check_name}' เป็น '{expected_value}' "
-            f"ผ่าน Registry Editor หรือ Group Policy "
+            f"à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸² '{check_name}' à¹€à¸›à¹‡à¸™ '{expected_value}' "
+            f"à¸œà¹ˆà¸²à¸™ Registry Editor à¸«à¸£à¸·à¸­ Group Policy "
             f"(Registry: {registry_path})"
         )
     if category == "Account Policies":
         return (
-            f"ตั้งค่า '{check_name}' เป็น '{expected_value}' "
-            f"ใน Local Security Policy (secpol.msc) → Account Policies → {loc}"
+            f"à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸² '{check_name}' à¹€à¸›à¹‡à¸™ '{expected_value}' "
+            f"à¹ƒà¸™ Local Security Policy (secpol.msc) â†’ Account Policies â†’ {loc}"
         )
     if category == "Audit Policies":
         return (
-            f"ตั้งค่า '{check_name}' เป็น '{expected_value}' "
-            f"ใน Advanced Audit Policy Configuration หรือใช้ auditpol.exe"
+            f"à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸² '{check_name}' à¹€à¸›à¹‡à¸™ '{expected_value}' "
+            f"à¹ƒà¸™ Advanced Audit Policy Configuration à¸«à¸£à¸·à¸­à¹ƒà¸Šà¹‰ auditpol.exe"
         )
     if category == "Windows Firewall":
         return (
-            f"ตั้งค่า '{check_name}' เป็น '{expected_value}' "
-            f"ใน Windows Defender Firewall with Advanced Security หรือ Group Policy"
+            f"à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸² '{check_name}' à¹€à¸›à¹‡à¸™ '{expected_value}' "
+            f"à¹ƒà¸™ Windows Defender Firewall with Advanced Security à¸«à¸£à¸·à¸­ Group Policy"
         )
     if category == "User Rights Assignment":
         return (
-            f"ตั้งค่า '{check_name}' เป็น '{expected_value}' "
-            f"ใน Local Security Policy (secpol.msc) → Local Policies → User Rights Assignment"
+            f"à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸² '{check_name}' à¹€à¸›à¹‡à¸™ '{expected_value}' "
+            f"à¹ƒà¸™ Local Security Policy (secpol.msc) â†’ Local Policies â†’ User Rights Assignment"
         )
     if category == "Services & Features":
         return (
-            f"ตั้งค่า service/task '{check_name}' เป็น '{expected_value}' "
-            f"ผ่าน services.msc หรือ Group Policy Preferences"
+            f"à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸² service/task '{check_name}' à¹€à¸›à¹‡à¸™ '{expected_value}' "
+            f"à¸œà¹ˆà¸²à¸™ services.msc à¸«à¸£à¸·à¸­ Group Policy Preferences"
         )
     if category == "Windows Defender":
         return (
-            f"ตั้งค่า '{check_name}' เป็น '{expected_value}' "
-            f"ใน Group Policy → Windows Defender Antivirus หรือ PowerShell Set-MpPreference"
+            f"à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸² '{check_name}' à¹€à¸›à¹‡à¸™ '{expected_value}' "
+            f"à¹ƒà¸™ Group Policy â†’ Windows Defender Antivirus à¸«à¸£à¸·à¸­ PowerShell Set-MpPreference"
         )
     if category == "Credential Protection":
         return (
-            f"เปิดใช้งาน '{check_name}' (ค่าที่ต้องการ: '{expected_value}') "
-            f"ใน Group Policy → Credential Guard หรือ Device Guard"
+            f"à¹€à¸›à¸´à¸”à¹ƒà¸Šà¹‰à¸‡à¸²à¸™ '{check_name}' (à¸„à¹ˆà¸²à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸à¸²à¸£: '{expected_value}') "
+            f"à¹ƒà¸™ Group Policy â†’ Credential Guard à¸«à¸£à¸·à¸­ Device Guard"
         )
     if category == "TLS/Cipher Suites":
         return (
-            f"ปิดการใช้งาน '{check_name}' (ค่าที่ต้องการ: '{expected_value}') "
-            f"ผ่าน Registry: {registry_path or 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL'}"
+            f"à¸›à¸´à¸”à¸à¸²à¸£à¹ƒà¸Šà¹‰à¸‡à¸²à¸™ '{check_name}' (à¸„à¹ˆà¸²à¸—à¸µà¹ˆà¸•à¹‰à¸­à¸‡à¸à¸²à¸£: '{expected_value}') "
+            f"à¸œà¹ˆà¸²à¸™ Registry: {registry_path or 'HKLM\\SYSTEM\\CurrentControlSet\\Control\\SecurityProviders\\SCHANNEL'}"
         )
     return (
-        f"ตั้งค่า '{check_name}' เป็น '{expected_value}' "
-        f"ใน {loc} ผ่าน Group Policy หรือ Local Security Policy (secpol.msc)"
+        f"à¸•à¸±à¹‰à¸‡à¸„à¹ˆà¸² '{check_name}' à¹€à¸›à¹‡à¸™ '{expected_value}' "
+        f"à¹ƒà¸™ {loc} à¸œà¹ˆà¸²à¸™ Group Policy à¸«à¸£à¸·à¸­ Local Security Policy (secpol.msc)"
     )
 
 
@@ -255,6 +261,9 @@ def analyze_workbook(path: Path, source_filename: str | None = None) -> dict[str
             "columns": columns,
             "detected_target_columns": detected,
             "selected_target_columns": detected,
+            "detected_target_roles": {
+                column: _detected_roles(column) for column in columns
+            },
         })
     return result
 
@@ -262,6 +271,7 @@ def analyze_workbook(path: Path, source_filename: str | None = None) -> dict[str
 def convert_workbook(
     path: Path,
     target_column_overrides: dict[str, list[str]] | None = None,
+    target_role_overrides: dict[str, dict[str, list[str]]] | None = None,
     severity_mapping: dict[str, Any] | None = None,
     source_filename: str | None = None,
 ) -> dict[str, Any]:
@@ -269,9 +279,10 @@ def convert_workbook(
     sheets = pd.read_excel(path, sheet_name=None)
     os_pfx = _os_prefix(cfg.version_id)
     overrides = target_column_overrides or {}
+    role_overrides = target_role_overrides or {}
 
     # key = (sheet_type, check_name, policy_path, expected_value)
-    # value = check dict  — ใช้สำหรับ deduplication
+    # value = check dict  â€” à¹ƒà¸Šà¹‰à¸ªà¸³à¸«à¸£à¸±à¸š deduplication
     seen: dict[tuple, dict] = {}
     counters: dict[str, int] = {}
 
@@ -280,7 +291,7 @@ def convert_workbook(
         if sheet_cfg is None or sheet_cfg.sheet_type == "skip":
             continue
 
-        # แก้จาก v1: ใช้ col in df.columns ตรงๆ ไม่ผ่าน resolve_target_col
+        # à¹à¸à¹‰à¸ˆà¸²à¸ v1: à¹ƒà¸Šà¹‰ col in df.columns à¸•à¸£à¸‡à¹† à¹„à¸¡à¹ˆà¸œà¹ˆà¸²à¸™ resolve_target_col
         if sheet_name in overrides:
             requested_columns = overrides[sheet_name]
             target_columns = [c for c in requested_columns if c in df.columns]
@@ -314,14 +325,31 @@ def convert_workbook(
                 cat = _category(sheet_name, stype, policy_path, check_name)
                 sev = _severity(cat, policy_path, check_name, registry_path, severity_mapping)
 
-                role = _col_to_role(target_col)
+                configured_roles = (
+                    role_overrides.get(sheet_name, {}).get(target_col)
+                    or role_overrides.get(stype, {}).get(target_col)
+                    or _detected_roles(target_col)
+                )
+                roles = [
+                    role for role in configured_roles
+                    if role in ("Member Server", "Domain Controller")
+                ]
+                if not roles:
+                    raise ValueError(
+                        f"Target column '{target_col}' in sheet '{sheet_name}' "
+                        "must be assigned to Member Server, Domain Controller, or Both"
+                    )
                 # deduplication key
-                dedup_key = (stype, check_name, policy_path, expected_value, role)
+                dedup_key = (stype, check_name, policy_path, expected_value)
 
                 if dedup_key in seen:
+                    existing_roles = seen[dedup_key]["applies_to"]
+                    for role in roles:
+                        if role not in existing_roles:
+                            existing_roles.append(role)
                     continue
 
-                # สร้าง check_id สั้นๆ เช่น WIN11-COMP-0001
+                # à¸ªà¸£à¹‰à¸²à¸‡ check_id à¸ªà¸±à¹‰à¸™à¹† à¹€à¸Šà¹ˆà¸™ WIN11-COMP-0001
                 counters[id_pfx] = counters.get(id_pfx, 0) + 1
                 check_id = f"{id_pfx}-{counters[id_pfx]:04d}"
 
@@ -335,7 +363,14 @@ def convert_workbook(
                     "expected_value": expected_value,
                     "remediation":   _remediation(cat, policy_path, check_name,
                                                    registry_path, expected_value),
-                    "applies_to":    [role],
+                    "applies_to":    roles,
+                    "frameworks":     map_frameworks(
+                        category=cat,
+                        policy_path=policy_path,
+                        check_name=check_name,
+                        registry_path=registry_path,
+                        sheet_type=stype,
+                    ),
                     "source": {
                         "sheet":      sheet_name,
                         "sheet_type": stype,
@@ -349,7 +384,7 @@ def convert_workbook(
         "baseline_name": cfg.display_name,
         "os_family":     cfg.os_family,
         "source_file":   source_filename or path.name,
-        "schema_version": "2.0",
+        "schema_version": "2.1",
         "checks": list(seen.values()),
     }
 
@@ -401,15 +436,15 @@ def main() -> int:
         if "security baseline" in p.name.lower() or "securitybaseline" in p.name.lower()
     )
     if not workbooks:
-        print(f"ไม่พบ baseline workbooks ใน {data_dir}", file=sys.stderr)
+        print(f"No baseline workbooks found in {data_dir}", file=sys.stderr)
         return 1
 
     for wb in workbooks:
-        print(f"กำลังแปลง {wb.name} ...")
+        print(f"Converting {wb.name} ...")
         definition = convert_workbook(wb)
         for fmt in formats:
             out = write_definition(definition, output_dir, fmt)
-            print(f"  → {out}  ({len(definition['checks'])} checks)")
+            print(f"  -> {out}  ({len(definition['checks'])} checks)")
 
     return 0
 

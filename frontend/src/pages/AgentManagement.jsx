@@ -3,54 +3,24 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { clearAuth } from '../auth';
 import { API_BASE, apiUrl } from '../config/api';
+import {
+  MetricCard,
+  MetricGrid,
+  ReportHeader,
+  ReportShell,
+  ReportTopbar,
+} from './ReportUI';
 import './AgentManagement.css';
-import ProfileMenu from './ProfileMenu';
-
-function Sidebar({ navigate }) {
-  const items = [
-    { label: 'Home', path: '/home' },
-    { label: 'History', path: '/history' },
-    { label: 'Agents', path: '/admin/agents', active: true },
-    { label: 'Users', path: '/admin/users' },
-  ];
-
-  return (
-    <aside className="sidebar">
-      <div className="sideTop">
-        <div className="logo">
-          <svg width="22" height="22" viewBox="0 0 22 22" fill="none">
-            <circle cx="11" cy="11" r="10" stroke="#c8813a" strokeWidth="1.5" />
-            <circle cx="11" cy="11" r="5" stroke="#c8813a" strokeWidth="1.5" />
-            <circle cx="11" cy="11" r="1.5" fill="#c8813a" />
-          </svg>
-          <span className="logoText">SecureScan</span>
-        </div>
-        <nav className="sideNav">
-          {items.map((item) => (
-            <button
-              key={item.path}
-              className={`sideLink ${item.active ? 'active' : ''}`}
-              onClick={() => navigate(item.path)}
-            >
-              <span className="sideLinkDot" />
-              {item.label}
-            </button>
-          ))}
-        </nav>
-      </div>
-      <button className="logoutBtn" onClick={() => { clearAuth(); navigate('/login'); }}>
-        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" stroke="currentColor" strokeWidth="1.5">
-          <path d="M5 2H2v10h3M9 10l3-3-3-3M12 7H5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
-        Log out
-      </button>
-    </aside>
-  );
-}
 
 function formatDate(value) {
   if (!value) return '-';
-  return new Date(value).toLocaleString('th-TH');
+  return new Date(value).toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'short',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
 }
 
 function buildInstallCommand() {
@@ -113,6 +83,7 @@ export default function AgentManagement() {
   const [baselineFile, setBaselineFile] = useState(null);
   const [baselineAnalysis, setBaselineAnalysis] = useState(null);
   const [baselineColumns, setBaselineColumns] = useState({});
+  const [baselineColumnRoles, setBaselineColumnRoles] = useState({});
   const [analyzingBaseline, setAnalyzingBaseline] = useState(false);
   const [uploadingBaseline, setUploadingBaseline] = useState(false);
   const [baselineNotice, setBaselineNotice] = useState(null);
@@ -211,6 +182,7 @@ export default function AgentManagement() {
   const resetBaselineAnalysis = () => {
     setBaselineAnalysis(null);
     setBaselineColumns({});
+    setBaselineColumnRoles({});
   };
 
   const analyzeBaseline = async () => {
@@ -256,11 +228,17 @@ export default function AgentManagement() {
       }
 
       const initialColumns = {};
+      const initialRoles = {};
       (data.sheets || []).forEach((sheet) => {
         initialColumns[sheet.sheet] = sheet.selected_target_columns || sheet.detected_target_columns || [];
+        initialRoles[sheet.sheet] = {};
+        (sheet.columns || []).forEach((column) => {
+          initialRoles[sheet.sheet][column] = sheet.detected_target_roles?.[column] || [];
+        });
       });
       setBaselineAnalysis(data);
       setBaselineColumns(initialColumns);
+      setBaselineColumnRoles(initialRoles);
       setBaselineNotice({
         type: 'info',
         title: 'Workbook analyzed',
@@ -293,6 +271,19 @@ export default function AgentManagement() {
     });
   };
 
+  const setBaselineColumnRole = (sheetName, columnName, value) => {
+    const roles = value === 'both'
+      ? ['Member Server', 'Domain Controller']
+      : value ? [value] : [];
+    setBaselineColumnRoles((prev) => ({
+      ...prev,
+      [sheetName]: {
+        ...(prev[sheetName] || {}),
+        [columnName]: roles,
+      },
+    }));
+  };
+
   const uploadBaseline = async () => {
     if (!baselineFile) {
       setBaselineNotice({
@@ -318,6 +309,24 @@ export default function AgentManagement() {
     form.append('file', baselineFile);
     try {
       const hasAnalysis = Boolean(baselineAnalysis?.upload_id);
+      if (hasAnalysis) {
+        const unassigned = Object.entries(baselineColumns).flatMap(([sheetName, columns]) => (
+          columns
+            .filter((column) => !(baselineColumnRoles[sheetName]?.[column] || []).length)
+            .map((column) => `${sheetName}: ${column}`)
+        ));
+        if (unassigned.length) {
+          setBaselineNotice({
+            type: 'error',
+            title: 'Role assignment required',
+            lines: [
+              'Choose Member Server, Domain Controller, or Both for every selected target column.',
+              ...unassigned.slice(0, 5),
+            ],
+          });
+          return;
+        }
+      }
       const res = hasAnalysis
         ? await fetch(apiUrl('/api/admin/baselines/upload/confirm'), {
             method: 'POST',
@@ -325,6 +334,7 @@ export default function AgentManagement() {
             body: JSON.stringify({
               upload_id: baselineAnalysis.upload_id,
               target_columns: baselineColumns,
+              target_roles: baselineColumnRoles,
             }),
           })
         : await fetch(apiUrl('/api/admin/baselines/upload'), {
@@ -441,7 +451,7 @@ export default function AgentManagement() {
       const res = await fetch(url, {
         method: editingScheduleId ? 'PUT' : 'POST',
         headers: authHeader(),
-        body: JSON.stringify(scheduleForm),
+        body: JSON.stringify({ ...scheduleForm, role: 'auto' }),
       });
       if (res.status === 401) { clearAuth(); navigate('/login'); return; }
       const data = await res.json();
@@ -465,7 +475,7 @@ export default function AgentManagement() {
       agent_id: schedule.agent_id || '',
       subnet: schedule.subnet || '',
       version: schedule.version || 'auto',
-      role: schedule.role || 'auto',
+      role: 'auto',
       frequency: schedule.frequency || 'daily',
       time: schedule.time || '09:00',
       day_of_week: schedule.day_of_week || 0,
@@ -529,32 +539,29 @@ export default function AgentManagement() {
   };
 
   return (
-    <div className="root">
-      <Sidebar navigate={navigate} />
+    <ReportShell active="Agents">
+      <ReportTopbar />
 
-      <main className="main agentMain">
-        <header className="topbar">
-          <p className="topbarDate">
-            {new Date().toLocaleDateString('th-TH', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
-          </p>
-          <div className="topbarActions">
-            <button className="agentRefreshBtn" onClick={fetchAgents} disabled={loading}>
-              {loading ? <span className="spin" /> : null}
-              Refresh
-            </button>
-            <ProfileMenu />
-          </div>
-        </header>
-
-        <div className="pageHead agentPageHead">
-          <div>
-            <h1 className="pageTitle">Agent Management</h1>
-            <p className="pageDesc">Manage registered agents, schedules, install commands, and baseline uploads</p>
-          </div>
-          <button className="agentPrimaryBtn" onClick={() => copyCommand()}>
-            {copied === 'new-agent' ? 'Copied' : 'Copy install command'}
-          </button>
-        </div>
+      <div className="agentManagement agentMain">
+        <ReportHeader
+          eyebrow="Asset operations"
+          title="Agent Management"
+          subtitle="Manage registered agents, scheduled scans, scanner package baselines, and installation commands."
+          context={[
+            { label: 'Install command', value: buildInstallCommand() },
+            { label: 'Role detection', value: 'Auto-detected by agent' },
+          ]}
+          actions={(
+            <>
+              <button className="reportAction primary" type="button" onClick={() => copyCommand()}>
+                {copied === 'new-agent' ? 'Copied' : 'Copy install'}
+              </button>
+              <button className="reportAction" type="button" onClick={fetchAgents} disabled={loading}>
+                {loading ? 'Refreshing...' : 'Refresh'}
+              </button>
+            </>
+          )}
+        />
 
         {errorMsg && (
           <div className="errBanner">
@@ -565,20 +572,13 @@ export default function AgentManagement() {
           </div>
         )}
 
-        <div className="agentStats">
-          <div className="agentStat">
-            <span className="agentStatValue">{stats.total}</span>
-            <span className="agentStatLabel">Total agents</span>
-          </div>
-          <div className="agentStat">
-            <span className="agentStatValue">{stats.online}</span>
-            <span className="agentStatLabel">Online</span>
-          </div>
-          <div className="agentStat">
-            <span className="agentStatValue">{stats.offline}</span>
-            <span className="agentStatLabel">Offline</span>
-          </div>
-        </div>
+        <MetricGrid>
+          <MetricCard label="Total agents" value={stats.total} hint="Registered endpoints" tone="info" />
+          <MetricCard label="Online" value={stats.online} hint="Heartbeat active" tone="pass" />
+          <MetricCard label="Offline" value={stats.offline} hint="Needs attention" tone={stats.offline ? 'fail' : 'neutral'} />
+          <MetricCard label="Schedules" value={schedules.length} hint="Agent jobs" tone="neutral" />
+          <MetricCard label="Baselines" value={baselines.length} hint="Available scanner packages" tone="neutral" />
+        </MetricGrid>
 
         <section className="agentCard scheduleAdminCard">
           <div className="agentCardHead">
@@ -696,7 +696,7 @@ export default function AgentManagement() {
                   <div className="agentStack">
                     <span className="agentStrong">{schedule.name}</span>
                     <span className="muted">
-                      {schedule.scan_type === 'agent' ? schedule.agent_id : schedule.subnet} ? {schedule.frequency} ? {schedule.version}
+                      {[schedule.scan_type === 'agent' ? schedule.agent_id : schedule.subnet, schedule.frequency, schedule.version].filter(Boolean).join(' / ')}
                     </span>
                     <span className="muted">Next run {formatDate(schedule.next_run)}</span>
                     {schedule.last_error && <span className="agentBaselineError">{schedule.last_error}</span>}
@@ -773,16 +773,32 @@ export default function AgentManagement() {
                           {(sheet.columns || []).map((column) => {
                             const checked = selected.includes(column);
                             const detected = (sheet.detected_target_columns || []).includes(column);
+                            const roles = baselineColumnRoles[sheet.sheet]?.[column] || [];
+                            const roleValue = roles.length === 2 ? 'both' : (roles[0] || '');
                             return (
-                              <label className={`baselineColumnChoice ${checked ? 'selected' : ''}`} key={`${sheet.sheet}-${column}`}>
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={() => toggleBaselineColumn(sheet.sheet, column)}
-                                />
-                                <span>{column}</span>
-                                {detected && <small>detected</small>}
-                              </label>
+                              <div className={`baselineColumnChoice ${checked ? 'selected' : ''}`} key={`${sheet.sheet}-${column}`}>
+                                <label>
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={() => toggleBaselineColumn(sheet.sheet, column)}
+                                  />
+                                  <span>{column}</span>
+                                  {detected && <small>detected</small>}
+                                </label>
+                                {checked && (
+                                  <select
+                                    aria-label={`Role for ${column}`}
+                                    value={roleValue}
+                                    onChange={(event) => setBaselineColumnRole(sheet.sheet, column, event.target.value)}
+                                  >
+                                    <option value="">Choose role</option>
+                                    <option value="Member Server">Member Server</option>
+                                    <option value="Domain Controller">Domain Controller</option>
+                                    <option value="both">Both</option>
+                                  </select>
+                                )}
+                              </div>
                             );
                           })}
                         </div>
@@ -851,6 +867,7 @@ export default function AgentManagement() {
                     <th>Hostname</th>
                     <th>IP addresses</th>
                     <th>OS</th>
+                    <th>Role</th>
                     <th>Suggested baseline</th>
                     <th>Jobs</th>
                     <th>Last seen</th>
@@ -896,10 +913,15 @@ export default function AgentManagement() {
                           <span className="agentStrong">{agent.os_name || '-'}</span>
                           {(agent.os_release || agent.os_build) && (
                             <span className="muted">
-                              {[agent.os_release, agent.os_build && `build ${agent.os_build}`].filter(Boolean).join(' ? ')}
+                              {[agent.os_release, agent.os_build && `build ${agent.os_build}`].filter(Boolean).join(' / ')}
                             </span>
                           )}
                         </div>
+                      </td>
+                      <td>
+                        <span className="agentHealth ready">
+                          {agent.detected_role || 'Pending heartbeat'}
+                        </span>
                       </td>
                       <td>
                         <div className="agentStack">
@@ -940,7 +962,7 @@ export default function AgentManagement() {
             </div>
           )}
         </section>
-      </main>
+      </div>
 
       {baselineDeleteTarget && (
         <div className="baselineModalBackdrop" role="presentation">
@@ -973,7 +995,7 @@ export default function AgentManagement() {
           </div>
         </div>
       )}
-    </div>
+    </ReportShell>
   );
 }
 

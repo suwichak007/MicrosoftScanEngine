@@ -96,7 +96,7 @@ def _build_messages(req: SummaryRequest) -> list[dict]:
         f"Scan results for Windows machine:\n"
         f"- Target: {req.target_name}\n"
         f"- Version: {req.version}\n"
-        f"- NIST/CIS-informed Compliance Score: {req.score}%\n"
+        f"- Compliance Score: {req.score}%\n"
         f"- Pass: {req.pass_count}/{req.total_count}\n"
         f"- Failed breakdown (USE THESE EXACT NUMBERS — do NOT change them):\n"
         f"    Critical = {counts['critical']}\n"

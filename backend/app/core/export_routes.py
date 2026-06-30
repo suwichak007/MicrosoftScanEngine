@@ -24,7 +24,9 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 from app.core.database import SessionLocal
+from app.core.activity_routes import log_activity
 from app.core.security import get_current_user
+from app.core.scan.scanner.framework_mapping import normalize_score_breakdown
 from app.models.scan import ScanResult
 from app.models.user import User
 
@@ -56,7 +58,7 @@ def get_db():
 def _get_scan_or_404(scan_id: int, current_user: User, db: Session) -> ScanResult:
     """ดึง scan result และตรวจสิทธิ์"""
     query = db.query(ScanResult).filter(ScanResult.id == scan_id)
-    if current_user.role != "admin":
+    if current_user.role not in ("admin", "owner"):
         query = query.filter(ScanResult.user_id == current_user.id)
     scan = query.first()
     if not scan:
@@ -127,6 +129,7 @@ def _parse_details(details: dict) -> dict:
             "target":   "",
             "actual":   "",
             "raw":      val_str,
+            "frameworks": value.get("frameworks", {"nist": [], "cis": []}) if is_dict else {"nist": [], "cis": []},
         }
 
         if is_dict:
@@ -172,8 +175,7 @@ def _parse_details(details: dict) -> dict:
 def _score_breakdown(details: dict | None) -> dict | None:
     if not isinstance(details, dict):
         return None
-    value = details.get("_score_breakdown")
-    return value if isinstance(value, dict) and value.get("model") == "nist_cis_informed_v1" else None
+    return normalize_score_breakdown(details.get("_score_breakdown"))
 
 
 # ---------------------------------------------------------------------------
@@ -312,7 +314,7 @@ def _build_pdf(scan: ScanResult) -> bytes:
 
     summary_data = [
         [
-            Paragraph(f'<font size="28" color="{score_color.hexval()}"><b>{score}%</b></font><br/><font size="8" color="#6b7280">NIST/CIS-informed Compliance Score</font>', style_cell),
+            Paragraph(f'<font size="28" color="{score_color.hexval()}"><b>{score}%</b></font><br/><font size="8" color="#6b7280">Compliance Score</font>', style_cell),
             Paragraph(f'<font size="20" color="{COLOR_PASS.hexval()}"><b>{n_pass}</b></font><br/><font size="8" color="#6b7280">Pass</font>', style_cell),
             Paragraph(f'<font size="20" color="{COLOR_CRITICAL.hexval()}"><b>{n_fail}</b></font><br/><font size="8" color="#6b7280">Fail</font>', style_cell),
             Paragraph(f'<font size="20" color="{COLOR_MEDIUM.hexval()}"><b>{n_manual}</b></font><br/><font size="8" color="#6b7280">Manual</font>', style_cell),
@@ -331,7 +333,7 @@ def _build_pdf(scan: ScanResult) -> bytes:
         ("ROUNDEDCORNERS", [4]),
     ]))
     story.append(summary_table)
-    story.append(Paragraph("Score model: weighted control compliance by severity; manual/N/A checks are excluded from the denominator.", style_small))
+    story.append(Paragraph("Score model: assessed pass rate; manual/N/A/skipped checks are excluded from the denominator. Severity is used for risk priority, not score weighting.", style_small))
     story.append(Spacer(1, 6))
 
     # severity breakdown
@@ -497,8 +499,8 @@ def _build_csv(scan: ScanResult) -> bytes:
     writer.writerow(["Target",   scan.target_name or ""])
     writer.writerow(["Hostname", scan.hostname    or ""])
     writer.writerow(["Version",  scan.version     or ""])
-    writer.writerow(["NIST/CIS-informed Compliance Score", f"{scan.score}%"])
-    writer.writerow(["Score Model", "Weighted control compliance by severity; manual/N/A checks are excluded"])
+    writer.writerow(["Compliance Score", f"{scan.score}%"])
+    writer.writerow(["Score Model", "Assessed pass rate; manual/N/A/skipped checks are excluded"])
     writer.writerow(["Date",     scan_date])
     writer.writerow([])
 
@@ -544,6 +546,7 @@ def _build_xlsx(scan: ScanResult) -> bytes:
     scan_date = scan.scan_date.strftime("%d/%m/%Y %H:%M") if scan.scan_date else ""
     parsed = _parse_details(scan.details)
     all_items = parsed["fail"] + parsed["manual"] + parsed["pass"]
+    breakdown = _score_breakdown(scan.details)
 
     title_fill = PatternFill("solid", fgColor="1A1A2E")
     header_fill = PatternFill("solid", fgColor="E8D9C8")
@@ -561,14 +564,33 @@ def _build_xlsx(scan: ScanResult) -> bytes:
         ("Target", scan.target_name or ""),
         ("Hostname", scan.hostname or ""),
         ("Version", scan.version or ""),
-        ("NIST/CIS-informed Compliance Score", f"{scan.score or 0}%"),
-        ("Score Model", "Weighted control compliance by severity; manual/N/A checks are excluded"),
+        ("Compliance Score", f"{scan.score or 0}%"),
+        ("Score Model", "Assessed pass rate; manual/N/A/skipped checks are excluded"),
         ("Date", scan_date),
         ("Total Checks", len(all_items)),
         ("Pass", len(parsed["pass"])),
         ("Fail", len(parsed["fail"])),
         ("Manual", len(parsed["manual"])),
     ]
+    if breakdown:
+        summary_rows.extend([
+            ("Assessed Passed", breakdown.get("passed_assessed_count", 0)),
+            ("Assessed Failed", breakdown.get("failed_assessed_count", 0)),
+            ("Assessed Total", breakdown.get("total_assessed_count", 0)),
+            ("Excluded N/A", breakdown.get("excluded_na_count", 0)),
+        ])
+        framework_breakdown = breakdown.get("framework_breakdown") or {}
+        for family, label in (("nist", "Top NIST Impact"), ("cis", "Top CIS Impact")):
+            rows = sorted(
+                (framework_breakdown.get(family) or {}).items(),
+                key=lambda item: int((item[1] or {}).get("failed_assessed_count", 0) or 0),
+                reverse=True,
+            )[:5]
+            if rows:
+                summary_rows.append((
+                    label,
+                    ", ".join(f"{code} ({values.get('failed_assessed_count', 0)} fail)" for code, values in rows),
+                ))
     for idx, (label, value) in enumerate(summary_rows, start=3):
         ws_summary.cell(row=idx, column=1, value=label).font = header_font
         ws_summary.cell(row=idx, column=2, value=value)
@@ -638,6 +660,7 @@ async def export_pdf(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ไม่สามารถสร้าง PDF ได้: {e}")
 
+    log_activity(db, actor=current_user, action="report_exported", target_type="scan", target_id=scan_id, detail={"format": "pdf"})
     filename  = f"scan-report-{scan_id}-{datetime.date.today()}.pdf"
     return StreamingResponse(
         io.BytesIO(pdf_bytes),
@@ -660,6 +683,7 @@ async def export_csv(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"ไม่สามารถสร้าง CSV ได้: {e}")
 
+    log_activity(db, actor=current_user, action="report_exported", target_type="scan", target_id=scan_id, detail={"format": "csv"})
     filename = f"scan-report-{scan_id}-{datetime.date.today()}.csv"
     return StreamingResponse(
         io.BytesIO(csv_bytes),
@@ -681,6 +705,7 @@ async def export_xlsx(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cannot create XLSX: {e}")
 
+    log_activity(db, actor=current_user, action="report_exported", target_type="scan", target_id=scan_id, detail={"format": "xlsx"})
     filename = f"scan-report-{scan_id}-{datetime.date.today()}.xlsx"
     return StreamingResponse(
         io.BytesIO(xlsx_bytes),

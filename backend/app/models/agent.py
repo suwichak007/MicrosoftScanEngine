@@ -15,6 +15,7 @@ class AgentToken(Base):
     os_build = Column(String, nullable=True)
     os_release = Column(String, nullable=True)
     os_family = Column(String, nullable=True)
+    detected_role = Column(String, nullable=True)
     last_error = Column(String, nullable=True)
     last_error_at = Column(DateTime, nullable=True)
     registered = Column(DateTime, default=datetime.datetime.now)

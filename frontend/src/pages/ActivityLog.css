@@ -1,0 +1,321 @@
+.activityLogPage {
+  display: grid;
+  gap: 16px;
+}
+
+.activityError {
+  align-items: center;
+  background: #fff2f0;
+  border: 1px solid #efc4c0;
+  border-radius: 7px;
+  color: var(--report-fail);
+  display: flex;
+  font-size: 12px;
+  gap: 8px;
+  padding: 10px 12px;
+}
+
+.activityError span {
+  align-items: center;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 800;
+  height: 18px;
+  justify-content: center;
+  width: 18px;
+}
+
+.activityPanel {
+  background: var(--report-panel);
+  border: 1px solid var(--report-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+  overflow: hidden;
+}
+
+.activityPanelHead {
+  align-items: center;
+  border-bottom: 1px solid var(--report-border);
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  min-height: 60px;
+  padding: 13px 16px;
+}
+
+.activityPanelHead h2 {
+  color: var(--report-ink);
+  font-size: 15px;
+  margin: 0;
+}
+
+.activityPanelHead p {
+  color: var(--report-muted);
+  font-size: 11px;
+  margin: 3px 0 0;
+}
+
+.activityPanelHead > span {
+  color: var(--report-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.activityToolbar {
+  background: #f8fafc;
+  border-bottom: 1px solid var(--report-border);
+  display: grid;
+  gap: 10px;
+  grid-template-columns: minmax(240px, 1fr) 220px 180px;
+  padding: 12px;
+}
+
+.activityToolbar input,
+.activityToolbar select {
+  background: #fff;
+  border: 1px solid var(--report-border);
+  border-radius: 6px;
+  color: var(--report-ink);
+  font: inherit;
+  font-size: 12px;
+  min-height: 36px;
+  padding: 8px 10px;
+}
+
+.activityToolbar input:focus,
+.activityToolbar select:focus {
+  border-color: var(--report-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  outline: none;
+}
+
+.activityTableWrap {
+  overflow-x: auto;
+}
+
+.activityTable {
+  border-collapse: collapse;
+  min-width: 1080px;
+  width: 100%;
+}
+
+.activityTable thead tr {
+  background: #f8fafc;
+  border-bottom: 1px solid var(--report-border);
+}
+
+.activityTable th {
+  color: var(--report-muted);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  padding: 10px 14px;
+  text-align: left;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.activityTable th.center {
+  text-align: center;
+}
+
+.activityTable tbody tr {
+  border-bottom: 1px solid var(--report-border);
+}
+
+.activityTable tbody tr:hover {
+  background: #f8fafc;
+}
+
+.activityTable td {
+  color: var(--report-muted);
+  font-size: 12px;
+  padding: 12px 14px;
+  vertical-align: middle;
+}
+
+.activityStack {
+  display: grid;
+  gap: 3px;
+}
+
+.activityStack strong {
+  color: var(--report-ink);
+  font-weight: 800;
+  overflow-wrap: anywhere;
+}
+
+.activityStack span {
+  color: var(--report-muted);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+
+.activityAction {
+  color: var(--report-ink);
+  font-weight: 800;
+  text-transform: capitalize;
+}
+
+.activityStatus {
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 3px 8px;
+  white-space: nowrap;
+}
+
+.activityStatus.pass {
+  background: #effaf2;
+  color: var(--report-pass);
+}
+
+.activityStatus.warn {
+  background: #fff8e8;
+  color: var(--report-warn);
+}
+
+.activityStatus.fail {
+  background: #fff2f0;
+  color: var(--report-fail);
+}
+
+.activityDetailCell {
+  max-width: 360px;
+  overflow-wrap: anywhere;
+}
+
+.activityBtn {
+  align-items: center;
+  background: #fff;
+  border: 1px solid var(--report-border);
+  border-radius: 6px;
+  color: var(--report-ink);
+  cursor: pointer;
+  display: inline-flex;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  justify-content: center;
+  min-height: 30px;
+  padding: 6px 10px;
+  white-space: nowrap;
+}
+
+.activityBtn:hover {
+  border-color: var(--report-blue);
+  color: var(--report-blue);
+}
+
+.activityEmpty {
+  align-items: center;
+  color: var(--report-muted);
+  display: flex;
+  font-size: 13px;
+  justify-content: center;
+  min-height: 180px;
+  padding: 42px 16px;
+}
+
+.activityModalBackdrop {
+  align-items: center;
+  background: rgba(15, 23, 42, 0.48);
+  display: flex;
+  inset: 0;
+  justify-content: center;
+  padding: 20px;
+  position: fixed;
+  z-index: 2000;
+}
+
+.activityModal {
+  background: var(--report-panel);
+  border: 1px solid var(--report-border);
+  border-radius: 10px;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.2);
+  max-height: min(84vh, 760px);
+  max-width: 100%;
+  overflow: auto;
+  padding: 18px;
+  width: min(720px, 100%);
+}
+
+.activityModalHead {
+  align-items: flex-start;
+  display: flex;
+  gap: 16px;
+  justify-content: space-between;
+  margin-bottom: 14px;
+}
+
+.activityModalHead h2 {
+  color: var(--report-ink);
+  font-size: 18px;
+  margin: 0 0 4px;
+}
+
+.activityModalHead p {
+  color: var(--report-muted);
+  font-size: 12px;
+  margin: 0;
+}
+
+.activityModalGrid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 14px;
+}
+
+.activityModalGrid span {
+  background: #f8fafc;
+  border: 1px solid var(--report-border);
+  border-radius: 7px;
+  display: grid;
+  gap: 3px;
+  padding: 10px;
+}
+
+.activityModalGrid small {
+  color: var(--report-muted);
+  font-size: 10px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.activityModalGrid strong {
+  color: var(--report-ink);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.activityModal pre {
+  background: #0f172a;
+  border-radius: 8px;
+  color: #dbeafe;
+  font-size: 11px;
+  line-height: 1.5;
+  margin: 0;
+  overflow: auto;
+  padding: 12px;
+  white-space: pre-wrap;
+}
+
+@media (max-width: 860px) {
+  .activityToolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .activityPanelHead,
+  .activityModalHead {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .activityModalGrid {
+    grid-template-columns: 1fr;
+  }
+}
